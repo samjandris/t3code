@@ -406,6 +406,9 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
 
 function classifyToolItemType(toolName: string): CanonicalItemType {
   const normalized = toolName.toLowerCase();
+  if (normalized.includes("todowrite")) {
+    return "plan";
+  }
   if (normalized.includes("agent")) {
     return "collab_agent_tool_call";
   }
@@ -1784,6 +1787,43 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             input: tool.input,
             result: toolResult.block,
           };
+
+          if (tool.toolName === "TodoWrite" && !toolResult.isError && context.turnState) {
+            const steps = Array.isArray(tool.input["todos"]) ? tool.input["todos"] : [];
+            const planStamp = yield* makeEventStamp();
+            yield* offerRuntimeEvent({
+              type: "turn.plan.updated",
+              eventId: planStamp.eventId,
+              provider: PROVIDER,
+              createdAt: planStamp.createdAt,
+              threadId: context.session.threadId,
+              turnId: asCanonicalTurnId(context.turnState.turnId),
+              payload: {
+                plan: steps
+                  .filter(
+                    (entry): entry is Record<string, unknown> =>
+                      typeof entry === "object" && entry !== null,
+                  )
+                  .map((entry) => ({
+                    step: typeof entry.content === "string" ? entry.content : "step",
+                    status:
+                      entry.status === "completed"
+                        ? "completed"
+                        : entry.status === "in_progress"
+                          ? "inProgress"
+                          : "pending",
+                  })),
+              },
+              providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
+              raw: {
+                source: "claude.sdk.message",
+                method: "claude/user",
+                payload: message,
+              },
+            });
+            context.inFlightTools.delete(index);
+            continue;
+          }
 
           const updatedStamp = yield* makeEventStamp();
           yield* offerRuntimeEvent({
