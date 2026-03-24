@@ -1041,6 +1041,107 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("emits plan updates for TodoWrite tool results regardless of tool name casing", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 8).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: "claudeAgent",
+        runtimeMode: "full-access",
+      });
+
+      const turn = yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "make a plan",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "stream_event",
+        session_id: "sdk-session-todowrite",
+        uuid: "stream-todowrite-start",
+        parent_tool_use_id: null,
+        event: {
+          type: "content_block_start",
+          index: 0,
+          content_block: {
+            type: "tool_use",
+            id: "tool-todowrite-1",
+            name: "todowrite",
+            input: {
+              todos: [
+                {
+                  content: "Inspect provider events",
+                  status: "completed",
+                },
+                {
+                  content: "Emit runtime plan update",
+                  status: "in_progress",
+                },
+              ],
+            },
+          },
+        },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "user",
+        session_id: "sdk-session-todowrite",
+        uuid: "user-todowrite-result",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-todowrite-1",
+              content: "Plan updated",
+            },
+          ],
+        },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-todowrite",
+        uuid: "result-todowrite",
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const planUpdated = runtimeEvents.find((event) => event.type === "turn.plan.updated");
+      const toolCompleted = runtimeEvents.find(
+        (event) =>
+          event.type === "item.completed" &&
+          event.payload.itemType === "plan" &&
+          (event.payload.data as { toolName?: string } | undefined)?.toolName === "todowrite",
+      );
+
+      assert.equal(planUpdated?.type, "turn.plan.updated");
+      if (planUpdated?.type === "turn.plan.updated") {
+        assert.equal(String(planUpdated.turnId), String(turn.turnId));
+        assert.deepEqual(planUpdated.payload.plan, [
+          { step: "Inspect provider events", status: "completed" },
+          { step: "Emit runtime plan update", status: "inProgress" },
+        ]);
+      }
+
+      assert.equal(toolCompleted?.type, "item.completed");
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("treats user-aborted Claude results as interrupted without a runtime error", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

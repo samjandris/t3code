@@ -1788,7 +1788,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             result: toolResult.block,
           };
 
-          if (tool.toolName === "TodoWrite" && !toolResult.isError && context.turnState) {
+          if (
+            tool.toolName.toLowerCase() === "todowrite" &&
+            !toolResult.isError &&
+            context.turnState
+          ) {
             const steps = Array.isArray(tool.input["todos"]) ? tool.input["todos"] : [];
             const planStamp = yield* makeEventStamp();
             yield* offerRuntimeEvent({
@@ -1821,48 +1825,22 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
                 payload: message,
               },
             });
-            context.inFlightTools.delete(index);
-            continue;
-          }
-
-          const updatedStamp = yield* makeEventStamp();
-          yield* offerRuntimeEvent({
-            type: "item.updated",
-            eventId: updatedStamp.eventId,
-            provider: PROVIDER,
-            createdAt: updatedStamp.createdAt,
-            threadId: context.session.threadId,
-            ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
-            itemId: asRuntimeItemId(tool.itemId),
-            payload: {
-              itemType: tool.itemType,
-              status: toolResult.isError ? "failed" : "inProgress",
-              title: tool.title,
-              ...(tool.detail ? { detail: tool.detail } : {}),
-              data: toolData,
-            },
-            providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
-            raw: {
-              source: "claude.sdk.message",
-              method: "claude/user",
-              payload: message,
-            },
-          });
-
-          const streamKind = toolResultStreamKind(tool.itemType);
-          if (streamKind && toolResult.text.length > 0 && context.turnState) {
-            const deltaStamp = yield* makeEventStamp();
+          } else {
+            const updatedStamp = yield* makeEventStamp();
             yield* offerRuntimeEvent({
-              type: "content.delta",
-              eventId: deltaStamp.eventId,
+              type: "item.updated",
+              eventId: updatedStamp.eventId,
               provider: PROVIDER,
-              createdAt: deltaStamp.createdAt,
+              createdAt: updatedStamp.createdAt,
               threadId: context.session.threadId,
-              turnId: context.turnState.turnId,
+              ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
               itemId: asRuntimeItemId(tool.itemId),
               payload: {
-                streamKind,
-                delta: toolResult.text,
+                itemType: tool.itemType,
+                status: toolResult.isError ? "failed" : "inProgress",
+                title: tool.title,
+                ...(tool.detail ? { detail: tool.detail } : {}),
+                data: toolData,
               },
               providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
               raw: {
@@ -1871,6 +1849,30 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
                 payload: message,
               },
             });
+
+            const streamKind = toolResultStreamKind(tool.itemType);
+            if (streamKind && toolResult.text.length > 0 && context.turnState) {
+              const deltaStamp = yield* makeEventStamp();
+              yield* offerRuntimeEvent({
+                type: "content.delta",
+                eventId: deltaStamp.eventId,
+                provider: PROVIDER,
+                createdAt: deltaStamp.createdAt,
+                threadId: context.session.threadId,
+                turnId: context.turnState.turnId,
+                itemId: asRuntimeItemId(tool.itemId),
+                payload: {
+                  streamKind,
+                  delta: toolResult.text,
+                },
+                providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
+                raw: {
+                  source: "claude.sdk.message",
+                  method: "claude/user",
+                  payload: message,
+                },
+              });
+            }
           }
 
           const completedStamp = yield* makeEventStamp();
