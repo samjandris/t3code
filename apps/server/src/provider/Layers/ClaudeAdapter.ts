@@ -406,9 +406,6 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
 
 function classifyToolItemType(toolName: string): CanonicalItemType {
   const normalized = toolName.toLowerCase();
-  if (normalized.includes("todowrite")) {
-    return "plan";
-  }
   if (normalized.includes("agent")) {
     return "collab_agent_tool_call";
   }

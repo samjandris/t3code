@@ -1119,12 +1119,6 @@ describe("ClaudeAdapterLive", () => {
 
       const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
       const planUpdated = runtimeEvents.find((event) => event.type === "turn.plan.updated");
-      const toolCompleted = runtimeEvents.find(
-        (event) =>
-          event.type === "item.completed" &&
-          event.payload.itemType === "plan" &&
-          (event.payload.data as { toolName?: string } | undefined)?.toolName === "todowrite",
-      );
 
       assert.equal(planUpdated?.type, "turn.plan.updated");
       if (planUpdated?.type === "turn.plan.updated") {
@@ -1134,8 +1128,6 @@ describe("ClaudeAdapterLive", () => {
           { step: "Emit runtime plan update", status: "inProgress" },
         ]);
       }
-
-      assert.equal(toolCompleted?.type, "item.completed");
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
