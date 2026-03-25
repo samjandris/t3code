@@ -1789,7 +1789,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           };
 
           if (
-            tool.toolName.toLowerCase() === "todowrite" &&
+            tool.toolName.toLowerCase().includes("todowrite") &&
             !toolResult.isError &&
             context.turnState
           ) {
