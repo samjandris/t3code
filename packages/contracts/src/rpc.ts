@@ -28,6 +28,8 @@ import {
   GitPullRequestRefInput,
   GitPullResult,
   GitRemoveWorktreeInput,
+  GitReviewDiffsInput,
+  GitReviewDiffsResult,
   GitResolvePullRequestResult,
   GitRunStackedActionInput,
   GitStatusInput,
@@ -104,6 +106,7 @@ export const WS_METHODS = {
   gitInit: "git.init",
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
+  gitGetReviewDiffs: "git.getReviewDiffs",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -260,6 +263,12 @@ export const WsGitInitRpc = Rpc.make(WS_METHODS.gitInit, {
   error: GitCommandError,
 });
 
+export const WsGitGetReviewDiffsRpc = Rpc.make(WS_METHODS.gitGetReviewDiffs, {
+  payload: GitReviewDiffsInput,
+  success: GitReviewDiffsResult,
+  error: GitCommandError,
+});
+
 export const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -386,6 +395,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitCreateBranchRpc,
   WsGitCheckoutRpc,
   WsGitInitRpc,
+  WsGitGetReviewDiffsRpc,
   WsTerminalOpenRpc,
   WsTerminalWriteRpc,
   WsTerminalResizeRpc,
