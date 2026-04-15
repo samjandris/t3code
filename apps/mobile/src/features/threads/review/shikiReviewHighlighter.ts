@@ -1,7 +1,6 @@
 import { getFiletypeFromFileName } from "@pierre/diffs/utils";
 
 import {
-  hasTurboModuleProxy,
   resolveReviewHighlighterEngine,
   resolveReviewHighlighterEnginePreference,
   type ReviewHighlighterEngine,
@@ -26,7 +25,11 @@ const SHIKI_THEME_BY_SCHEME = {
   dark: "github-dark-default",
 } as const;
 const REVIEW_HIGHLIGHTER_ENGINE_PREFERENCE = resolveReviewHighlighterEnginePreference(
-  process.env.EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE,
+  process.env.EXPO_PUBLIC_REVIEW_HIGHLIGHTER_ENGINE ?? "javascript",
+);
+const REVIEW_HIGHLIGHTER_DISABLE_RESULT_CACHE = resolveReviewHighlighterBooleanFlag(
+  process.env.EXPO_PUBLIC_REVIEW_HIGHLIGHTER_DISABLE_CACHE,
+  false,
 );
 
 const highlightCache = new Map<string, Promise<ReviewHighlightedFile>>();
@@ -42,6 +45,56 @@ type ShikiHighlighter = {
 let highlighterPromise: Promise<ShikiHighlighter> | null = null;
 let activeHighlighterEnginePromise: Promise<ReviewHighlighterEngine> | null = null;
 
+function resolveReviewHighlighterBooleanFlag(
+  value: string | undefined,
+  defaultValue: boolean,
+): boolean {
+  switch (value) {
+    case "1":
+    case "true":
+      return true;
+    case "0":
+    case "false":
+      return false;
+    default:
+      return defaultValue;
+  }
+}
+
+function isReviewHighlighterDebugLoggingEnabled(): boolean {
+  return typeof __DEV__ !== "undefined" ? __DEV__ : false;
+}
+
+function logReviewHighlighterDiagnostic(message: string, details?: Record<string, unknown>): void {
+  if (!isReviewHighlighterDebugLoggingEnabled()) {
+    return;
+  }
+
+  if (details) {
+    console.log(`[review-highlighter] ${message}`, details);
+    return;
+  }
+
+  console.log(`[review-highlighter] ${message}`);
+}
+
+function logReviewHighlighterDiagnosticError(message: string, error: unknown): void {
+  if (!isReviewHighlighterDebugLoggingEnabled()) {
+    return;
+  }
+
+  if (error instanceof Error) {
+    console.error(`[review-highlighter] ${message}`, {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
+    return;
+  }
+
+  console.error(`[review-highlighter] ${message}`, error);
+}
+
 function stripTrailingNewline(value: string): string {
   return value.endsWith("\n") ? value.slice(0, -1) : value;
 }
@@ -53,31 +106,51 @@ function joinPatchLines(lines: ReadonlyArray<string>): string {
 async function getHighlighter() {
   if (!highlighterPromise) {
     const configuredHighlighterPromise = import("shiki").then(async (shikiModule) => {
-      const nativeRuntimeAvailable = hasTurboModuleProxy();
       let nativeEngineAvailable = false;
 
-      if (nativeRuntimeAvailable && REVIEW_HIGHLIGHTER_ENGINE_PREFERENCE !== "javascript") {
+      logReviewHighlighterDiagnostic("initializing", {
+        preference: REVIEW_HIGHLIGHTER_ENGINE_PREFERENCE,
+        resultCacheDisabled: REVIEW_HIGHLIGHTER_DISABLE_RESULT_CACHE,
+      });
+
+      if (REVIEW_HIGHLIGHTER_ENGINE_PREFERENCE !== "javascript") {
         try {
           const nativeEngineModule = await import("react-native-shiki-engine");
+          logReviewHighlighterDiagnostic("imported react-native-shiki-engine");
           nativeEngineAvailable = nativeEngineModule.isNativeEngineAvailable();
+          logReviewHighlighterDiagnostic("checked native engine availability", {
+            nativeEngineAvailable,
+          });
           if (nativeEngineAvailable) {
             const createHighlighter = shikiModule.createBundledHighlighter({
               langs: shikiModule.bundledLanguages,
               themes: shikiModule.bundledThemes,
-              engine: () => nativeEngineModule.createNativeEngine(),
+              engine: () => {
+                logReviewHighlighterDiagnostic("creating native regex engine");
+                return nativeEngineModule.createNativeEngine();
+              },
             });
             const highlighter = await createHighlighter({
               themes: [SHIKI_THEME_BY_SCHEME.light, SHIKI_THEME_BY_SCHEME.dark],
               langs: [],
             });
+            logReviewHighlighterDiagnostic("using native engine");
             return {
               highlighter: highlighter as unknown as ShikiHighlighter,
               engine: "native" as const,
             };
           }
-        } catch {
+        } catch (error) {
+          logReviewHighlighterDiagnosticError(
+            "native engine initialization failed; falling back to javascript",
+            error,
+          );
           nativeEngineAvailable = false;
         }
+      } else {
+        logReviewHighlighterDiagnostic("skipping native engine probe", {
+          reason: "preference-forced-javascript",
+        });
       }
 
       const engine = resolveReviewHighlighterEngine(
@@ -92,6 +165,9 @@ async function getHighlighter() {
       const highlighter = await createHighlighter({
         themes: [SHIKI_THEME_BY_SCHEME.light, SHIKI_THEME_BY_SCHEME.dark],
         langs: [],
+      });
+      logReviewHighlighterDiagnostic("using javascript engine", {
+        resolvedEngine: engine,
       });
       return {
         highlighter: highlighter as unknown as ShikiHighlighter,
@@ -172,6 +248,10 @@ export function getCachedHighlightedReviewFile(
   file: ReviewRenderableFile,
   theme: ReviewDiffTheme,
 ): ReviewHighlightedFile | null {
+  if (REVIEW_HIGHLIGHTER_DISABLE_RESULT_CACHE) {
+    return null;
+  }
+
   return resolvedHighlightCache.get(getHighlightCacheKey(file, theme)) ?? null;
 }
 
@@ -181,13 +261,15 @@ export async function highlightReviewFile(
 ): Promise<ReviewHighlightedFile> {
   const shikiTheme = SHIKI_THEME_BY_SCHEME[theme];
   const cacheKey = getHighlightCacheKey(file, theme);
-  const resolved = resolvedHighlightCache.get(cacheKey);
-  if (resolved) {
-    return resolved;
-  }
-  const cached = highlightCache.get(cacheKey);
-  if (cached) {
-    return cached;
+  if (!REVIEW_HIGHLIGHTER_DISABLE_RESULT_CACHE) {
+    const resolved = resolvedHighlightCache.get(cacheKey);
+    if (resolved) {
+      return resolved;
+    }
+    const cached = highlightCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
   }
 
   const promise = (async () => {
@@ -198,11 +280,15 @@ export async function highlightReviewFile(
     ]);
 
     const highlighted = { additionLines, deletionLines };
-    resolvedHighlightCache.set(cacheKey, highlighted);
+    if (!REVIEW_HIGHLIGHTER_DISABLE_RESULT_CACHE) {
+      resolvedHighlightCache.set(cacheKey, highlighted);
+    }
     return highlighted;
   })();
 
-  highlightCache.set(cacheKey, promise);
+  if (!REVIEW_HIGHLIGHTER_DISABLE_RESULT_CACHE) {
+    highlightCache.set(cacheKey, promise);
+  }
   return promise;
 }
 

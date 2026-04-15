@@ -1,4 +1,4 @@
-export type ReviewHighlighterEnginePreference = "auto" | "javascript" | "native";
+export type ReviewHighlighterEnginePreference = "javascript" | "native";
 export type ReviewHighlighterEngine = "javascript" | "native";
 
 export function resolveReviewHighlighterEnginePreference(
@@ -7,10 +7,9 @@ export function resolveReviewHighlighterEnginePreference(
   switch (value) {
     case "javascript":
     case "native":
-    case "auto":
       return value;
     default:
-      return "auto";
+      return "javascript";
   }
 }
 
@@ -27,10 +26,4 @@ export function resolveReviewHighlighterEngine(
   }
 
   return "javascript";
-}
-
-export function hasTurboModuleProxy(): boolean {
-  const turboModuleProxy = (globalThis as { readonly __turboModuleProxy?: unknown })
-    .__turboModuleProxy;
-  return typeof turboModuleProxy === "function";
 }

@@ -1,19 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  hasTurboModuleProxy,
   resolveReviewHighlighterEngine,
   resolveReviewHighlighterEnginePreference,
 } from "./reviewHighlighterEngine";
 
 describe("resolveReviewHighlighterEnginePreference", () => {
-  it("defaults invalid values to auto", () => {
-    expect(resolveReviewHighlighterEnginePreference(undefined)).toBe("auto");
-    expect(resolveReviewHighlighterEnginePreference("bogus")).toBe("auto");
+  it("defaults invalid values to javascript", () => {
+    expect(resolveReviewHighlighterEnginePreference(undefined)).toBe("javascript");
+    expect(resolveReviewHighlighterEnginePreference("bogus")).toBe("javascript");
   });
 
   it("accepts supported values", () => {
-    expect(resolveReviewHighlighterEnginePreference("auto")).toBe("auto");
     expect(resolveReviewHighlighterEnginePreference("javascript")).toBe("javascript");
     expect(resolveReviewHighlighterEnginePreference("native")).toBe("native");
   });
@@ -25,19 +23,11 @@ describe("resolveReviewHighlighterEngine", () => {
     expect(resolveReviewHighlighterEngine("javascript", false)).toBe("javascript");
   });
 
-  it("uses native when available for auto or native preference", () => {
-    expect(resolveReviewHighlighterEngine("auto", true)).toBe("native");
+  it("uses native when available for native preference", () => {
     expect(resolveReviewHighlighterEngine("native", true)).toBe("native");
   });
 
   it("falls back to javascript when native is unavailable", () => {
-    expect(resolveReviewHighlighterEngine("auto", false)).toBe("javascript");
     expect(resolveReviewHighlighterEngine("native", false)).toBe("javascript");
-  });
-});
-
-describe("hasTurboModuleProxy", () => {
-  it("returns false outside a native runtime", () => {
-    expect(hasTurboModuleProxy()).toBe(false);
   });
 });
