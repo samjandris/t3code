@@ -14,7 +14,7 @@ import { AppText as Text } from "../../components/AppText";
 import { resolveNativeTerminalSurfaceView } from "./nativeTerminalModule";
 import {
   buildGhosttyThemeConfig,
-  getGitHubTerminalTheme,
+  getPierreTerminalTheme,
   type TerminalTheme,
 } from "./terminalTheme";
 
@@ -53,7 +53,7 @@ function estimateGridSize(input: {
 const FallbackTerminalSurface = memo(function FallbackTerminalSurface(props: TerminalSurfaceProps) {
   const fontSize = props.fontSize ?? 12;
   const appearanceScheme = useColorScheme() === "light" ? "light" : "dark";
-  const theme = props.theme ?? getGitHubTerminalTheme(appearanceScheme);
+  const theme = props.theme ?? getPierreTerminalTheme(appearanceScheme);
   const statusLabel = props.isRunning
     ? "Native terminal unavailable. Using text fallback."
     : "Open terminal to start a shell.";
@@ -165,7 +165,7 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface(props: Ter
 export const TerminalSurface = memo(function TerminalSurface(props: TerminalSurfaceProps) {
   const fontSize = props.fontSize ?? 12;
   const appearanceScheme = useColorScheme() === "light" ? "light" : "dark";
-  const theme = props.theme ?? getGitHubTerminalTheme(appearanceScheme);
+  const theme = props.theme ?? getPierreTerminalTheme(appearanceScheme);
   const { onInput, onResize } = props;
   const NativeTerminalSurfaceView = resolveNativeTerminalSurfaceView();
   const handleNativeInput = useCallback(

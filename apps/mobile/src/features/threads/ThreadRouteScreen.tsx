@@ -18,11 +18,10 @@ import { connectionTone } from "../connection/connectionTone";
 
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
 import {
-  getEnvironmentClient,
   useRemoteConnectionStatus,
   useRemoteEnvironmentState,
 } from "../../state/use-remote-environment-registry";
-import { terminalSessionManager, useKnownTerminalSessions } from "../../state/use-terminal-session";
+import { useKnownTerminalSessions } from "../../state/use-terminal-session";
 import { useSelectedThreadDetail } from "../../state/use-thread-detail";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { GitActionProgressOverlay } from "./GitActionProgressOverlay";
@@ -31,7 +30,10 @@ import {
   nextTerminalId,
   resolveProjectScriptTerminalId,
 } from "./terminalMenu";
-import { resolvePreferredThreadWorktreePath } from "./terminalLaunchContext";
+import {
+  resolvePreferredThreadWorktreePath,
+  stagePendingTerminalLaunch,
+} from "./terminalLaunchContext";
 import { ThreadDetailScreen } from "./ThreadDetailScreen";
 import { ThreadGitControls } from "./ThreadGitControls";
 import { ThreadNavigationDrawer } from "./ThreadNavigationDrawer";
@@ -166,11 +168,6 @@ export function ThreadRouteScreen() {
         return;
       }
 
-      const client = getEnvironmentClient(selectedThread.environmentId);
-      if (!client) {
-        return;
-      }
-
       const targetTerminalId = resolveProjectScriptTerminalId({
         existingTerminalIds: terminalMenuSessions.map((session) => session.terminalId),
         hasRunningTerminal: terminalMenuSessions.some(
@@ -189,23 +186,20 @@ export function ThreadRouteScreen() {
         project: { cwd: selectedThreadProject.workspaceRoot },
         worktreePath: preferredWorktreePath,
       });
-      const snapshot = await client.terminal.open({
-        threadId: selectedThread.id,
-        terminalId: targetTerminalId,
-        cwd,
-        worktreePath: preferredWorktreePath,
-        env,
+      stagePendingTerminalLaunch({
+        target: {
+          environmentId: selectedThread.environmentId,
+          threadId: selectedThread.id,
+          terminalId: targetTerminalId,
+        },
+        launch: {
+          cwd,
+          worktreePath: preferredWorktreePath,
+          env,
+          initialInput: `${script.command}\r`,
+        },
       });
 
-      terminalSessionManager.syncSnapshot(
-        { environmentId: selectedThread.environmentId },
-        snapshot,
-      );
-      await client.terminal.write({
-        threadId: selectedThread.id,
-        terminalId: targetTerminalId,
-        data: `${script.command}\r`,
-      });
       void router.push(buildThreadTerminalRoutePath(selectedThread, targetTerminalId));
     },
     [

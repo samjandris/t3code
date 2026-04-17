@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  peekPendingTerminalLaunch,
   resolvePreferredThreadWorktreePath,
   resolveTerminalOpenLocation,
+  stagePendingTerminalLaunch,
+  takePendingTerminalLaunch,
 } from "./terminalLaunchContext";
 
 describe("resolvePreferredThreadWorktreePath", () => {
@@ -56,6 +59,71 @@ describe("resolveTerminalOpenLocation", () => {
     ).toEqual({
       cwd: "/repo/worktrees/feature",
       worktreePath: "/repo/worktrees/feature",
+    });
+  });
+});
+
+describe("pending terminal launches", () => {
+  it("stages and consumes launch details for a specific terminal target", () => {
+    const target = {
+      environmentId: "env-1",
+      threadId: "thread-1",
+      terminalId: "term-2",
+    };
+
+    stagePendingTerminalLaunch({
+      target,
+      launch: {
+        cwd: "/repo/worktrees/feature",
+        worktreePath: "/repo/worktrees/feature",
+        env: { FOO: "bar" },
+        initialInput: "pnpm dev\r",
+      },
+    });
+
+    expect(peekPendingTerminalLaunch(target)).toEqual({
+      cwd: "/repo/worktrees/feature",
+      worktreePath: "/repo/worktrees/feature",
+      env: { FOO: "bar" },
+      initialInput: "pnpm dev\r",
+    });
+    expect(takePendingTerminalLaunch(target)).toEqual({
+      cwd: "/repo/worktrees/feature",
+      worktreePath: "/repo/worktrees/feature",
+      env: { FOO: "bar" },
+      initialInput: "pnpm dev\r",
+    });
+    expect(peekPendingTerminalLaunch(target)).toBeNull();
+  });
+
+  it("keeps pending launches isolated per terminal target", () => {
+    const primaryTarget = {
+      environmentId: "env-1",
+      threadId: "thread-1",
+      terminalId: "term-2",
+    };
+    const otherTarget = {
+      environmentId: "env-1",
+      threadId: "thread-1",
+      terminalId: "term-3",
+    };
+
+    stagePendingTerminalLaunch({
+      target: primaryTarget,
+      launch: {
+        cwd: "/repo/root",
+        worktreePath: null,
+        initialInput: "pnpm i\r",
+      },
+    });
+
+    expect(peekPendingTerminalLaunch(otherTarget)).toBeNull();
+    expect(takePendingTerminalLaunch(otherTarget)).toBeNull();
+    expect(takePendingTerminalLaunch(primaryTarget)).toEqual({
+      cwd: "/repo/root",
+      worktreePath: null,
+      env: undefined,
+      initialInput: "pnpm i\r",
     });
   });
 });

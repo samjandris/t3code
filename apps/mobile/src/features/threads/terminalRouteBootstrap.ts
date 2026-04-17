@@ -5,6 +5,8 @@ export function resolveTerminalRouteBootstrap(input: {
   readonly requestedTerminalId: string | null;
   readonly currentTerminalId: string;
   readonly runningTerminalId: string | null;
+  readonly currentTerminalStatus: "starting" | "running" | "exited" | "error" | "closed";
+  readonly hasCurrentTerminalHydration: boolean;
 }):
   | { readonly kind: "idle" }
   | { readonly kind: "redirect"; readonly terminalId: string }
@@ -19,6 +21,13 @@ export function resolveTerminalRouteBootstrap(input: {
     input.runningTerminalId !== input.currentTerminalId
   ) {
     return { kind: "redirect", terminalId: input.runningTerminalId };
+  }
+
+  if (
+    (input.currentTerminalStatus === "running" || input.currentTerminalStatus === "starting") &&
+    input.hasCurrentTerminalHydration
+  ) {
+    return { kind: "idle" };
   }
 
   return { kind: "open" };

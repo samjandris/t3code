@@ -1,7 +1,7 @@
 import { DEFAULT_TERMINAL_ID } from "@t3tools/contracts";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text as RNText, View } from "react-native";
+import { Pressable, ScrollView, Text as RNText, View, useColorScheme } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from "react-native-reanimated";
 
@@ -21,9 +21,19 @@ import {
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { useSelectedThreadDetail } from "../../state/use-thread-detail";
 import { TerminalSurface } from "../../native/terminal/NativeTerminalSurface";
+import { getPierreTerminalTheme } from "../../native/terminal/terminalTheme";
 import { loadPreferences, savePreferencesPatch } from "../../lib/storage";
+import {
+  getTerminalBufferReplayKey,
+  getTerminalSurfaceReplayBuffer,
+  TERMINAL_BUFFER_REPLAY_STABILITY_DELAY_MS,
+} from "./terminalBufferReplay";
 import { resolveTerminalRouteBootstrap } from "./terminalRouteBootstrap";
-import { resolveTerminalOpenLocation } from "./terminalLaunchContext";
+import {
+  resolveTerminalOpenLocation,
+  stagePendingTerminalLaunch,
+  takePendingTerminalLaunch,
+} from "./terminalLaunchContext";
 import {
   basename,
   buildTerminalMenuSessions,
@@ -38,6 +48,12 @@ import {
   TERMINAL_FONT_SIZE_STEP,
   normalizeTerminalFontSize,
 } from "./terminalPreferences";
+import {
+  cacheTerminalFontSize,
+  cacheTerminalGridSize,
+  getCachedTerminalFontSize,
+  getCachedTerminalGridSize,
+} from "./terminalUiState";
 
 const DEFAULT_TERMINAL_COLS = 80;
 const DEFAULT_TERMINAL_ROWS = 24;
@@ -154,9 +170,14 @@ function applyCtrlModifier(input: string): string {
   return input;
 }
 
+function withAlpha(hexColor: string, alpha: string): string {
+  return /^#[0-9a-f]{6}$/i.test(hexColor) ? `${hexColor}${alpha}` : hexColor;
+}
+
 export function ThreadTerminalRouteScreen() {
   const router = useRouter();
   const keyboard = useAnimatedKeyboard();
+  const appearanceScheme = useColorScheme() === "light" ? "light" : "dark";
   const { isLoadingSavedConnection } = useRemoteEnvironmentState();
   const params = useLocalSearchParams<{
     environmentId?: string | string[];
@@ -166,21 +187,45 @@ export function ThreadTerminalRouteScreen() {
   const { selectedThread, selectedThreadProject, selectedEnvironmentConnection } =
     useThreadSelection();
   const selectedThreadDetail = useSelectedThreadDetail();
+  const routeEnvironmentId = firstRouteParam(params.environmentId);
+  const routeThreadId = firstRouteParam(params.threadId);
   const requestedTerminalId = firstRouteParam(params.terminalId);
+  const terminalId = requestedTerminalId ?? DEFAULT_TERMINAL_ID;
+  const cachedFontSize = getCachedTerminalFontSize();
+  const cachedRouteGridSize =
+    routeEnvironmentId && routeThreadId
+      ? getCachedTerminalGridSize({
+          environmentId: routeEnvironmentId,
+          threadId: routeThreadId,
+          terminalId,
+        })
+      : null;
   const knownSessions = useKnownTerminalSessions({
     environmentId: selectedThread?.environmentId ?? null,
     threadId: selectedThread?.id ?? null,
   });
-  const [lastGridSize, setLastGridSize] = useState({
-    cols: DEFAULT_TERMINAL_COLS,
-    rows: DEFAULT_TERMINAL_ROWS,
-  });
-  const [pendingModifier, setPendingModifier] = useState<PendingModifier | null>(null);
-  const [fontSize, setFontSize] = useState(DEFAULT_TERMINAL_FONT_SIZE);
+  const [lastGridSize, setLastGridSize] = useState(
+    cachedRouteGridSize ?? {
+      cols: DEFAULT_TERMINAL_COLS,
+      rows: DEFAULT_TERMINAL_ROWS,
+    },
+  );
+  const [fontSize, setFontSize] = useState(cachedFontSize ?? DEFAULT_TERMINAL_FONT_SIZE);
   const hasOpenedRef = useRef(false);
-  const hasLoadedFontPreferenceRef = useRef(false);
-
-  const terminalId = requestedTerminalId ?? DEFAULT_TERMINAL_ID;
+  const bufferReplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBufferReplayKeyRef = useRef<string | null>(null);
+  const [readyBufferReplayKey, setReadyBufferReplayKey] = useState<string | null>(null);
+  const [hasResolvedFontPreference, setHasResolvedFontPreference] = useState(
+    cachedFontSize !== null,
+  );
+  const [hasMeasuredSurface, setHasMeasuredSurface] = useState(cachedRouteGridSize !== null);
+  const [pendingModifierState, setPendingModifierState] = useState<{
+    readonly terminalId: string;
+    readonly value: PendingModifier | null;
+  }>({
+    terminalId,
+    value: null,
+  });
   const target = useTerminalSessionTarget({
     environmentId: selectedThread?.environmentId ?? null,
     threadId: selectedThread?.id ?? null,
@@ -194,6 +239,18 @@ export function ThreadTerminalRouteScreen() {
         : terminalId,
     [selectedThread, terminalId],
   );
+  const bufferReplayKey = useMemo(
+    () => getTerminalBufferReplayKey({ terminalKey, fontSize }),
+    [fontSize, terminalKey],
+  );
+  if (lastBufferReplayKeyRef.current === null) {
+    lastBufferReplayKeyRef.current = bufferReplayKey;
+  }
+  const terminalSurfaceBuffer = getTerminalSurfaceReplayBuffer({
+    buffer: terminal.buffer,
+    replayKey: bufferReplayKey,
+    readyReplayKey: readyBufferReplayKey,
+  });
   const isRunning = terminal.status === "running" || terminal.status === "starting";
   const cwd = terminal.snapshot?.cwd ?? selectedThreadProject?.workspaceRoot ?? null;
   const hostPlatform = useMemo(
@@ -219,6 +276,9 @@ export function ThreadTerminalRouteScreen() {
       }),
     [terminal.hasRunningSubprocess, terminal.status],
   );
+  const terminalTheme = getPierreTerminalTheme(appearanceScheme);
+  const pendingModifier =
+    pendingModifierState.terminalId === terminalId ? pendingModifierState.value : null;
   const headerTitle = useMemo(() => {
     const topLineParts = [
       selectedEnvironmentConnection?.environmentLabel ?? null,
@@ -301,24 +361,59 @@ export function ThreadTerminalRouteScreen() {
       return;
     }
 
-    const launchLocation = resolveTerminalOpenLocation({
-      terminalSnapshot: terminal.snapshot,
-      activeSessionSnapshot: activeKnownSession?.state.snapshot ?? null,
-      workspaceRoot: selectedThreadProject.workspaceRoot,
-      threadShellWorktreePath: selectedThread.worktreePath ?? null,
-      threadDetailWorktreePath: selectedThreadDetail?.worktreePath ?? null,
-    });
-
-    const snapshot = await client.terminal.open({
+    const pendingLaunchTarget = {
+      environmentId: selectedThread.environmentId,
       threadId: selectedThread.id,
       terminalId,
-      cwd: launchLocation.cwd,
-      worktreePath: launchLocation.worktreePath,
-      cols: lastGridSize.cols,
-      rows: lastGridSize.rows,
-    });
+    };
+    const pendingLaunch = takePendingTerminalLaunch(pendingLaunchTarget);
 
-    terminalSessionManager.syncSnapshot({ environmentId: selectedThread.environmentId }, snapshot);
+    try {
+      const launchLocation = pendingLaunch
+        ? {
+            cwd: pendingLaunch.cwd,
+            worktreePath: pendingLaunch.worktreePath,
+          }
+        : resolveTerminalOpenLocation({
+            terminalSnapshot: terminal.snapshot,
+            activeSessionSnapshot: activeKnownSession?.state.snapshot ?? null,
+            workspaceRoot: selectedThreadProject.workspaceRoot,
+            threadShellWorktreePath: selectedThread.worktreePath ?? null,
+            threadDetailWorktreePath: selectedThreadDetail?.worktreePath ?? null,
+          });
+
+      const snapshot = await client.terminal.open({
+        threadId: selectedThread.id,
+        terminalId,
+        cwd: launchLocation.cwd,
+        worktreePath: launchLocation.worktreePath,
+        cols: lastGridSize.cols,
+        rows: lastGridSize.rows,
+        env: pendingLaunch?.env,
+      });
+
+      terminalSessionManager.syncSnapshot(
+        { environmentId: selectedThread.environmentId },
+        snapshot,
+      );
+
+      if (pendingLaunch?.initialInput) {
+        await client.terminal.write({
+          threadId: selectedThread.id,
+          terminalId,
+          data: pendingLaunch.initialInput,
+        });
+      }
+    } catch (error) {
+      if (pendingLaunch) {
+        stagePendingTerminalLaunch({
+          target: pendingLaunchTarget,
+          launch: pendingLaunch,
+        });
+      }
+
+      throw error;
+    }
   }, [
     lastGridSize.cols,
     lastGridSize.rows,
@@ -334,6 +429,74 @@ export function ThreadTerminalRouteScreen() {
     hasOpenedRef.current = false;
   }, [terminalKey]);
 
+  const clearBufferReplayTimer = useCallback(() => {
+    if (bufferReplayTimerRef.current !== null) {
+      clearTimeout(bufferReplayTimerRef.current);
+      bufferReplayTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleBufferReplayReady = useCallback(() => {
+    clearBufferReplayTimer();
+    const replayKey = bufferReplayKey;
+    bufferReplayTimerRef.current = setTimeout(() => {
+      bufferReplayTimerRef.current = null;
+      setReadyBufferReplayKey(replayKey);
+    }, TERMINAL_BUFFER_REPLAY_STABILITY_DELAY_MS);
+  }, [bufferReplayKey, clearBufferReplayTimer]);
+
+  useEffect(() => {
+    if (lastBufferReplayKeyRef.current === bufferReplayKey) {
+      return;
+    }
+
+    lastBufferReplayKeyRef.current = bufferReplayKey;
+    clearBufferReplayTimer();
+    setReadyBufferReplayKey(null);
+  }, [bufferReplayKey, clearBufferReplayTimer]);
+
+  useEffect(() => clearBufferReplayTimer, [clearBufferReplayTimer]);
+
+  useEffect(() => {
+    if (!routeEnvironmentId || !routeThreadId) {
+      setLastGridSize({
+        cols: DEFAULT_TERMINAL_COLS,
+        rows: DEFAULT_TERMINAL_ROWS,
+      });
+      return;
+    }
+
+    setLastGridSize(
+      getCachedTerminalGridSize({
+        environmentId: routeEnvironmentId,
+        threadId: routeThreadId,
+        terminalId,
+      }) ?? {
+        cols: DEFAULT_TERMINAL_COLS,
+        rows: DEFAULT_TERMINAL_ROWS,
+      },
+    );
+    setHasMeasuredSurface(
+      getCachedTerminalGridSize({
+        environmentId: routeEnvironmentId,
+        threadId: routeThreadId,
+        terminalId,
+      }) !== null,
+    );
+  }, [routeEnvironmentId, routeThreadId, terminalId]);
+
+  useEffect(() => {
+    setHasMeasuredSurface(
+      routeEnvironmentId !== null &&
+        routeThreadId !== null &&
+        getCachedTerminalGridSize({
+          environmentId: routeEnvironmentId,
+          threadId: routeThreadId,
+          terminalId,
+        }) !== null,
+    );
+  }, [fontSize, routeEnvironmentId, routeThreadId, terminalId]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -343,15 +506,15 @@ export function ThreadTerminalRouteScreen() {
           return;
         }
 
-        setFontSize(normalizeTerminalFontSize(preferences.terminalFontSize));
-        hasLoadedFontPreferenceRef.current = true;
+        setFontSize(cacheTerminalFontSize(preferences.terminalFontSize));
+        setHasResolvedFontPreference(true);
       })
       .catch(() => {
         if (cancelled) {
           return;
         }
 
-        hasLoadedFontPreferenceRef.current = true;
+        setHasResolvedFontPreference(true);
       });
 
     return () => {
@@ -360,16 +523,21 @@ export function ThreadTerminalRouteScreen() {
   }, []);
 
   useEffect(() => {
-    if (!hasLoadedFontPreferenceRef.current) {
+    if (!hasResolvedFontPreference) {
       return;
     }
 
+    cacheTerminalFontSize(fontSize);
     void savePreferencesPatch({
       terminalFontSize: normalizeTerminalFontSize(fontSize),
     });
-  }, [fontSize]);
+  }, [fontSize, hasResolvedFontPreference]);
 
   useEffect(() => {
+    if (!hasResolvedFontPreference || !hasMeasuredSurface) {
+      return;
+    }
+
     const bootstrapAction = resolveTerminalRouteBootstrap({
       hasThread: selectedThread !== null,
       hasWorkspaceRoot: Boolean(selectedThreadProject?.workspaceRoot),
@@ -377,6 +545,8 @@ export function ThreadTerminalRouteScreen() {
       requestedTerminalId,
       currentTerminalId: terminalId,
       runningTerminalId: runningSession?.target.terminalId ?? null,
+      currentTerminalStatus: terminal.status,
+      hasCurrentTerminalHydration: terminal.snapshot !== null || terminal.buffer.length > 0,
     });
     if (bootstrapAction.kind === "idle" || !selectedThread) {
       return;
@@ -398,12 +568,13 @@ export function ThreadTerminalRouteScreen() {
     runningSession,
     selectedThread,
     selectedThreadProject?.workspaceRoot,
+    terminal.buffer.length,
+    terminal.snapshot,
+    terminal.status,
     terminalId,
+    hasMeasuredSurface,
+    hasResolvedFontPreference,
   ]);
-
-  useEffect(() => {
-    setPendingModifier(null);
-  }, [terminalId]);
 
   const writeInput = useCallback(
     (data: string) => {
@@ -432,20 +603,34 @@ export function ThreadTerminalRouteScreen() {
       }
 
       if (pendingModifier === "ctrl") {
-        setPendingModifier(null);
+        setPendingModifierState({ terminalId, value: null });
         writeInput(applyCtrlModifier(data));
       } else if (pendingModifier === "meta") {
-        setPendingModifier(null);
+        setPendingModifierState({ terminalId, value: null });
         writeInput(`\u001b${data}`);
       } else {
         writeInput(data);
       }
     },
-    [pendingModifier, writeInput],
+    [pendingModifier, terminalId, writeInput],
   );
 
   const handleResize = useCallback(
     (size: { readonly cols: number; readonly rows: number }) => {
+      setHasMeasuredSurface(true);
+      if (readyBufferReplayKey !== bufferReplayKey) {
+        scheduleBufferReplayReady();
+      }
+      if (routeEnvironmentId && routeThreadId) {
+        cacheTerminalGridSize(
+          {
+            environmentId: routeEnvironmentId,
+            threadId: routeThreadId,
+            terminalId,
+          },
+          size,
+        );
+      }
       if (size.cols === lastGridSize.cols && size.rows === lastGridSize.rows) {
         return;
       }
@@ -467,7 +652,18 @@ export function ThreadTerminalRouteScreen() {
         rows: size.rows,
       });
     },
-    [isRunning, lastGridSize.cols, lastGridSize.rows, selectedThread, terminalId],
+    [
+      isRunning,
+      lastGridSize.cols,
+      lastGridSize.rows,
+      bufferReplayKey,
+      readyBufferReplayKey,
+      routeEnvironmentId,
+      routeThreadId,
+      scheduleBufferReplayReady,
+      selectedThread,
+      terminalId,
+    ],
   );
 
   const handleSelectTerminal = useCallback(
@@ -496,7 +692,7 @@ export function ThreadTerminalRouteScreen() {
 
   const adjustFontSize = useCallback((delta: number) => {
     setTimeout(() => {
-      setFontSize((current) => normalizeTerminalFontSize(current + delta));
+      setFontSize((current) => cacheTerminalFontSize(current + delta));
     }, 0);
   }, []);
 
@@ -511,11 +707,17 @@ export function ThreadTerminalRouteScreen() {
   const handleToolbarActionPress = useCallback(
     (action: TerminalToolbarAction) => {
       if (action.kind === "modifier") {
-        setPendingModifier((current) => (current === action.modifier ? null : action.modifier));
+        setPendingModifierState((current) => ({
+          terminalId,
+          value:
+            (current.terminalId === terminalId ? current.value : null) === action.modifier
+              ? null
+              : action.modifier,
+        }));
         return;
       }
 
-      setPendingModifier(null);
+      setPendingModifierState({ terminalId, value: null });
       if (pendingModifier === "ctrl") {
         writeInput(applyCtrlModifier(action.data));
       } else if (pendingModifier === "meta") {
@@ -524,7 +726,7 @@ export function ThreadTerminalRouteScreen() {
         writeInput(action.data);
       }
     },
-    [pendingModifier, writeInput],
+    [pendingModifier, terminalId, writeInput],
   );
 
   if (!selectedThread) {
@@ -561,8 +763,8 @@ export function ThreadTerminalRouteScreen() {
           headerBackButtonDisplayMode: "minimal",
           headerBackTitle: "",
           headerShadowVisible: false,
-          headerStyle: { backgroundColor: "#0a0a0a" },
-          headerTintColor: "#f5f5f5",
+          headerStyle: { backgroundColor: terminalTheme.background },
+          headerTintColor: terminalTheme.foreground,
           headerTitleAlign: "center",
           title: "",
           headerTitle: () => (
@@ -576,7 +778,7 @@ export function ThreadTerminalRouteScreen() {
               <RNText
                 numberOfLines={1}
                 style={{
-                  color: "#f5f5f5",
+                  color: terminalTheme.foreground,
                   fontFamily: "DMSans_700Bold",
                   fontSize: 13,
                   lineHeight: 16,
@@ -588,7 +790,7 @@ export function ThreadTerminalRouteScreen() {
                 ellipsizeMode="middle"
                 numberOfLines={1}
                 style={{
-                  color: "#8f8f94",
+                  color: terminalTheme.mutedForeground,
                   fontFamily: "Menlo",
                   fontSize: 11,
                   lineHeight: 14,
@@ -658,10 +860,10 @@ export function ThreadTerminalRouteScreen() {
         </Stack.Toolbar.Menu>
       </Stack.Toolbar>
 
-      <View style={{ flex: 1, backgroundColor: "#050505" }}>
+      <View style={{ flex: 1, backgroundColor: terminalTheme.background }}>
         <Animated.View style={[{ flex: 1 }, terminalContainerAnimatedStyle]}>
           <TerminalSurface
-            buffer={terminal.buffer}
+            buffer={terminalSurfaceBuffer}
             fontSize={fontSize}
             isRunning={isRunning}
             onInput={handleInput}
@@ -674,8 +876,8 @@ export function ThreadTerminalRouteScreen() {
         <KeyboardStickyView style={{ position: "absolute", bottom: 0, left: 0, right: 0 }}>
           <View
             style={{
-              backgroundColor: "#0a0a0a",
-              borderTopColor: "rgba(255,255,255,0.08)",
+              backgroundColor: terminalTheme.background,
+              borderTopColor: terminalTheme.border,
               borderTopWidth: 1,
               minHeight: TERMINAL_ACCESSORY_HEIGHT,
               paddingBottom: 4,
@@ -698,11 +900,13 @@ export function ThreadTerminalRouteScreen() {
                     style={({ pressed }) => ({
                       alignItems: "center",
                       backgroundColor: active
-                        ? "rgba(74, 222, 128, 0.18)"
+                        ? withAlpha(terminalTheme.palette[10] ?? terminalTheme.foreground, "2e")
                         : pressed
-                          ? "rgba(255,255,255,0.12)"
-                          : "rgba(255,255,255,0.06)",
-                      borderColor: active ? "rgba(74, 222, 128, 0.36)" : "rgba(255,255,255,0.08)",
+                          ? withAlpha(terminalTheme.foreground, "1f")
+                          : withAlpha(terminalTheme.foreground, "12"),
+                      borderColor: active
+                        ? withAlpha(terminalTheme.palette[10] ?? terminalTheme.foreground, "52")
+                        : terminalTheme.border,
                       borderRadius: 12,
                       borderWidth: 1,
                       justifyContent: "center",
@@ -713,7 +917,9 @@ export function ThreadTerminalRouteScreen() {
                   >
                     <RNText
                       style={{
-                        color: active ? "#bbf7d0" : "#f5f5f5",
+                        color: active
+                          ? (terminalTheme.palette[10] ?? terminalTheme.foreground)
+                          : terminalTheme.foreground,
                         fontFamily: "DMSans_700Bold",
                         fontSize: 12,
                         fontWeight: "700",

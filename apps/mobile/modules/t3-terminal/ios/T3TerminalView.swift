@@ -100,23 +100,26 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     }
   }
 
-  var fontSize: CGFloat = 12 {
+  var fontSize: CGFloat = 10 {
     didSet {
+      guard oldValue != fontSize else { return }
       inputField.font = UIFont.monospacedSystemFont(ofSize: max(fontSize, 13), weight: .regular)
-      resetSurface()
+      refreshSurface()
     }
   }
 
   var appearanceScheme: String = TerminalAppearanceScheme.dark.rawValue {
     didSet {
+      guard oldValue != appearanceScheme else { return }
       appearance = TerminalAppearanceScheme(value: appearanceScheme)
-      updateGhosttyTheme()
+      refreshSurface()
     }
   }
 
   var themeConfig: String = "" {
     didSet {
-      updateGhosttyTheme()
+      guard oldValue != themeConfig else { return }
+      refreshSurface()
     }
   }
 
@@ -353,6 +356,11 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
     setNeedsLayout()
   }
 
+  private func refreshSurface() {
+    resetSurface()
+    createSurfaceIfPossible()
+  }
+
   private func destroySurface() {
     if let surface {
       ghostty_surface_set_write_callback(surface, nil, nil)
@@ -523,19 +531,6 @@ public final class T3TerminalView: ExpoView, UITextFieldDelegate {
   private func applyTheme() {
     backgroundColor = backgroundColorValue
     terminalViewport.backgroundColor = backgroundColorValue
-  }
-
-  private func updateGhosttyTheme() {
-    guard let app, let surface else { return }
-    guard let config = ghostty_config_new() else { return }
-    loadThemeConfig(into: config)
-    ghostty_config_finalize(config)
-    ghostty_app_update_config(app, config)
-    ghostty_surface_update_config(surface, config)
-    ghostty_app_set_color_scheme(app, appearance.ghosttyColorScheme)
-    ghostty_surface_set_color_scheme(surface, appearance.ghosttyColorScheme)
-    ghostty_config_free(config)
-    redrawSurface()
   }
 
   private func loadThemeConfig(into config: ghostty_config_t) {

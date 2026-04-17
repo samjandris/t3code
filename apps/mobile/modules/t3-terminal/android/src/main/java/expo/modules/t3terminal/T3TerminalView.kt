@@ -47,10 +47,11 @@ class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(contex
       }
     }
 
-  var fontSize: Float = 12f
+  var fontSize: Float = 10f
     set(value) {
       field = value
       textView.textSize = value
+      inputView.textSize = max(value, 13f)
       emitResize()
     }
 

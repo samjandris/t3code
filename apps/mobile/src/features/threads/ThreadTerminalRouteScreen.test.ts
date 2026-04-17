@@ -12,6 +12,8 @@ describe("resolveTerminalRouteBootstrap", () => {
         requestedTerminalId: null,
         currentTerminalId: "default",
         runningTerminalId: "term-2",
+        currentTerminalStatus: "closed",
+        hasCurrentTerminalHydration: false,
       }),
     ).toEqual({
       kind: "redirect",
@@ -19,7 +21,7 @@ describe("resolveTerminalRouteBootstrap", () => {
     });
   });
 
-  it("hydrates the current running terminal instead of skipping open", () => {
+  it("hydrates the current running terminal when client state is not hydrated yet", () => {
     expect(
       resolveTerminalRouteBootstrap({
         hasThread: true,
@@ -28,13 +30,15 @@ describe("resolveTerminalRouteBootstrap", () => {
         requestedTerminalId: null,
         currentTerminalId: "default",
         runningTerminalId: "default",
+        currentTerminalStatus: "running",
+        hasCurrentTerminalHydration: false,
       }),
     ).toEqual({
       kind: "open",
     });
   });
 
-  it("opens explicit terminal routes once so they replay existing history", () => {
+  it("opens explicit terminal routes when the session still needs hydration", () => {
     expect(
       resolveTerminalRouteBootstrap({
         hasThread: true,
@@ -43,6 +47,8 @@ describe("resolveTerminalRouteBootstrap", () => {
         requestedTerminalId: "term-2",
         currentTerminalId: "term-2",
         runningTerminalId: "term-2",
+        currentTerminalStatus: "running",
+        hasCurrentTerminalHydration: false,
       }),
     ).toEqual({
       kind: "open",
@@ -58,6 +64,42 @@ describe("resolveTerminalRouteBootstrap", () => {
         requestedTerminalId: null,
         currentTerminalId: "default",
         runningTerminalId: "default",
+        currentTerminalStatus: "running",
+        hasCurrentTerminalHydration: true,
+      }),
+    ).toEqual({
+      kind: "idle",
+    });
+  });
+
+  it("stays idle when the current running terminal is already hydrated in client state", () => {
+    expect(
+      resolveTerminalRouteBootstrap({
+        hasThread: true,
+        hasWorkspaceRoot: true,
+        hasOpened: false,
+        requestedTerminalId: null,
+        currentTerminalId: "default",
+        runningTerminalId: "default",
+        currentTerminalStatus: "running",
+        hasCurrentTerminalHydration: true,
+      }),
+    ).toEqual({
+      kind: "idle",
+    });
+  });
+
+  it("stays idle for explicit running terminal routes that already have hydrated output", () => {
+    expect(
+      resolveTerminalRouteBootstrap({
+        hasThread: true,
+        hasWorkspaceRoot: true,
+        hasOpened: false,
+        requestedTerminalId: "term-2",
+        currentTerminalId: "term-2",
+        runningTerminalId: "term-2",
+        currentTerminalStatus: "running",
+        hasCurrentTerminalHydration: true,
       }),
     ).toEqual({
       kind: "idle",
