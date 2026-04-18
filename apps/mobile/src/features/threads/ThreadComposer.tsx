@@ -597,9 +597,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     }
     if (event.startsWith("options:fast-mode:")) {
       const fastMode = event.endsWith(":on");
+      const nextFast = fastMode || undefined;
+      if (currentModelSelection.provider === "opencode") {
+        return;
+      }
       const updated: ModelSelection = {
         ...currentModelSelection,
-        options: { ...currentModelSelection.options, fastMode: fastMode || undefined },
+        options: { ...currentModelSelection.options, fastMode: nextFast },
       };
       void props.onUpdateModelSelection(updated);
       return;
