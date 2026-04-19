@@ -239,9 +239,6 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
           const result = await client.session.prompt({
             sessionID: session.data.id,
             model: parsedModel,
-            ...(input.modelSelection.options?.agent
-              ? { agent: input.modelSelection.options.agent }
-              : {}),
             ...(input.modelSelection.options?.variant
               ? { variant: input.modelSelection.options.variant }
               : {}),

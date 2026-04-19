@@ -142,7 +142,10 @@ export function normalizeOpenCodeModelOptionsWithCapabilities(
   modelOptions: OpenCodeModelOptions | null | undefined,
 ): OpenCodeModelOptions | undefined {
   const variant = resolveLabeledOption(caps.variantOptions, trimOrNull(modelOptions?.variant));
-  const agent = resolveLabeledOption(caps.agentOptions, trimOrNull(modelOptions?.agent));
+  const agent =
+    caps.agentOptions && caps.agentOptions.length > 0
+      ? resolveLabeledOption(caps.agentOptions, trimOrNull(modelOptions?.agent))
+      : undefined;
   const nextOptions: OpenCodeModelOptions = {
     ...(variant ? { variant } : {}),
     ...(agent ? { agent } : {}),

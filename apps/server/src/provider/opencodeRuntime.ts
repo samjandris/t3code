@@ -14,7 +14,6 @@ import type {
 } from "@t3tools/contracts";
 import {
   createOpencodeClient,
-  type Agent,
   type FilePartInput,
   type OpencodeClient,
   type PermissionRuleset,
@@ -64,7 +63,6 @@ export interface OpenCodeCommandResult {
 
 export interface OpenCodeInventory {
   readonly providerList: ProviderListResponse;
-  readonly agents: ReadonlyArray<Agent>;
 }
 
 export interface ParsedOpenCodeModelSlug {
@@ -91,10 +89,6 @@ function parseServerUrlFromOutput(output: string): string | null {
   return null;
 }
 
-function isPrimaryAgent(agent: Agent): boolean {
-  return !agent.hidden && (agent.mode === "primary" || agent.mode === "all");
-}
-
 function inferVariantValues(providerID: string): ReadonlyArray<string> {
   if (providerID === "anthropic") {
     return ANTHROPIC_VARIANTS;
@@ -108,20 +102,18 @@ function inferVariantValues(providerID: string): ReadonlyArray<string> {
   return [];
 }
 
-function inferDefaultVariant(
-  providerID: string,
-  variants: ReadonlyArray<string>,
-): string | undefined {
+function inferDefaultVariant(variants: ReadonlyArray<string>): string | undefined {
   if (variants.length === 1) {
     return variants[0];
   }
-  if (providerID === "anthropic" || providerID.startsWith("google")) {
-    return variants.includes("high") ? "high" : undefined;
+
+  for (const candidate of ["max", "high"]) {
+    if (variants.includes(candidate)) {
+      return candidate;
+    }
   }
-  if (providerID === "openai" || providerID === "opencode") {
-    return variants.includes("medium") ? "medium" : variants.includes("high") ? "high" : undefined;
-  }
-  return undefined;
+
+  return variants[variants.length - 1];
 }
 
 function buildVariantOptions(
@@ -129,9 +121,12 @@ function buildVariantOptions(
   model: ProviderListResponse["all"][number]["models"][string],
 ) {
   const variantValues = Object.keys(model.variants ?? {});
+  if (variantValues.length === 0 && model.reasoning !== true) {
+    return [];
+  }
   const resolvedValues =
     variantValues.length > 0 ? variantValues : [...inferVariantValues(providerID)];
-  const defaultVariant = inferDefaultVariant(providerID, resolvedValues);
+  const defaultVariant = inferDefaultVariant(resolvedValues);
 
   return resolvedValues.map((value) => {
     const option: { value: string; label: string; isDefault?: boolean } = {
@@ -145,35 +140,14 @@ function buildVariantOptions(
   });
 }
 
-function buildAgentOptions(agents: ReadonlyArray<Agent>) {
-  const primaryAgents = agents.filter(isPrimaryAgent);
-  const defaultAgent =
-    primaryAgents.find((agent) => agent.name === "build")?.name ??
-    primaryAgents[0]?.name ??
-    undefined;
-  return primaryAgents.map((agent) => {
-    const option: { value: string; label: string; isDefault?: boolean } = {
-      value: agent.name,
-      label: titleCaseSlug(agent.name),
-    };
-    if (defaultAgent === agent.name) {
-      option.isDefault = true;
-    }
-    return option;
-  });
-}
-
 function openCodeCapabilitiesForModel(input: {
   readonly providerID: string;
   readonly model: ProviderListResponse["all"][number]["models"][string];
-  readonly agents: ReadonlyArray<Agent>;
 }): ModelCapabilities {
   const variantOptions = buildVariantOptions(input.providerID, input.model);
-  const agentOptions = buildAgentOptions(input.agents);
   return {
     ...DEFAULT_OPENCODE_MODEL_CAPABILITIES,
     ...(variantOptions.length > 0 ? { variantOptions } : {}),
-    ...(agentOptions.length > 0 ? { agentOptions } : {}),
   };
 }
 
@@ -531,16 +505,12 @@ export function createOpenCodeSdkClient(input: {
 }
 
 export async function loadOpenCodeInventory(client: OpencodeClient): Promise<OpenCodeInventory> {
-  const [providerListResult, agentsResult] = await Promise.all([
-    client.provider.list(),
-    client.app.agents(),
-  ]);
+  const providerListResult = await client.provider.list();
   if (!providerListResult.data) {
     throw new Error("OpenCode provider inventory was empty.");
   }
   return {
     providerList: providerListResult.data,
-    agents: agentsResult.data ?? [],
   };
 }
 
@@ -563,7 +533,6 @@ export function flattenOpenCodeModels(
         capabilities: openCodeCapabilitiesForModel({
           providerID: provider.id,
           model,
-          agents: input.agents,
         }),
       });
     }

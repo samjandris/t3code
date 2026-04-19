@@ -23,6 +23,7 @@ function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Pr
 function MenuPopup({
   children,
   className,
+  viewportClassName,
   sideOffset = 4,
   align = "center",
   alignOffset,
@@ -35,6 +36,7 @@ function MenuPopup({
   alignOffset?: MenuPrimitive.Positioner.Props["alignOffset"];
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
+  viewportClassName?: string;
 }) {
   return (
     <MenuPrimitive.Portal>
@@ -55,7 +57,15 @@ function MenuPopup({
           data-slot="menu-popup"
           {...props}
         >
-          <div className="max-h-(--available-height) w-full overflow-y-auto p-1">{children}</div>
+          <div
+            className={cn(
+              "max-h-(--available-height) w-full overflow-y-auto p-1",
+              viewportClassName,
+            )}
+            data-slot="menu-popup-viewport"
+          >
+            {children}
+          </div>
         </MenuPrimitive.Popup>
       </MenuPrimitive.Positioner>
     </MenuPrimitive.Portal>
@@ -258,6 +268,7 @@ function MenuSubPopup({
   align?: MenuPrimitive.Positioner.Props["align"];
   sideOffset?: MenuPrimitive.Positioner.Props["sideOffset"];
   alignOffset?: MenuPrimitive.Positioner.Props["alignOffset"];
+  viewportClassName?: string;
 }) {
   const defaultAlignOffset = align !== "center" ? -5 : undefined;
 
