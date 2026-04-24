@@ -2,11 +2,12 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vitest";
 
 import { createEnvironmentConnection } from "./connection";
-import type { WsRpcClient } from "@t3tools/client-runtime";
+import type { WsRpcClient } from "~/rpc/wsRpcClient";
 
 function createTestClient() {
   const lifecycleListeners = new Set<(event: any) => void>();
   const configListeners = new Set<(event: any) => void>();
+  const terminalListeners = new Set<(event: any) => void>();
   const shellListeners = new Set<(event: any) => void>();
   let shellResubscribe: (() => void) | undefined;
 
@@ -66,13 +67,15 @@ function createTestClient() {
     },
     terminal: {
       open: vi.fn(async () => undefined),
-      attach: vi.fn(() => () => undefined),
       write: vi.fn(async () => undefined),
       resize: vi.fn(async () => undefined),
       clear: vi.fn(async () => undefined),
       restart: vi.fn(async () => undefined),
       close: vi.fn(async () => undefined),
-      onMetadata: vi.fn(() => () => undefined),
+      onEvent: (listener: (event: any) => void) => {
+        terminalListeners.add(listener);
+        return () => terminalListeners.delete(listener);
+      },
     },
     projects: {
       searchEntries: vi.fn(async () => []),
@@ -94,7 +97,6 @@ function createTestClient() {
       init: vi.fn(async () => undefined),
       resolvePullRequest: vi.fn(async () => undefined),
       preparePullRequestThread: vi.fn(async () => undefined),
-      getReviewDiffs: vi.fn(async () => undefined),
     },
   } as unknown as WsRpcClient;
 
@@ -161,6 +163,7 @@ describe("createEnvironmentConnection", () => {
       client,
       applyShellEvent: vi.fn(),
       syncShellSnapshot,
+      applyTerminalEvent: vi.fn(),
     });
 
     await connection.ensureBootstrapped();
@@ -192,6 +195,7 @@ describe("createEnvironmentConnection", () => {
       client,
       applyShellEvent: vi.fn(),
       syncShellSnapshot: vi.fn(),
+      applyTerminalEvent: vi.fn(),
     });
 
     expect(() => emitWelcome(EnvironmentId.make("env-2"))).toThrow(
@@ -221,6 +225,7 @@ describe("createEnvironmentConnection", () => {
       client,
       applyShellEvent: vi.fn(),
       syncShellSnapshot,
+      applyTerminalEvent: vi.fn(),
     });
 
     await connection.ensureBootstrapped();

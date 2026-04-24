@@ -12,8 +12,8 @@ import {
 } from "@t3tools/client-runtime";
 import type {
   EnvironmentId,
-  TerminalAttachInput,
-  TerminalMetadataStreamEvent,
+  TerminalEvent,
+  TerminalOpenInput,
   TerminalSessionSnapshot,
 } from "@t3tools/contracts";
 import { useMemo } from "react";
@@ -28,8 +28,8 @@ export function subscribeTerminalMetadata(input: {
   readonly environmentId: EnvironmentId;
   readonly client: {
     readonly terminal: {
-      readonly onMetadata: (
-        listener: (event: TerminalMetadataStreamEvent) => void,
+      readonly onEvent: (
+        listener: (event: TerminalEvent) => void,
         options?: { readonly onResubscribe?: () => void },
       ) => () => void;
     };
@@ -41,7 +41,7 @@ export function subscribeTerminalMetadata(input: {
 export function attachTerminalSession(input: {
   readonly environmentId: EnvironmentId;
   readonly client: Parameters<typeof terminalSessionManager.attach>[0]["client"];
-  readonly terminal: TerminalAttachInput;
+  readonly terminal: TerminalOpenInput;
   readonly onSnapshot?: (snapshot: TerminalSessionSnapshot) => void;
 }) {
   return terminalSessionManager.attach({

@@ -641,29 +641,18 @@ export function ReviewSheet() {
     [reviewListItems, viewportWidth],
   );
   const loadGitDiffs = useCallback(async () => {
-    if (!cwd) {
-      return;
-    }
-
-    const client = getEnvironmentClient(environmentId);
-    if (!client) {
-      setError("Remote connection is not ready.");
-      return;
-    }
-
     setLoadingGitDiffs(true);
     setError(null);
     try {
-      const result = await client.git.getReviewDiffs({ cwd });
       if (reviewCache.threadKey) {
-        setReviewGitSections(reviewCache.threadKey, result.sections);
+        setReviewGitSections(reviewCache.threadKey, []);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load review diffs.");
     } finally {
       setLoadingGitDiffs(false);
     }
-  }, [cwd, environmentId, reviewCache.threadKey]);
+  }, [reviewCache.threadKey]);
 
   const loadTurnDiff = useCallback(
     async (checkpoint: OrchestrationCheckpointSummary, force = false) => {

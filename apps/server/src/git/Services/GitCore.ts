@@ -20,8 +20,6 @@ import type {
   GitListBranchesResult,
   GitPullResult,
   GitRemoveWorktreeInput,
-  GitReviewDiffsInput,
-  GitReviewDiffsResult,
   GitStatusInput,
   GitStatusResult,
 } from "@t3tools/contracts";
@@ -198,13 +196,6 @@ export interface GitCoreShape {
     cwd: string,
     baseBranch: string,
   ) => Effect.Effect<GitRangeContext, GitCommandError>;
-
-  /**
-   * Read review-oriented diffs for dirty worktree changes and branch changes against base.
-   */
-  readonly getReviewDiffs: (
-    input: GitReviewDiffsInput,
-  ) => Effect.Effect<GitReviewDiffsResult, GitCommandError>;
 
   /**
    * Read a Git config value from the local repository.

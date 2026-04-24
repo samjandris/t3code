@@ -1,4 +1,4 @@
-import type { ClaudeAgentEffort } from "@t3tools/contracts";
+export type ClaudeAgentEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultrathink";
 
 export const CLAUDE_AGENT_EFFORT_OPTIONS = [
   "low",

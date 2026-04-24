@@ -25,9 +25,6 @@ function makeKnownSession(input: {
             cwd: input.cwd,
             worktreePath: input.cwd,
             status: input.status === "closed" ? "error" : input.status,
-            pid: input.status === "running" ? 123 : null,
-            exitCode: null,
-            exitSignal: null,
             hasRunningSubprocess: false,
             updatedAt: input.updatedAt ?? "2026-04-15T20:00:00.000Z",
           }

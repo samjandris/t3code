@@ -23,6 +23,21 @@ import { CLAUDE_AGENT_EFFORT_OPTIONS } from "./claudeEffortOptions";
 import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
 import { useProjectActions } from "./use-project-actions";
 
+function withModelOptions(
+  selection: ModelSelection,
+  options: ReadonlyArray<{ readonly id: string; readonly value: string | boolean | undefined }>,
+): ModelSelection {
+  return {
+    ...selection,
+    options: options
+      .filter(
+        (option): option is { readonly id: string; readonly value: string | boolean } =>
+          option.value !== undefined,
+      )
+      .map((option) => ({ id: option.id, value: option.value })),
+  } as ModelSelection;
+}
+
 export function NewTaskDraftScreen(props: {
   readonly initialProjectRef?: {
     readonly environmentId?: string;
@@ -352,16 +367,15 @@ export function NewTaskDraftScreen(props: {
     try {
       const modelWithOptions: ModelSelection =
         flow.selectedModel.provider === "claudeAgent"
-          ? {
-              ...flow.selectedModel,
-              options: {
-                effort: flow.effort,
-                fastMode: flow.fastMode || undefined,
-                contextWindow: flow.contextWindow,
-              },
-            }
+          ? withModelOptions(flow.selectedModel, [
+              { id: "effort", value: flow.effort },
+              { id: "fastMode", value: flow.fastMode || undefined },
+              { id: "contextWindow", value: flow.contextWindow },
+            ])
           : flow.selectedModel.provider === "codex"
-            ? { ...flow.selectedModel, options: { fastMode: flow.fastMode || undefined } }
+            ? withModelOptions(flow.selectedModel, [
+                { id: "fastMode", value: flow.fastMode || undefined },
+              ])
             : flow.selectedModel;
 
       const createdThread = await onCreateThreadWithOptions({

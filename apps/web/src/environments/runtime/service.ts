@@ -5,10 +5,9 @@ import {
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamEvent,
   type ServerConfig,
+  type TerminalEvent,
   ThreadId,
 } from "@t3tools/contracts";
-import { createWsRpcClient as createBaseWsRpcClient, WsRpcClient } from "@t3tools/client-runtime";
-
 import { type QueryClient } from "@tanstack/react-query";
 import { Throttler } from "@tanstack/react-pacer";
 import {
@@ -25,7 +24,7 @@ import {
   useComposerDraftStore,
 } from "~/composerDraftStore";
 import { ensureLocalApi } from "~/localApi";
-import { collectActiveTerminalUiThreadKeys } from "~/lib/terminalUiStateCleanup";
+import { collectActiveTerminalThreadIds } from "~/lib/terminalStateCleanup";
 import { deriveOrchestrationBatchEffects } from "~/orchestrationEventEffects";
 import { projectQueryKeys } from "~/lib/projectReactQuery";
 import { providerQueryKeys } from "~/lib/providerReactQuery";
@@ -58,12 +57,15 @@ import {
   selectThreadByRef,
   selectThreadsAcrossEnvironments,
 } from "~/store";
-import { useTerminalUiStateStore } from "~/terminalUiStateStore";
+import { useTerminalStateStore } from "~/terminalStateStore";
 import { useUiStateStore } from "~/uiStateStore";
-import { WsTransport } from "~/rpc/wsTransport";
-import { derivePhysicalProjectKey } from "../../logicalProject";
-import { subscribeTerminalMetadata, terminalSessionManager } from "../../terminalSessionState";
-import { resetWsReconnectBackoff } from "~/rpc/wsConnectionState";
+import { WsTransport } from "../../rpc/wsTransport";
+import { createWsRpcClient, type WsRpcClient } from "../../rpc/wsRpcClient";
+import {
+  deriveLogicalProjectKeyFromSettings,
+  derivePhysicalProjectKey,
+} from "../../logicalProject";
+import { getClientSettings } from "~/hooks/useSettings";
 
 type EnvironmentServiceState = {
   readonly queryClient: QueryClient;
@@ -85,7 +87,13 @@ type ThreadDetailSubscriptionEntry = {
 const environmentConnections = new Map<EnvironmentId, EnvironmentConnection>();
 const environmentConnectionListeners = new Set<() => void>();
 const threadDetailSubscriptions = new Map<string, ThreadDetailSubscriptionEntry>();
-const terminalMetadataSubscriptions = new Map<EnvironmentId, () => void>();
+const lastAppliedProjectionVersionByEnvironment = new Map<
+  EnvironmentId,
+  {
+    readonly sequence: number;
+    readonly updatedAt: string | null;
+  }
+>();
 
 let activeService: EnvironmentServiceState | null = null;
 let needsProviderInvalidation = false;
@@ -100,6 +108,98 @@ let needsProviderInvalidation = false;
 const THREAD_DETAIL_SUBSCRIPTION_IDLE_EVICTION_MS = 15 * 60 * 1000;
 const MAX_CACHED_THREAD_DETAIL_SUBSCRIPTIONS = 32;
 const NOOP = () => undefined;
+
+function compareAppliedProjectionVersion(
+  left: { readonly sequence: number; readonly updatedAt: string | null },
+  right: { readonly sequence: number; readonly updatedAt: string | null },
+): number {
+  if (left.sequence !== right.sequence) {
+    return left.sequence - right.sequence;
+  }
+
+  const leftUpdatedAt = left.updatedAt ?? "";
+  const rightUpdatedAt = right.updatedAt ?? "";
+  if (leftUpdatedAt === rightUpdatedAt) {
+    return 0;
+  }
+
+  return leftUpdatedAt < rightUpdatedAt ? -1 : 1;
+}
+
+function toAppliedProjectionVersion(
+  snapshot: Pick<OrchestrationShellSnapshot, "snapshotSequence" | "updatedAt">,
+): {
+  readonly sequence: number;
+  readonly updatedAt: string;
+} {
+  return {
+    sequence: snapshot.snapshotSequence,
+    updatedAt: snapshot.updatedAt,
+  };
+}
+
+export function shouldApplyProjectionSnapshot(input: {
+  readonly current: {
+    readonly sequence: number;
+    readonly updatedAt: string | null;
+  } | null;
+  readonly next: Pick<OrchestrationShellSnapshot, "snapshotSequence" | "updatedAt">;
+}): boolean {
+  if (input.current === null) {
+    return true;
+  }
+
+  return compareAppliedProjectionVersion(input.current, toAppliedProjectionVersion(input.next)) < 0;
+}
+
+export function shouldApplyProjectionEvent(input: {
+  readonly current: {
+    readonly sequence: number;
+    readonly updatedAt: string | null;
+  } | null;
+  readonly sequence: number;
+}): boolean {
+  if (input.current === null) {
+    return true;
+  }
+
+  return input.sequence > input.current.sequence;
+}
+
+function readLastAppliedProjectionVersion(environmentId: EnvironmentId): {
+  readonly sequence: number;
+  readonly updatedAt: string | null;
+} | null {
+  return lastAppliedProjectionVersionByEnvironment.get(environmentId) ?? null;
+}
+
+function markAppliedProjectionSnapshot(
+  environmentId: EnvironmentId,
+  snapshot: Pick<OrchestrationShellSnapshot, "snapshotSequence" | "updatedAt">,
+): void {
+  const nextVersion = toAppliedProjectionVersion(snapshot);
+  const currentVersion = readLastAppliedProjectionVersion(environmentId);
+  if (
+    currentVersion !== null &&
+    compareAppliedProjectionVersion(currentVersion, nextVersion) >= 0
+  ) {
+    return;
+  }
+
+  lastAppliedProjectionVersionByEnvironment.set(environmentId, nextVersion);
+}
+
+function markAppliedProjectionEvent(environmentId: EnvironmentId, sequence: number): void {
+  const currentVersion = readLastAppliedProjectionVersion(environmentId);
+  if (currentVersion !== null && sequence <= currentVersion.sequence) {
+    return;
+  }
+
+  lastAppliedProjectionVersionByEnvironment.set(environmentId, {
+    sequence,
+    updatedAt: currentVersion?.updatedAt ?? null,
+  });
+}
 
 function getThreadDetailSubscriptionKey(environmentId: EnvironmentId, threadId: ThreadId): string {
   return scopedThreadKey(scopeThreadRef(environmentId, threadId));
@@ -471,9 +571,11 @@ function coalesceOrchestrationUiEvents(
 
 function syncProjectUiFromStore() {
   const projects = selectProjectsAcrossEnvironments(useStore.getState());
+  const clientSettings = getClientSettings();
   useUiStateStore.getState().syncProjects(
     projects.map((project) => ({
       key: derivePhysicalProjectKey(project),
+      logicalKey: deriveLogicalProjectKeyFromSettings(project, clientSettings),
       cwd: project.cwd,
     })),
   );
@@ -497,7 +599,7 @@ function reconcileSnapshotDerivedState() {
   syncThreadUiFromStore();
 
   const threads = selectThreadsAcrossEnvironments(useStore.getState());
-  const activeThreadKeys = collectActiveTerminalUiThreadKeys({
+  const activeThreadKeys = collectActiveTerminalThreadIds({
     snapshotThreads: threads.map((thread) => ({
       key: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
       deletedAt: null,
@@ -505,7 +607,18 @@ function reconcileSnapshotDerivedState() {
     })),
     draftThreadKeys: useComposerDraftStore.getState().listDraftThreadKeys(),
   });
-  useTerminalUiStateStore.getState().removeOrphanedTerminalUiStates(activeThreadKeys);
+  useTerminalStateStore.getState().removeOrphanedTerminalStates(activeThreadKeys);
+}
+
+export function shouldApplyTerminalEvent(input: {
+  serverThreadArchivedAt: string | null | undefined;
+  hasDraftThread: boolean;
+}): boolean {
+  if (input.serverThreadArchivedAt !== undefined) {
+    return input.serverThreadArchivedAt === null;
+  }
+
+  return input.hasDraftThread;
 }
 
 function applyRecoveredEventBatch(
@@ -533,9 +646,11 @@ function applyRecoveredEventBatch(
   useStore.getState().applyOrchestrationEvents(uiEvents, environmentId);
   if (needsProjectUiSync) {
     const projects = selectProjectsAcrossEnvironments(useStore.getState());
+    const clientSettings = getClientSettings();
     useUiStateStore.getState().syncProjects(
       projects.map((project) => ({
         key: derivePhysicalProjectKey(project),
+        logicalKey: deriveLogicalProjectKeyFromSettings(project, clientSettings),
         cwd: project.cwd,
       })),
     );
@@ -569,10 +684,8 @@ function applyRecoveredEventBatch(
       draftStore.clearProjectDraftThreadId(scopeProjectRef(environmentId, event.payload.projectId));
     }
   }
-  for (const threadId of batchEffects.removeTerminalUiStateThreadIds) {
-    useTerminalUiStateStore
-      .getState()
-      .removeTerminalUiState(scopeThreadRef(environmentId, threadId));
+  for (const threadId of batchEffects.removeTerminalStateThreadIds) {
+    useTerminalStateStore.getState().removeTerminalState(scopeThreadRef(environmentId, threadId));
   }
 
   reconcileThreadDetailSubscriptionEvictionForEnvironment(environmentId);
@@ -586,6 +699,15 @@ export function applyEnvironmentThreadDetailEvent(
 }
 
 function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: EnvironmentId) {
+  if (
+    !shouldApplyProjectionEvent({
+      current: readLastAppliedProjectionVersion(environmentId),
+      sequence: event.sequence,
+    })
+  ) {
+    return;
+  }
+
   const threadId =
     event.kind === "thread-upserted"
       ? event.thread.id
@@ -596,6 +718,7 @@ function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: En
   const previousThread = threadRef ? selectThreadByRef(useStore.getState(), threadRef) : undefined;
 
   useStore.getState().applyShellEvent(event, environmentId);
+  markAppliedProjectionEvent(environmentId, event.sequence);
 
   switch (event.kind) {
     case "project-upserted":
@@ -608,7 +731,7 @@ function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: En
         markPromotedDraftThreadByRef(threadRef);
       }
       if (previousThread?.archivedAt === null && event.thread.archivedAt !== null && threadRef) {
-        useTerminalUiStateStore.getState().removeTerminalUiState(threadRef);
+        useTerminalStateStore.getState().removeTerminalState(threadRef);
       }
       reconcileThreadDetailSubscriptionEvictionForThread(environmentId, event.thread.id);
       evictIdleThreadDetailSubscriptionsToCapacity();
@@ -618,7 +741,7 @@ function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: En
         disposeThreadDetailSubscriptionByKey(scopedThreadKey(threadRef));
         useComposerDraftStore.getState().clearDraftThread(threadRef);
         useUiStateStore.getState().clearThreadUi(scopedThreadKey(threadRef));
-        useTerminalUiStateStore.getState().removeTerminalUiState(threadRef);
+        useTerminalStateStore.getState().removeTerminalState(threadRef);
       }
       syncThreadUiFromStore();
       return;
@@ -629,7 +752,17 @@ function createEnvironmentConnectionHandlers() {
   return {
     applyShellEvent,
     syncShellSnapshot: (snapshot: OrchestrationShellSnapshot, environmentId: EnvironmentId) => {
+      if (
+        !shouldApplyProjectionSnapshot({
+          current: readLastAppliedProjectionVersion(environmentId),
+          next: snapshot,
+        })
+      ) {
+        return;
+      }
+
       useStore.getState().syncServerShellSnapshot(snapshot, environmentId);
+      markAppliedProjectionSnapshot(environmentId, snapshot);
       reconcileThreadDetailSubscriptionsForEnvironment(
         environmentId,
         snapshot.threads.map((thread) => thread.id),
@@ -637,13 +770,22 @@ function createEnvironmentConnectionHandlers() {
       reconcileThreadDetailSubscriptionEvictionForEnvironment(environmentId);
       reconcileSnapshotDerivedState();
     },
+    applyTerminalEvent: (event: TerminalEvent, environmentId: EnvironmentId) => {
+      const threadRef = scopeThreadRef(environmentId, ThreadId.make(event.threadId));
+      const serverThread = selectThreadByRef(useStore.getState(), threadRef);
+      const hasDraftThread =
+        useComposerDraftStore.getState().getDraftThreadByRef(threadRef) !== null;
+      if (
+        !shouldApplyTerminalEvent({
+          serverThreadArchivedAt: serverThread?.archivedAt,
+          hasDraftThread,
+        })
+      ) {
+        return;
+      }
+      useTerminalStateStore.getState().applyTerminalEvent(threadRef, event);
+    },
   };
-}
-
-function createWsRpcClient(transport: WsTransport): WsRpcClient {
-  return createBaseWsRpcClient(transport, {
-    beforeReconnect: () => resetWsReconnectBackoff(),
-  });
 }
 
 function createPrimaryEnvironmentClient(
@@ -724,14 +866,6 @@ function registerConnection(connection: EnvironmentConnection): EnvironmentConne
     throw new Error(`Environment ${connection.environmentId} already has an active connection.`);
   }
   environmentConnections.set(connection.environmentId, connection);
-  terminalMetadataSubscriptions.get(connection.environmentId)?.();
-  terminalMetadataSubscriptions.set(
-    connection.environmentId,
-    subscribeTerminalMetadata({
-      environmentId: connection.environmentId,
-      client: connection.client,
-    }),
-  );
   emitEnvironmentConnectionRegistryChange();
   return connection;
 }
@@ -743,10 +877,8 @@ async function removeConnection(environmentId: EnvironmentId): Promise<boolean> 
   }
 
   disposeThreadDetailSubscriptionsForEnvironment(environmentId);
+  lastAppliedProjectionVersionByEnvironment.delete(environmentId);
   environmentConnections.delete(environmentId);
-  terminalMetadataSubscriptions.get(environmentId)?.();
-  terminalMetadataSubscriptions.delete(environmentId);
-  terminalSessionManager.invalidateEnvironment(environmentId);
   emitEnvironmentConnectionRegistryChange();
   await connection.dispose();
   return true;
@@ -1074,14 +1206,10 @@ export function startEnvironmentConnectionService(queryClient: QueryClient): () 
 
 export async function resetEnvironmentServiceForTests(): Promise<void> {
   stopActiveService();
+  lastAppliedProjectionVersionByEnvironment.clear();
   for (const key of Array.from(threadDetailSubscriptions.keys())) {
     disposeThreadDetailSubscriptionByKey(key);
   }
-  for (const unsubscribe of terminalMetadataSubscriptions.values()) {
-    unsubscribe();
-  }
-  terminalMetadataSubscriptions.clear();
-  terminalSessionManager.reset();
   await Promise.all(
     [...environmentConnections.keys()].map((environmentId) => removeConnection(environmentId)),
   );

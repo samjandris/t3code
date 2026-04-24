@@ -1,12 +1,16 @@
-import type {
-  TerminalAttachStreamEvent,
-  TerminalMetadataStreamEvent,
-  TerminalSessionSnapshot,
-  TerminalSummary,
-  EnvironmentId,
-} from "@t3tools/contracts";
-import { DEFAULT_TERMINAL_ID, ThreadId, type TerminalAttachInput } from "@t3tools/contracts";
+import type { TerminalEvent, TerminalSessionSnapshot, EnvironmentId } from "@t3tools/contracts";
+import { DEFAULT_TERMINAL_ID, ThreadId, type TerminalOpenInput } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+
+export interface TerminalSummary {
+  readonly threadId: string;
+  readonly terminalId: string;
+  readonly cwd: string;
+  readonly worktreePath: string | null;
+  readonly status: TerminalSessionSnapshot["status"] | "closed";
+  readonly hasRunningSubprocess: boolean;
+  readonly updatedAt: string;
+}
 
 export interface TerminalSessionState {
   readonly summary: TerminalSummary | null;
@@ -67,8 +71,8 @@ export interface TerminalSessionManagerConfig {
 
 export interface TerminalMetadataClient {
   readonly terminal: {
-    readonly onMetadata: (
-      listener: (event: TerminalMetadataStreamEvent) => void,
+    readonly onEvent: (
+      listener: (event: TerminalEvent) => void,
       options?: { readonly onResubscribe?: () => void },
     ) => () => void;
   };
@@ -76,11 +80,9 @@ export interface TerminalMetadataClient {
 
 export interface TerminalAttachClient {
   readonly terminal: {
-    readonly attach: (
-      input: TerminalAttachInput & { readonly terminalId: string },
-      listener: (event: TerminalAttachStreamEvent) => void,
-      options?: { readonly onResubscribe?: () => void },
-    ) => () => void;
+    readonly open: (
+      input: TerminalOpenInput & { readonly terminalId: string },
+    ) => Promise<TerminalSessionSnapshot>;
   };
 }
 
@@ -222,6 +224,18 @@ function bufferFromSnapshot(
     error: null,
     updatedAt: snapshot.updatedAt,
     version: 1,
+  };
+}
+
+function summaryFromSnapshot(snapshot: TerminalSessionSnapshot): TerminalSummary {
+  return {
+    threadId: snapshot.threadId,
+    terminalId: snapshot.terminalId,
+    cwd: snapshot.cwd,
+    worktreePath: snapshot.worktreePath,
+    status: snapshot.status,
+    hasRunningSubprocess: false,
+    updatedAt: snapshot.updatedAt,
   };
 }
 
@@ -367,52 +381,26 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
       return;
     }
 
-    setBuffer(knownTarget, bufferFromSnapshot(snapshot, maxBufferBytes));
-  }
-
-  function applyMetadataEvent(
-    target: Pick<TerminalSessionTarget, "environmentId">,
-    event: TerminalMetadataStreamEvent,
-  ): void {
     const environmentId = target.environmentId;
-    if (environmentId === null) {
-      return;
-    }
-
-    if (event.type === "snapshot") {
-      const retainedKeys = new Set<string>();
-      const next = { ...getMetadata(environmentId) };
-
-      for (const terminal of event.terminals) {
-        const knownTarget = knownTargetFromSummary(environmentId, terminal);
-        const targetKey = keyFromKnownTarget(knownTarget);
-        retainedKeys.add(targetKey);
-        next[targetKey] = {
-          target: knownTarget,
-          summary: terminal,
-        };
-      }
-
-      for (const key of Object.keys(next)) {
-        if (!retainedKeys.has(key)) {
-          delete next[key];
-        }
-      }
-
-      setMetadata(environmentId, next);
-      return;
-    }
-
-    if (event.type === "upsert") {
-      const knownTarget = knownTargetFromSummary(environmentId, event.terminal);
+    if (environmentId !== null) {
       const targetKey = keyFromKnownTarget(knownTarget);
       setMetadata(environmentId, {
         ...getMetadata(environmentId),
         [targetKey]: {
           target: knownTarget,
-          summary: event.terminal,
+          summary: summaryFromSnapshot(snapshot),
         },
       });
+    }
+    setBuffer(knownTarget, bufferFromSnapshot(snapshot, maxBufferBytes));
+  }
+
+  function applyTerminalEvent(
+    target: Pick<TerminalSessionTarget, "environmentId">,
+    event: TerminalEvent,
+  ): void {
+    const environmentId = target.environmentId;
+    if (environmentId === null) {
       return;
     }
 
@@ -425,33 +413,11 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
       return;
     }
 
-    const next = { ...getMetadata(environmentId) };
-    delete next[keyFromKnownTarget(knownTarget)];
-    setMetadata(environmentId, next);
-  }
-
-  function applyAttachEvent(
-    target: Pick<TerminalSessionTarget, "environmentId">,
-    event: TerminalAttachStreamEvent,
-  ): void {
-    if (event.type === "snapshot") {
-      syncSnapshot(target, event.snapshot);
-      return;
-    }
-
-    const knownTarget = getKnownTerminalSessionTarget({
-      environmentId: target.environmentId,
-      threadId: ThreadId.make(event.threadId),
-      terminalId: event.terminalId,
-    });
-    if (knownTarget === null) {
-      return;
-    }
-
     const current = getBuffer(knownTarget);
     switch (event.type) {
+      case "started":
       case "restarted":
-        setBuffer(knownTarget, bufferFromSnapshot(event.snapshot, maxBufferBytes));
+        syncSnapshot(target, event.snapshot);
         return;
       case "output":
         setBuffer(knownTarget, {
@@ -459,6 +425,7 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
           buffer: trimBufferToBytes(`${current.buffer}${event.data}`, maxBufferBytes),
           status: current.status === "closed" ? "running" : current.status,
           error: null,
+          updatedAt: event.createdAt,
           version: current.version + 1,
         });
         return;
@@ -467,6 +434,7 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
           ...current,
           buffer: "",
           error: null,
+          updatedAt: event.createdAt,
           version: current.version + 1,
         });
         return;
@@ -475,15 +443,13 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
           ...current,
           status: "exited",
           error: null,
+          updatedAt: event.createdAt,
           version: current.version + 1,
         });
-        return;
-      case "closed":
-        setBuffer(knownTarget, {
-          ...current,
-          status: "closed",
-          error: null,
-          version: current.version + 1,
+        updateSummary(environmentId, knownTarget, {
+          status: "exited",
+          hasRunningSubprocess: false,
+          updatedAt: event.createdAt,
         });
         return;
       case "error":
@@ -491,12 +457,43 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
           ...current,
           status: "error",
           error: event.message,
+          updatedAt: event.createdAt,
           version: current.version + 1,
+        });
+        updateSummary(environmentId, knownTarget, {
+          status: "error",
+          updatedAt: event.createdAt,
         });
         return;
       case "activity":
+        updateSummary(environmentId, knownTarget, {
+          hasRunningSubprocess: event.hasRunningSubprocess,
+          updatedAt: event.createdAt,
+        });
         return;
     }
+  }
+
+  function updateSummary(
+    environmentId: EnvironmentId,
+    target: KnownTerminalSessionTarget,
+    patch: Partial<TerminalSummary>,
+  ): void {
+    const targetKey = keyFromKnownTarget(target);
+    const current = getMetadata(environmentId)[targetKey]?.summary;
+    if (!current) {
+      return;
+    }
+    setMetadata(environmentId, {
+      ...getMetadata(environmentId),
+      [targetKey]: {
+        target,
+        summary: {
+          ...current,
+          ...patch,
+        },
+      },
+    });
   }
 
   function invalidate(target?: TerminalSessionTarget): void {
@@ -555,8 +552,8 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
     readonly client: TerminalMetadataClient;
     readonly options?: { readonly onResubscribe?: () => void };
   }): () => void {
-    return input.client.terminal.onMetadata(
-      (event) => applyMetadataEvent({ environmentId: input.environmentId }, event),
+    return input.client.terminal.onEvent(
+      (event) => applyTerminalEvent({ environmentId: input.environmentId }, event),
       input.options,
     );
   }
@@ -564,26 +561,26 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
   function attach(input: {
     readonly environmentId: EnvironmentId;
     readonly client: TerminalAttachClient;
-    readonly terminal: TerminalAttachInput;
+    readonly terminal: TerminalOpenInput;
     readonly onSnapshot?: (snapshot: TerminalSessionSnapshot) => void;
-    readonly onEvent?: (event: TerminalAttachStreamEvent) => void;
+    readonly onEvent?: (event: TerminalEvent) => void;
     readonly options?: { readonly onResubscribe?: () => void };
   }): () => void {
     const terminal = {
       ...input.terminal,
       terminalId: input.terminal.terminalId ?? DEFAULT_TERMINAL_ID,
     };
-    return input.client.terminal.attach(
-      terminal,
-      (event) => {
-        applyAttachEvent({ environmentId: input.environmentId }, event);
-        input.onEvent?.(event);
-        if (event.type === "snapshot") {
-          input.onSnapshot?.(event.snapshot);
-        }
-      },
-      input.options,
-    );
+    let disposed = false;
+    void input.client.terminal.open(terminal).then((snapshot) => {
+      if (disposed) {
+        return;
+      }
+      syncSnapshot({ environmentId: input.environmentId }, snapshot);
+      input.onSnapshot?.(snapshot);
+    });
+    return () => {
+      disposed = true;
+    };
   }
 
   return {

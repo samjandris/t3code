@@ -46,6 +46,32 @@ import { getEnvironmentClient } from "../../state/use-remote-environment-registr
 import { CLAUDE_AGENT_EFFORT_OPTIONS } from "./claudeEffortOptions";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
 
+function getModelOptionValue(selection: ModelSelection, id: string): string | boolean | undefined {
+  return selection.options?.find((option) => option.id === id)?.value;
+}
+
+function setModelOptionValue(
+  selection: ModelSelection,
+  id: string,
+  value: string | boolean | undefined,
+): ModelSelection {
+  const existing = selection.options ?? [];
+  const nextOptions =
+    value === undefined
+      ? existing.filter((option) => option.id !== id)
+      : [
+          ...existing.filter((option) => option.id !== id),
+          {
+            id,
+            value,
+          },
+        ];
+  return {
+    ...selection,
+    options: nextOptions,
+  } as ModelSelection;
+}
+
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
  * Exported so the parent can compute feed overlap / content insets.
@@ -169,15 +195,18 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   // Extract current model options (effort, fastMode, contextWindow)
   const currentEffort =
     currentModelSelection.provider === "claudeAgent"
-      ? (currentModelSelection.options?.effort ?? "high")
+      ? (String(getModelOptionValue(currentModelSelection, "effort") ?? "high") as
+          | "low"
+          | "medium"
+          | "high"
+          | "xhigh"
+          | "max"
+          | "ultrathink")
       : "high";
-  const currentFastMode =
-    currentModelSelection.options && "fastMode" in currentModelSelection.options
-      ? (currentModelSelection.options.fastMode ?? false)
-      : false;
+  const currentFastMode = getModelOptionValue(currentModelSelection, "fastMode") === true;
   const currentContextWindow =
     currentModelSelection.provider === "claudeAgent"
-      ? (currentModelSelection.options?.contextWindow ?? "1M")
+      ? String(getModelOptionValue(currentModelSelection, "contextWindow") ?? "1M")
       : "1M";
 
   const handleNativePaste = useNativePaste((uris) => {
@@ -587,10 +616,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       const effort = event.slice("options:effort:".length);
       const updated: ModelSelection =
         currentModelSelection.provider === "claudeAgent"
-          ? {
-              ...currentModelSelection,
-              options: { ...currentModelSelection.options, effort: effort as typeof currentEffort },
-            }
+          ? setModelOptionValue(currentModelSelection, "effort", effort)
           : currentModelSelection;
       void props.onUpdateModelSelection(updated);
       return;
@@ -602,8 +628,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         return;
       }
       const updated: ModelSelection = {
-        ...currentModelSelection,
-        options: { ...currentModelSelection.options, fastMode: nextFast },
+        ...setModelOptionValue(currentModelSelection, "fastMode", nextFast),
       };
       void props.onUpdateModelSelection(updated);
       return;
@@ -612,10 +637,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       const contextWindow = event.slice("options:context-window:".length);
       const updated: ModelSelection =
         currentModelSelection.provider === "claudeAgent"
-          ? {
-              ...currentModelSelection,
-              options: { ...currentModelSelection.options, contextWindow },
-            }
+          ? setModelOptionValue(currentModelSelection, "contextWindow", contextWindow)
           : currentModelSelection;
       void props.onUpdateModelSelection(updated);
       return;

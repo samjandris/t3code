@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  MessageId,
-  TurnId,
-  type GitReviewDiffSection,
-  type OrchestrationCheckpointSummary,
-} from "@t3tools/contracts";
+import { MessageId, TurnId, type OrchestrationCheckpointSummary } from "@t3tools/contracts";
 
 import {
   buildReviewListItems,
@@ -14,6 +9,7 @@ import {
   getDefaultReviewSectionId,
   getReviewFilePreviewState,
   getReviewSectionIdForCheckpoint,
+  type GitReviewDiffSection,
   type ReviewRenderableFile,
 } from "./reviewModel";
 

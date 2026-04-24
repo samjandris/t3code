@@ -178,6 +178,7 @@ describe("TerminalEvent", () => {
         type: "output",
         threadId: "thread-1",
         terminalId: DEFAULT_TERMINAL_ID,
+        createdAt: new Date().toISOString(),
         data: "line\n",
       }),
     ).toBe(true);
@@ -189,18 +190,9 @@ describe("TerminalEvent", () => {
         type: "exited",
         threadId: "thread-1",
         terminalId: DEFAULT_TERMINAL_ID,
+        createdAt: new Date().toISOString(),
         exitCode: 0,
         exitSignal: null,
-      }),
-    ).toBe(true);
-  });
-
-  it("accepts closed events", () => {
-    expect(
-      decodes(TerminalEvent, {
-        type: "closed",
-        threadId: "thread-1",
-        terminalId: DEFAULT_TERMINAL_ID,
       }),
     ).toBe(true);
   });
@@ -211,6 +203,7 @@ describe("TerminalEvent", () => {
         type: "activity",
         threadId: "thread-1",
         terminalId: DEFAULT_TERMINAL_ID,
+        createdAt: new Date().toISOString(),
         hasRunningSubprocess: true,
       }),
     ).toBe(true);
@@ -222,6 +215,7 @@ describe("TerminalEvent", () => {
         type: "started",
         threadId: "thread-1",
         terminalId: DEFAULT_TERMINAL_ID,
+        createdAt: new Date().toISOString(),
         snapshot: {
           threadId: "thread-1",
           terminalId: DEFAULT_TERMINAL_ID,

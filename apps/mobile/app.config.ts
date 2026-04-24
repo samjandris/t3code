@@ -49,6 +49,9 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
+const iosBundleIdentifier =
+  process.env.IOS_BUNDLE_IDENTIFIER?.trim() || variant.iosBundleIdentifier;
+const androidPackage = process.env.ANDROID_PACKAGE?.trim() || variant.androidPackage;
 
 const config: ExpoConfig = {
   name: variant.appName,
@@ -75,7 +78,7 @@ const config: ExpoConfig = {
   ios: {
     icon: variant.iosIcon,
     supportsTablet: true,
-    bundleIdentifier: variant.iosBundleIdentifier,
+    bundleIdentifier: iosBundleIdentifier,
     infoPlist: {
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
@@ -85,7 +88,7 @@ const config: ExpoConfig = {
   },
   android: {
     icon: "./assets/icon.png",
-    package: variant.androidPackage,
+    package: androidPackage,
     adaptiveIcon: {
       backgroundColor: "#E6F4FE",
       foregroundImage: "./assets/android-icon-foreground.png",

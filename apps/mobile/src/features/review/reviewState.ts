@@ -1,11 +1,15 @@
 import { useAtomValue } from "@effect/atom-react";
 
-import { EnvironmentId, ThreadId, type GitReviewDiffSection } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { appAtomRegistry } from "../../state/atom-registry";
-import { buildReviewParsedDiff, type ReviewParsedDiff } from "./reviewModel";
+import {
+  buildReviewParsedDiff,
+  type GitReviewDiffSection,
+  type ReviewParsedDiff,
+} from "./reviewModel";
 
 const EMPTY_GIT_REVIEW_SECTIONS = Object.freeze<ReadonlyArray<GitReviewDiffSection>>([]);
 const EMPTY_REVIEW_TURN_DIFFS = Object.freeze<Readonly<Record<string, string>>>({});

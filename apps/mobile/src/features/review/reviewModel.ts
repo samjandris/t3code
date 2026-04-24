@@ -1,9 +1,18 @@
 import { parsePatchFiles, type ChangeTypes, type FileDiffMetadata } from "@pierre/diffs/utils";
-import type { GitReviewDiffSection, OrchestrationCheckpointSummary } from "@t3tools/contracts";
+import type { OrchestrationCheckpointSummary } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
 
 export type ReviewSectionKind = "turn" | "dirty" | "base";
+
+export interface GitReviewDiffSection {
+  readonly kind: "dirty" | "base";
+  readonly title: string;
+  readonly subtitle?: string | null;
+  readonly baseRef?: string | null;
+  readonly headRef?: string | null;
+  readonly diff: string;
+}
 
 export interface ReviewSectionItem {
   readonly id: string;

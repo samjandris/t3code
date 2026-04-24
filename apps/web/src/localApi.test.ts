@@ -8,8 +8,7 @@ import {
   type OrchestrationShellStreamItem,
   type ServerConfig,
   type ServerProvider,
-  type TerminalAttachStreamEvent,
-  type TerminalMetadataStreamEvent,
+  type TerminalEvent,
   ThreadId,
 } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,8 +30,7 @@ function registerListener<T>(listeners: Set<(event: T) => void>, listener: (even
   };
 }
 
-const terminalAttachListeners = new Set<(event: TerminalAttachStreamEvent) => void>();
-const terminalMetadataListeners = new Set<(event: TerminalMetadataStreamEvent) => void>();
+const terminalEventListeners = new Set<(event: TerminalEvent) => void>();
 const shellStreamListeners = new Set<(event: OrchestrationShellStreamItem) => void>();
 const gitStatusListeners = new Set<(event: GitStatusResult) => void>();
 
@@ -40,16 +38,13 @@ const rpcClientMock = {
   dispose: vi.fn(),
   terminal: {
     open: vi.fn(),
-    attach: vi.fn((_input: unknown, listener: (event: TerminalAttachStreamEvent) => void) =>
-      registerListener(terminalAttachListeners, listener),
-    ),
     write: vi.fn(),
     resize: vi.fn(),
     clear: vi.fn(),
     restart: vi.fn(),
     close: vi.fn(),
-    onMetadata: vi.fn((listener: (event: TerminalMetadataStreamEvent) => void) =>
-      registerListener(terminalMetadataListeners, listener),
+    onEvent: vi.fn((listener: (event: TerminalEvent) => void) =>
+      registerListener(terminalEventListeners, listener),
     ),
   },
   projects: {
@@ -77,7 +72,6 @@ const rpcClientMock = {
     init: vi.fn(),
     resolvePullRequest: vi.fn(),
     preparePullRequestThread: vi.fn(),
-    getReviewDiffs: vi.fn(),
   },
   server: {
     getConfig: vi.fn(),
@@ -122,7 +116,6 @@ vi.mock("./environments/runtime", () => ({
   resetEnvironmentServiceForTests: vi.fn(),
   resetSavedEnvironmentRegistryStoreForTests: vi.fn(),
   resetSavedEnvironmentRuntimeStoreForTests: vi.fn(),
-  subscribeEnvironmentConnections: vi.fn(() => () => undefined),
 }));
 
 vi.mock("./contextMenuFallback", () => ({
@@ -280,8 +273,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   showContextMenuFallbackMock.mockReset();
-  terminalAttachListeners.clear();
-  terminalMetadataListeners.clear();
+  terminalEventListeners.clear();
   shellStreamListeners.clear();
   gitStatusListeners.clear();
   const testWindow = getWindowForTest();
@@ -309,42 +301,24 @@ describe("wsApi", () => {
     expect(rpcClientMock.server.subscribeLifecycle).not.toHaveBeenCalled();
   });
 
-  it("forwards terminal attach, metadata, and shell stream events", async () => {
+  it("forwards terminal and shell stream events", async () => {
     const { createEnvironmentApi } = await import("./environmentApi");
 
     const api = createEnvironmentApi(rpcClientMock as never);
-    const onTerminalAttachEvent = vi.fn();
-    const onTerminalMetadataEvent = vi.fn();
+    const onTerminalEvent = vi.fn();
     const onShellEvent = vi.fn();
 
-    api.terminal.attach({ threadId: "thread-1", terminalId: "terminal-1" }, onTerminalAttachEvent);
-    api.terminal.onMetadata(onTerminalMetadataEvent);
+    api.terminal.onEvent(onTerminalEvent);
     api.orchestration.subscribeShell(onShellEvent);
 
-    const terminalAttachEvent = {
+    const terminalEvent = {
       threadId: "thread-1",
       terminalId: "terminal-1",
+      createdAt: "2026-02-24T00:00:00.000Z",
       type: "output",
       data: "hello",
-    } satisfies TerminalAttachStreamEvent;
-    emitEvent(terminalAttachListeners, terminalAttachEvent);
-
-    const terminalMetadataEvent = {
-      type: "upsert",
-      terminal: {
-        threadId: "thread-1",
-        terminalId: "terminal-1",
-        cwd: "/tmp/workspace",
-        worktreePath: null,
-        status: "running",
-        pid: 123,
-        exitCode: null,
-        exitSignal: null,
-        hasRunningSubprocess: true,
-        updatedAt: "2026-02-24T00:00:00.000Z",
-      },
-    } satisfies TerminalMetadataStreamEvent;
-    emitEvent(terminalMetadataListeners, terminalMetadataEvent);
+    } as const;
+    emitEvent(terminalEventListeners, terminalEvent);
 
     const shellEvent = {
       kind: "project-upserted" as const,
@@ -364,8 +338,7 @@ describe("wsApi", () => {
     } satisfies OrchestrationShellStreamItem;
     emitEvent(shellStreamListeners, shellEvent);
 
-    expect(onTerminalAttachEvent).toHaveBeenCalledWith(terminalAttachEvent);
-    expect(onTerminalMetadataEvent).toHaveBeenCalledWith(terminalMetadataEvent);
+    expect(onTerminalEvent).toHaveBeenCalledWith(terminalEvent);
     expect(onShellEvent).toHaveBeenCalledWith(shellEvent);
   });
 
@@ -556,9 +529,11 @@ describe("wsApi", () => {
 
   it("reads and writes persistence through the desktop bridge when available", async () => {
     const clientSettings = {
+      autoOpenPlanSidebar: false,
       confirmThreadArchive: true,
       confirmThreadDelete: false,
       diffWordWrap: true,
+      favorites: [],
       sidebarProjectGroupingMode: "repository_path" as const,
       sidebarProjectGroupingOverrides: {
         "environment-local:/tmp/project": "separate" as const,
@@ -613,9 +588,11 @@ describe("wsApi", () => {
     const { createLocalApi } = await import("./localApi");
     const api = createLocalApi(rpcClientMock as never);
     const clientSettings = {
+      autoOpenPlanSidebar: false,
       confirmThreadArchive: true,
       confirmThreadDelete: false,
       diffWordWrap: true,
+      favorites: [],
       sidebarProjectGroupingMode: "repository_path" as const,
       sidebarProjectGroupingOverrides: {
         "environment-local:/tmp/project": "separate" as const,
