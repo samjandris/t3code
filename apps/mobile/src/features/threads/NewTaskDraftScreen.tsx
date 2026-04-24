@@ -9,6 +9,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../lib/useThemeColor";
 
 import { EnvironmentId, type ModelSelection } from "@t3tools/contracts";
+import {
+  buildProviderOptionSelectionsFromDescriptors,
+  getProviderOptionCurrentValue,
+} from "@t3tools/shared/model";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
@@ -16,15 +20,15 @@ import { ControlPill } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 
 import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/composerImages";
+import {
+  findServerProvider,
+  formatProviderOptionValue,
+  getModelOptionDescriptors,
+} from "../../lib/modelOptions";
 import { buildThreadRoutePath } from "../../lib/routes";
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
 import { useNativePaste } from "../../lib/useNativePaste";
 import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
-import {
-  CLAUDE_AGENT_EFFORT_OPTIONS,
-  CODEX_REASONING_EFFORT_OPTIONS,
-  isCodexReasoningEffort,
-} from "./modelEffortOptions";
 import { useProjectActions } from "./use-project-actions";
 
 function withModelOptions(
@@ -48,7 +52,7 @@ export function NewTaskDraftScreen(props: {
     readonly projectId?: string;
   };
 }) {
-  const { projects } = useRemoteCatalog();
+  const { projects, serverConfigByEnvironmentId } = useRemoteCatalog();
   const { onCreateThreadWithOptions } = useProjectActions();
   const flow = useNewTaskFlow();
   const router = useRouter();
@@ -62,6 +66,16 @@ export function NewTaskDraftScreen(props: {
     paddingBottom: keyboard.height.value > 0 ? 4 : Math.max(insets.bottom, 10),
   }));
   const { logicalProjects, selectedProject, setProject } = flow;
+  const selectedServerConfig = selectedProject
+    ? (serverConfigByEnvironmentId[selectedProject.environmentId] ?? null)
+    : null;
+  const selectedProviderStatus = findServerProvider(
+    selectedServerConfig,
+    flow.selectedModel?.provider,
+  );
+  const selectedModelWithOptions = flow.selectedModel
+    ? withModelOptions(flow.selectedModel, flow.modelOptionSelections)
+    : null;
 
   const iconColor = useThemeColor("--color-icon");
   const borderColor = useThemeColor("--color-border");
@@ -145,46 +159,40 @@ export function NewTaskDraftScreen(props: {
   );
 
   const optionsMenuActions = useMemo(() => {
-    const effortOptions =
-      flow.selectedModel?.provider === "codex"
-        ? CODEX_REASONING_EFFORT_OPTIONS
-        : CLAUDE_AGENT_EFFORT_OPTIONS;
-    const currentEffort =
-      flow.selectedModel?.provider === "codex" && !isCodexReasoningEffort(flow.effort)
-        ? "high"
-        : flow.effort;
+    const modelOptionDescriptors = getModelOptionDescriptors(
+      selectedServerConfig,
+      selectedModelWithOptions,
+    );
+    const modelActions = modelOptionDescriptors.map((descriptor) => {
+      if (descriptor.type === "boolean") {
+        const currentValue = getProviderOptionCurrentValue(descriptor) === true;
+        return {
+          id: `model-option:${descriptor.id}`,
+          title: descriptor.label,
+          subtitle: formatProviderOptionValue(descriptor),
+          subactions: ([false, true] as const).map((value) => ({
+            id: `model-option:${descriptor.id}:${value ? "on" : "off"}`,
+            title: value ? "On" : "Off",
+            state: currentValue === value ? ("on" as const) : undefined,
+          })),
+        };
+      }
+
+      const currentValue = getProviderOptionCurrentValue(descriptor);
+      return {
+        id: `model-option:${descriptor.id}`,
+        title: descriptor.label,
+        subtitle: formatProviderOptionValue(descriptor),
+        subactions: descriptor.options.map((option) => ({
+          id: `model-option:${descriptor.id}:${option.id}`,
+          title: `${option.label}${option.isDefault ? " (default)" : ""}`,
+          state: currentValue === option.id ? ("on" as const) : undefined,
+        })),
+      };
+    });
 
     return [
-      {
-        id: "options-effort",
-        title: "Effort",
-        subtitle: `${currentEffort.charAt(0).toUpperCase()}${currentEffort.slice(1)}`,
-        subactions: effortOptions.map((level) => ({
-          id: `options:effort:${level}`,
-          title: `${level}${level === "high" ? " (default)" : ""}`,
-          state: currentEffort === level ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-fast-mode",
-        title: "Fast Mode",
-        subtitle: flow.fastMode ? "On" : "Off",
-        subactions: ([false, true] as const).map((value) => ({
-          id: `options:fast-mode:${value ? "on" : "off"}`,
-          title: value ? "On" : "Off",
-          state: flow.fastMode === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-context-window",
-        title: "Context Window",
-        subtitle: flow.contextWindow,
-        subactions: (["200k", "1M"] as const).map((value) => ({
-          id: `options:context-window:${value}`,
-          title: `${value}${value === "1M" ? " (default)" : ""}`,
-          state: flow.contextWindow === value ? ("on" as const) : undefined,
-        })),
-      },
+      ...modelActions,
       {
         id: "options-runtime",
         title: "Runtime",
@@ -207,30 +215,33 @@ export function NewTaskDraftScreen(props: {
           };
         }),
       },
-      {
-        id: "options-interaction",
-        title: "Interaction",
-        subtitle: flow.interactionMode === "plan" ? "Plan" : "Default",
-        subactions: [
-          { id: "options:interaction:default", title: "Default" },
-          { id: "options:interaction:plan", title: "Plan" },
-        ].map((option) => {
-          const value = option.id.replace("options:interaction:", "");
-          return {
-            id: option.id,
-            title: option.title,
-            state: flow.interactionMode === value ? ("on" as const) : undefined,
-          };
-        }),
-      },
+      ...(selectedProviderStatus?.showInteractionModeToggle === false
+        ? []
+        : [
+            {
+              id: "options-interaction",
+              title: "Interaction",
+              subtitle: flow.interactionMode === "plan" ? "Plan" : "Default",
+              subactions: [
+                { id: "options:interaction:default", title: "Default" },
+                { id: "options:interaction:plan", title: "Plan" },
+              ].map((option) => {
+                const value = option.id.replace("options:interaction:", "");
+                return {
+                  id: option.id,
+                  title: option.title,
+                  state: flow.interactionMode === value ? ("on" as const) : undefined,
+                };
+              }),
+            },
+          ]),
     ];
   }, [
-    flow.contextWindow,
-    flow.effort,
-    flow.fastMode,
     flow.interactionMode,
     flow.runtimeMode,
-    flow.selectedModel?.provider,
+    selectedModelWithOptions,
+    selectedProviderStatus?.showInteractionModeToggle,
+    selectedServerConfig,
   ]);
 
   const workspaceMenuActions = useMemo(() => {
@@ -302,16 +313,19 @@ export function NewTaskDraftScreen(props: {
   }
 
   function handleOptionsMenuAction(event: string) {
-    if (event.startsWith("options:effort:")) {
-      flow.setEffort(event.slice("options:effort:".length) as typeof flow.effort);
-      return;
-    }
-    if (event.startsWith("options:fast-mode:")) {
-      flow.setFastMode(event.endsWith(":on"));
-      return;
-    }
-    if (event.startsWith("options:context-window:")) {
-      flow.setContextWindow(event.slice("options:context-window:".length));
+    if (event.startsWith("model-option:")) {
+      const [, id, rawValue] = event.split(":");
+      const descriptor = getModelOptionDescriptors(
+        selectedServerConfig,
+        selectedModelWithOptions,
+      ).find((candidate) => candidate.id === id);
+      if (!id || !rawValue || !descriptor) {
+        return;
+      }
+      flow.setModelOptionSelection(
+        id,
+        descriptor.type === "boolean" ? rawValue === "on" : rawValue,
+      );
       return;
     }
     if (event.startsWith("options:runtime:")) {
@@ -385,21 +399,14 @@ export function NewTaskDraftScreen(props: {
     flow.setSubmitting(true);
     try {
       const modelWithOptions: ModelSelection =
-        flow.selectedModel.provider === "claudeAgent"
-          ? withModelOptions(flow.selectedModel, [
-              { id: "effort", value: flow.effort },
-              { id: "fastMode", value: flow.fastMode || undefined },
-              { id: "contextWindow", value: flow.contextWindow },
-            ])
-          : flow.selectedModel.provider === "codex"
-            ? withModelOptions(flow.selectedModel, [
-                {
-                  id: "reasoningEffort",
-                  value: isCodexReasoningEffort(flow.effort) ? flow.effort : "high",
-                },
-                { id: "fastMode", value: flow.fastMode || undefined },
-              ])
-            : flow.selectedModel;
+        selectedModelWithOptions !== null
+          ? withModelOptions(
+              flow.selectedModel,
+              buildProviderOptionSelectionsFromDescriptors(
+                getModelOptionDescriptors(selectedServerConfig, selectedModelWithOptions),
+              ) ?? [],
+            )
+          : flow.selectedModel;
 
       const createdThread = await onCreateThreadWithOptions({
         project: flow.selectedProject,

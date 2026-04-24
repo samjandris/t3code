@@ -1,4 +1,10 @@
-import type { ModelSelection, ServerConfig as T3ServerConfig } from "@t3tools/contracts";
+import type {
+  ModelSelection,
+  ProviderOptionDescriptor,
+  ServerConfig as T3ServerConfig,
+  ServerProvider,
+} from "@t3tools/contracts";
+import { getProviderOptionCurrentValue, getProviderOptionDescriptors } from "@t3tools/shared/model";
 
 export type ModelOption = {
   readonly key: string;
@@ -14,6 +20,8 @@ export type ProviderGroup = {
   readonly providerLabel: string;
   readonly models: ReadonlyArray<ModelOption>;
 };
+
+const EMPTY_MODEL_CAPABILITIES = { optionDescriptors: [] };
 
 function providerDisplayLabel(provider: string): string {
   if (provider === "codex") return "Codex";
@@ -91,4 +99,63 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     providerLabel: group.providerLabel,
     models: group.models,
   }));
+}
+
+export function findServerProvider(
+  config: T3ServerConfig | null | undefined,
+  provider: string | null | undefined,
+): ServerProvider | null {
+  return config?.providers.find((entry) => entry.provider === provider) ?? null;
+}
+
+export function getModelOptionDescriptors(
+  config: T3ServerConfig | null | undefined,
+  selection: ModelSelection | null | undefined,
+): ReadonlyArray<ProviderOptionDescriptor> {
+  if (!selection) {
+    return [];
+  }
+
+  const provider = findServerProvider(config, selection.provider);
+  const model = provider?.models.find((entry) => entry.slug === selection.model);
+  return getProviderOptionDescriptors({
+    caps: model?.capabilities ?? EMPTY_MODEL_CAPABILITIES,
+    selections: selection.options,
+  });
+}
+
+export function setModelSelectionOptionValue(
+  selection: ModelSelection,
+  id: string,
+  value: string | boolean | undefined,
+): ModelSelection {
+  const existing = selection.options ?? [];
+  const nextOptions =
+    value === undefined
+      ? existing.filter((option) => option.id !== id)
+      : [
+          ...existing.filter((option) => option.id !== id),
+          {
+            id,
+            value,
+          },
+        ];
+  return {
+    ...selection,
+    options: nextOptions,
+  } as ModelSelection;
+}
+
+export function formatProviderOptionValue(
+  descriptor: ProviderOptionDescriptor,
+): string | undefined {
+  if (descriptor.type === "boolean") {
+    const value = getProviderOptionCurrentValue(descriptor);
+    return value === true ? "On" : "Off";
+  }
+  const currentValue = getProviderOptionCurrentValue(descriptor);
+  if (typeof currentValue !== "string") {
+    return undefined;
+  }
+  return descriptor.options.find((option) => option.id === currentValue)?.label ?? currentValue;
 }
