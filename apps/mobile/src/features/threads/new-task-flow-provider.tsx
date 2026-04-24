@@ -5,6 +5,7 @@ import type {
   EnvironmentId,
   GitBranch,
   ModelSelection,
+  ProviderOptionSelection,
   ProviderInteractionMode,
   RuntimeMode,
 } from "@t3tools/contracts";
@@ -76,9 +77,7 @@ type NewTaskFlowContextValue = {
   readonly availableBranches: ReadonlyArray<GitBranch>;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
-  readonly effort: ClaudeAgentEffort;
-  readonly fastMode: boolean;
-  readonly contextWindow: string;
+  readonly modelOptionSelections: ReadonlyArray<ProviderOptionSelection>;
   readonly expandedProvider: string | null;
   readonly environments: ReadonlyArray<{
     readonly environmentId: EnvironmentId;
@@ -106,9 +105,7 @@ type NewTaskFlowContextValue = {
   readonly loadBranches: () => Promise<void>;
   readonly setRuntimeMode: (value: RuntimeMode) => void;
   readonly setInteractionMode: (value: ProviderInteractionMode) => void;
-  readonly setEffort: (value: ClaudeAgentEffort) => void;
-  readonly setFastMode: (value: boolean) => void;
-  readonly setContextWindow: (value: string) => void;
+  readonly setModelOptionSelection: (id: string, value: string | boolean | undefined) => void;
   readonly setExpandedProvider: (value: string | null) => void;
 };
 
@@ -161,9 +158,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const [interactionMode, setInteractionMode] = useState<ProviderInteractionMode>(
     DEFAULT_PROVIDER_INTERACTION_MODE,
   );
-  const [effort, setEffort] = useState<ClaudeAgentEffort>("high");
-  const [fastMode, setFastMode] = useState(false);
-  const [contextWindow, setContextWindow] = useState("1M");
+  const [modelOptionSelections, setModelOptionSelections] = useState<
+    ReadonlyArray<ProviderOptionSelection>
+  >([]);
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
 
   const replaceAttachments = useCallback(
@@ -205,9 +202,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     setBranchQuery("");
     setRuntimeMode(DEFAULT_RUNTIME_MODE);
     setInteractionMode(DEFAULT_PROVIDER_INTERACTION_MODE);
-    setEffort("high");
-    setFastMode(false);
-    setContextWindow("1M");
+    setModelOptionSelections([]);
     setExpandedProvider(null);
   }, [clearAttachments, projects]);
 
@@ -382,6 +377,20 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     }
   }, [selectedBranchName, selectedProject, workspaceMode]);
 
+  const setModelOptionSelection = useCallback((id: string, value: string | boolean | undefined) => {
+    setModelOptionSelections((current) =>
+      value === undefined
+        ? current.filter((option) => option.id !== id)
+        : [
+            ...current.filter((option) => option.id !== id),
+            {
+              id,
+              value,
+            },
+          ],
+    );
+  }, []);
+
   const value = useMemo<NewTaskFlowContextValue>(
     () => ({
       logicalProjects,
@@ -399,9 +408,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       availableBranches,
       runtimeMode,
       interactionMode,
-      effort,
-      fastMode,
-      contextWindow,
+      modelOptionSelections,
       expandedProvider,
       environments,
       selectedProject,
@@ -426,9 +433,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       loadBranches,
       setRuntimeMode,
       setInteractionMode,
-      setEffort,
-      setFastMode,
-      setContextWindow,
+      setModelOptionSelection,
       setExpandedProvider,
     }),
     [
@@ -436,16 +441,14 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       availableBranches,
       branchQuery,
       branchesLoading,
-      contextWindow,
-      effort,
       environments,
       expandedProvider,
-      fastMode,
       filteredBranches,
       interactionMode,
       loadBranches,
       logicalProjects,
       modelOptions,
+      modelOptionSelections,
       prompt,
       providerGroups,
       replaceAttachments,
@@ -460,6 +463,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedProjectKey,
       selectedWorktreePath,
       setProject,
+      setModelOptionSelection,
       selectBranch,
       selectEnvironment,
       submitting,

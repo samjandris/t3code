@@ -34,7 +34,14 @@ import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStri
 import { ControlPill } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import {
+  buildModelOptions,
+  findServerProvider,
+  formatProviderOptionValue,
+  getModelOptionDescriptors,
+  groupByProvider,
+  setModelSelectionOptionValue,
+} from "../../lib/modelOptions";
 import type { RemoteClientConnectionState } from "../../lib/connection";
 import { useNativePaste } from "../../lib/useNativePaste";
 import {
@@ -42,31 +49,9 @@ import {
   normalizeSearchQuery,
   scoreQueryMatch,
 } from "@t3tools/shared/searchRanking";
+import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
 import { getEnvironmentClient } from "../../state/use-remote-environment-registry";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
-import { CLAUDE_AGENT_EFFORT_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from "./modelEffortOptions";
-
-function getModelOptionValue(
-  selection: ModelSelection,
-  optionId: string,
-): string | boolean | undefined {
-  return selection.options?.find((option) => option.id === optionId)?.value;
-}
-
-function setModelOptionValue(
-  selection: ModelSelection,
-  optionId: string,
-  value: string | boolean | undefined,
-): ModelSelection {
-  const options = [
-    ...(selection.options ?? []).filter((option) => option.id !== optionId),
-    ...(value === undefined ? [] : [{ id: optionId, value }]),
-  ];
-  return {
-    ...selection,
-    options,
-  };
-}
 
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
@@ -185,32 +170,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const sendLabel = props.activeThreadBusy || props.queueCount > 0 ? "Queue" : "Send";
   const modelProvider = props.selectedThread.modelSelection?.provider ?? null;
   const currentModelSelection = props.selectedThread.modelSelection;
-  const currentRuntimeMode = props.selectedThread.runtimeMode;
   const currentInteractionMode = props.selectedThread.interactionMode ?? "default";
-
-  // Extract current model options (reasoningEffort/effort, fastMode, contextWindow)
-  const effortOptionId =
-    currentModelSelection.provider === "codex"
-      ? "reasoningEffort"
-      : currentModelSelection.provider === "claudeAgent"
-        ? "effort"
-        : null;
-  const effortOptions =
-    currentModelSelection.provider === "codex"
-      ? CODEX_REASONING_EFFORT_OPTIONS
-      : CLAUDE_AGENT_EFFORT_OPTIONS;
-  const currentEffort =
-    effortOptionId !== null
-      ? String(getModelOptionValue(currentModelSelection, effortOptionId) ?? "high")
-      : "high";
-  const currentFastMode =
-    currentModelSelection.options && "fastMode" in currentModelSelection.options
-      ? (currentModelSelection.options.fastMode ?? false)
-      : false;
-  const currentContextWindow =
-    currentModelSelection.provider === "claudeAgent"
-      ? (currentModelSelection.options?.contextWindow ?? "1M")
-      : "1M";
 
   const handleNativePaste = useNativePaste((uris) => {
     void props.onNativePasteImages(uris);
@@ -290,12 +250,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   // ── Build menu items ─────────────────────────────────────
   const selectedProviderStatus = useMemo(() => {
-    if (!props.serverConfig) return null;
-    return (
-      props.serverConfig.providers.find(
-        (p) => p.provider === props.selectedThread.modelSelection.provider,
-      ) ?? null
-    );
+    return findServerProvider(props.serverConfig, props.selectedThread.modelSelection.provider);
   }, [props.serverConfig, props.selectedThread.modelSelection.provider]);
 
   const composerMenuItems: ComposerCommandItem[] = useMemo(() => {
@@ -493,9 +448,19 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   // ── Model menu ───────────────────────────────────────────
   const providerGroups = useMemo(() => {
-    const options = buildModelOptions(props.serverConfig, currentModelSelection);
+    const lockedProvider =
+      props.selectedThread.session?.providerName ??
+      (props.selectedThread.messages.length > 0 ? currentModelSelection.provider : null);
+    const options = buildModelOptions(props.serverConfig, currentModelSelection).filter(
+      (option) => lockedProvider === null || option.providerKey === lockedProvider,
+    );
     return groupByProvider(options);
-  }, [props.serverConfig, currentModelSelection]);
+  }, [
+    props.serverConfig,
+    currentModelSelection,
+    props.selectedThread.messages.length,
+    props.selectedThread.session?.providerName,
+  ]);
 
   const modelMenuActions = useMemo(
     () =>
@@ -521,86 +486,63 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   );
 
   // ── Options menu ─────────────────────────────────────────
-  const optionsMenuActions = useMemo(
-    () => [
-      {
-        id: "options-effort",
-        title: "Effort",
-        subtitle: `${currentEffort.charAt(0).toUpperCase()}${currentEffort.slice(1)}`,
-        subactions: effortOptions.map((level) => ({
-          id: `options:effort:${level}`,
-          title: `${level}${level === "high" ? " (default)" : ""}`,
-          state: currentEffort === level ? ("on" as const) : undefined,
+  const optionsMenuActions = useMemo(() => {
+    const modelOptionDescriptors = getModelOptionDescriptors(
+      props.serverConfig,
+      currentModelSelection,
+    );
+    const modelActions = modelOptionDescriptors.map((descriptor) => {
+      if (descriptor.type === "boolean") {
+        const currentValue = getProviderOptionCurrentValue(descriptor) === true;
+        return {
+          id: `model-option:${descriptor.id}`,
+          title: descriptor.label,
+          subtitle: formatProviderOptionValue(descriptor),
+          subactions: ([false, true] as const).map((value) => ({
+            id: `model-option:${descriptor.id}:${value ? "on" : "off"}`,
+            title: value ? "On" : "Off",
+            state: currentValue === value ? ("on" as const) : undefined,
+          })),
+        };
+      }
+
+      const currentValue = getProviderOptionCurrentValue(descriptor);
+      return {
+        id: `model-option:${descriptor.id}`,
+        title: descriptor.label,
+        subtitle: formatProviderOptionValue(descriptor),
+        subactions: descriptor.options.map((option) => ({
+          id: `model-option:${descriptor.id}:${option.id}`,
+          title: `${option.label}${option.isDefault ? " (default)" : ""}`,
+          state: currentValue === option.id ? ("on" as const) : undefined,
         })),
-      },
-      {
-        id: "options-fast-mode",
-        title: "Fast Mode",
-        subtitle: currentFastMode ? "On" : "Off",
-        subactions: ([false, true] as const).map((value) => ({
-          id: `options:fast-mode:${value ? "on" : "off"}`,
-          title: value ? "On" : "Off",
-          state: currentFastMode === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-context-window",
-        title: "Context Window",
-        subtitle: currentContextWindow,
-        subactions: (["200k", "1M"] as const).map((value) => ({
-          id: `options:context-window:${value}`,
-          title: `${value}${value === "1M" ? " (default)" : ""}`,
-          state: currentContextWindow === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-runtime",
-        title: "Runtime",
-        subtitle:
-          currentRuntimeMode === "approval-required"
-            ? "Approve actions"
-            : currentRuntimeMode === "auto-accept-edits"
-              ? "Auto-accept edits"
-              : "Full access",
-        subactions: [
-          { id: "options:runtime:approval-required", title: "Approve actions" },
-          { id: "options:runtime:auto-accept-edits", title: "Auto-accept edits" },
-          { id: "options:runtime:full-access", title: "Full access" },
-        ].map((option) => {
-          const value = option.id.replace("options:runtime:", "");
-          return {
-            id: option.id,
-            title: option.title,
-            state: currentRuntimeMode === value ? ("on" as const) : undefined,
-          };
-        }),
-      },
-      {
-        id: "options-interaction",
-        title: "Interaction",
-        subtitle: currentInteractionMode === "plan" ? "Plan" : "Default",
-        subactions: [
-          { id: "options:interaction:default", title: "Default" },
-          { id: "options:interaction:plan", title: "Plan" },
-        ].map((option) => {
-          const value = option.id.replace("options:interaction:", "");
-          return {
-            id: option.id,
-            title: option.title,
-            state: currentInteractionMode === value ? ("on" as const) : undefined,
-          };
-        }),
-      },
-    ],
-    [
-      currentEffort,
-      effortOptions,
-      currentFastMode,
-      currentContextWindow,
-      currentRuntimeMode,
-      currentInteractionMode,
-    ],
-  );
+      };
+    });
+
+    const interactionAction =
+      selectedProviderStatus?.showInteractionModeToggle === false
+        ? []
+        : [
+            {
+              id: "options-interaction",
+              title: "Interaction",
+              subtitle: currentInteractionMode === "plan" ? "Plan" : "Default",
+              subactions: [
+                { id: "options:interaction:default", title: "Default" },
+                { id: "options:interaction:plan", title: "Plan" },
+              ].map((option) => {
+                const value = option.id.replace("options:interaction:", "");
+                return {
+                  id: option.id,
+                  title: option.title,
+                  state: currentInteractionMode === value ? ("on" as const) : undefined,
+                };
+              }),
+            },
+          ];
+
+    return [...modelActions, ...interactionAction];
+  }, [currentInteractionMode, currentModelSelection, props.serverConfig, selectedProviderStatus]);
 
   // ── Menu handlers ────────────────────────────────────────
   function handleModelMenuAction(event: string) {
@@ -608,7 +550,12 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       return;
     }
     const modelKey = event.slice("model:".length);
-    const options = buildModelOptions(props.serverConfig, currentModelSelection);
+    const lockedProvider =
+      props.selectedThread.session?.providerName ??
+      (props.selectedThread.messages.length > 0 ? currentModelSelection.provider : null);
+    const options = buildModelOptions(props.serverConfig, currentModelSelection).filter(
+      (option) => lockedProvider === null || option.providerKey === lockedProvider,
+    );
     const option = options.find((o) => o.key === modelKey);
     if (option) {
       void props.onUpdateModelSelection(option.selection);
@@ -616,45 +563,17 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   }
 
   function handleOptionsMenuAction(event: string) {
-    if (event.startsWith("options:effort:")) {
-      const effort = event.slice("options:effort:".length);
-      const updated: ModelSelection =
-        currentModelSelection.provider === "codex"
-          ? setModelOptionValue(currentModelSelection, "reasoningEffort", effort)
-          : currentModelSelection.provider === "claudeAgent"
-            ? setModelOptionValue(currentModelSelection, "effort", effort)
-            : currentModelSelection;
-      void props.onUpdateModelSelection(updated);
-      return;
-    }
-    if (event.startsWith("options:fast-mode:")) {
-      const fastMode = event.endsWith(":on");
-      const nextFast = fastMode || undefined;
-      if (currentModelSelection.provider === "opencode") {
+    if (event.startsWith("model-option:")) {
+      const [, id, rawValue] = event.split(":");
+      const descriptor = getModelOptionDescriptors(props.serverConfig, currentModelSelection).find(
+        (candidate) => candidate.id === id,
+      );
+      if (!id || !rawValue || !descriptor) {
         return;
       }
-      const updated: ModelSelection = {
-        ...currentModelSelection,
-        options: { ...currentModelSelection.options, fastMode: nextFast },
-      };
+      const value = descriptor.type === "boolean" ? rawValue === "on" : rawValue;
+      const updated = setModelSelectionOptionValue(currentModelSelection, id, value);
       void props.onUpdateModelSelection(updated);
-      return;
-    }
-    if (event.startsWith("options:context-window:")) {
-      const contextWindow = event.slice("options:context-window:".length);
-      const updated: ModelSelection =
-        currentModelSelection.provider === "claudeAgent"
-          ? {
-              ...currentModelSelection,
-              options: { ...currentModelSelection.options, contextWindow },
-            }
-          : currentModelSelection;
-      void props.onUpdateModelSelection(updated);
-      return;
-    }
-    if (event.startsWith("options:runtime:")) {
-      const runtimeMode = event.slice("options:runtime:".length) as RuntimeMode;
-      void props.onUpdateRuntimeMode(runtimeMode);
       return;
     }
     if (event.startsWith("options:interaction:")) {
