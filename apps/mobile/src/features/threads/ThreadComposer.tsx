@@ -43,8 +43,8 @@ import {
   scoreQueryMatch,
 } from "@t3tools/shared/searchRanking";
 import { getEnvironmentClient } from "../../state/use-remote-environment-registry";
-import { CLAUDE_AGENT_EFFORT_OPTIONS } from "./claudeEffortOptions";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
+import { CLAUDE_AGENT_EFFORT_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from "./modelEffortOptions";
 
 function getModelOptionValue(selection: ModelSelection, id: string): string | boolean | undefined {
   return selection.options?.find((option) => option.id === id)?.value;
@@ -192,16 +192,20 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const currentInteractionMode = props.selectedThread.interactionMode ?? "default";
 
-  // Extract current model options (effort, fastMode, contextWindow)
+  // Extract current model options (reasoningEffort/effort, fastMode, contextWindow)
+  const effortOptionId =
+    currentModelSelection.provider === "codex"
+      ? "reasoningEffort"
+      : currentModelSelection.provider === "claudeAgent"
+        ? "effort"
+        : null;
+  const effortOptions =
+    currentModelSelection.provider === "codex"
+      ? CODEX_REASONING_EFFORT_OPTIONS
+      : CLAUDE_AGENT_EFFORT_OPTIONS;
   const currentEffort =
-    currentModelSelection.provider === "claudeAgent"
-      ? (String(getModelOptionValue(currentModelSelection, "effort") ?? "high") as
-          | "low"
-          | "medium"
-          | "high"
-          | "xhigh"
-          | "max"
-          | "ultrathink")
+    effortOptionId !== null
+      ? String(getModelOptionValue(currentModelSelection, effortOptionId) ?? "high")
       : "high";
   const currentFastMode = getModelOptionValue(currentModelSelection, "fastMode") === true;
   const currentContextWindow =
@@ -524,7 +528,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         id: "options-effort",
         title: "Effort",
         subtitle: `${currentEffort.charAt(0).toUpperCase()}${currentEffort.slice(1)}`,
-        subactions: CLAUDE_AGENT_EFFORT_OPTIONS.map((level) => ({
+        subactions: effortOptions.map((level) => ({
           id: `options:effort:${level}`,
           title: `${level}${level === "high" ? " (default)" : ""}`,
           state: currentEffort === level ? ("on" as const) : undefined,
@@ -591,6 +595,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     ],
     [
       currentEffort,
+      effortOptions,
       currentFastMode,
       currentContextWindow,
       currentRuntimeMode,
@@ -615,9 +620,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     if (event.startsWith("options:effort:")) {
       const effort = event.slice("options:effort:".length);
       const updated: ModelSelection =
-        currentModelSelection.provider === "claudeAgent"
-          ? setModelOptionValue(currentModelSelection, "effort", effort)
-          : currentModelSelection;
+        currentModelSelection.provider === "codex"
+          ? setModelOptionValue(currentModelSelection, "reasoningEffort", effort)
+          : currentModelSelection.provider === "claudeAgent"
+            ? setModelOptionValue(currentModelSelection, "effort", effort)
+            : currentModelSelection;
       void props.onUpdateModelSelection(updated);
       return;
     }

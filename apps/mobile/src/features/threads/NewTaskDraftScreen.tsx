@@ -19,8 +19,12 @@ import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/
 import { buildThreadRoutePath } from "../../lib/routes";
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
 import { useNativePaste } from "../../lib/useNativePaste";
-import { CLAUDE_AGENT_EFFORT_OPTIONS } from "./claudeEffortOptions";
 import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
+import {
+  CLAUDE_AGENT_EFFORT_OPTIONS,
+  CODEX_REASONING_EFFORT_OPTIONS,
+  isCodexReasoningEffort,
+} from "./modelEffortOptions";
 import { useProjectActions } from "./use-project-actions";
 
 function withModelOptions(
@@ -140,16 +144,25 @@ export function NewTaskDraftScreen(props: {
     [flow.providerGroups, flow.selectedModel],
   );
 
-  const optionsMenuActions = useMemo(
-    () => [
+  const optionsMenuActions = useMemo(() => {
+    const effortOptions =
+      flow.selectedModel?.provider === "codex"
+        ? CODEX_REASONING_EFFORT_OPTIONS
+        : CLAUDE_AGENT_EFFORT_OPTIONS;
+    const currentEffort =
+      flow.selectedModel?.provider === "codex" && !isCodexReasoningEffort(flow.effort)
+        ? "high"
+        : flow.effort;
+
+    return [
       {
         id: "options-effort",
         title: "Effort",
-        subtitle: `${flow.effort.charAt(0).toUpperCase()}${flow.effort.slice(1)}`,
-        subactions: CLAUDE_AGENT_EFFORT_OPTIONS.map((level) => ({
+        subtitle: `${currentEffort.charAt(0).toUpperCase()}${currentEffort.slice(1)}`,
+        subactions: effortOptions.map((level) => ({
           id: `options:effort:${level}`,
           title: `${level}${level === "high" ? " (default)" : ""}`,
-          state: flow.effort === level ? ("on" as const) : undefined,
+          state: currentEffort === level ? ("on" as const) : undefined,
         })),
       },
       {
@@ -210,9 +223,15 @@ export function NewTaskDraftScreen(props: {
           };
         }),
       },
-    ],
-    [flow.contextWindow, flow.effort, flow.fastMode, flow.interactionMode, flow.runtimeMode],
-  );
+    ];
+  }, [
+    flow.contextWindow,
+    flow.effort,
+    flow.fastMode,
+    flow.interactionMode,
+    flow.runtimeMode,
+    flow.selectedModel?.provider,
+  ]);
 
   const workspaceMenuActions = useMemo(() => {
     const branchActions =
@@ -374,6 +393,10 @@ export function NewTaskDraftScreen(props: {
             ])
           : flow.selectedModel.provider === "codex"
             ? withModelOptions(flow.selectedModel, [
+                {
+                  id: "reasoningEffort",
+                  value: isCodexReasoningEffort(flow.effort) ? flow.effort : "high",
+                },
                 { id: "fastMode", value: flow.fastMode || undefined },
               ])
             : flow.selectedModel;
