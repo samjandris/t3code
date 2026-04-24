@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../lib/useThemeColor";
 
 import { EnvironmentId, type ModelSelection } from "@t3tools/contracts";
+import type { ProviderOptionSelection } from "@t3tools/contracts";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
@@ -19,9 +20,23 @@ import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/
 import { buildThreadRoutePath } from "../../lib/routes";
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
 import { useNativePaste } from "../../lib/useNativePaste";
-import { CLAUDE_AGENT_EFFORT_OPTIONS } from "./claudeEffortOptions";
 import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
+import {
+  CLAUDE_AGENT_EFFORT_OPTIONS,
+  CODEX_REASONING_EFFORT_OPTIONS,
+  isCodexReasoningEffort,
+} from "./modelEffortOptions";
 import { useProjectActions } from "./use-project-actions";
+
+function withModelOptions(
+  selection: ModelSelection,
+  options: ReadonlyArray<ProviderOptionSelection>,
+): ModelSelection {
+  return {
+    ...selection,
+    options: options.filter((option) => option.value !== undefined),
+  };
+}
 
 export function NewTaskDraftScreen(props: {
   readonly initialProjectRef?: {
@@ -125,16 +140,25 @@ export function NewTaskDraftScreen(props: {
     [flow.providerGroups, flow.selectedModel],
   );
 
-  const optionsMenuActions = useMemo(
-    () => [
+  const optionsMenuActions = useMemo(() => {
+    const effortOptions =
+      flow.selectedModel?.provider === "codex"
+        ? CODEX_REASONING_EFFORT_OPTIONS
+        : CLAUDE_AGENT_EFFORT_OPTIONS;
+    const currentEffort =
+      flow.selectedModel?.provider === "codex" && !isCodexReasoningEffort(flow.effort)
+        ? "high"
+        : flow.effort;
+
+    return [
       {
         id: "options-effort",
         title: "Effort",
-        subtitle: `${flow.effort.charAt(0).toUpperCase()}${flow.effort.slice(1)}`,
-        subactions: CLAUDE_AGENT_EFFORT_OPTIONS.map((level) => ({
+        subtitle: `${currentEffort.charAt(0).toUpperCase()}${currentEffort.slice(1)}`,
+        subactions: effortOptions.map((level) => ({
           id: `options:effort:${level}`,
           title: `${level}${level === "high" ? " (default)" : ""}`,
-          state: flow.effort === level ? ("on" as const) : undefined,
+          state: currentEffort === level ? ("on" as const) : undefined,
         })),
       },
       {
@@ -195,9 +219,15 @@ export function NewTaskDraftScreen(props: {
           };
         }),
       },
-    ],
-    [flow.contextWindow, flow.effort, flow.fastMode, flow.interactionMode, flow.runtimeMode],
-  );
+    ];
+  }, [
+    flow.contextWindow,
+    flow.effort,
+    flow.fastMode,
+    flow.interactionMode,
+    flow.runtimeMode,
+    flow.selectedModel?.provider,
+  ]);
 
   const workspaceMenuActions = useMemo(() => {
     const branchActions =
@@ -361,7 +391,13 @@ export function NewTaskDraftScreen(props: {
               },
             }
           : flow.selectedModel.provider === "codex"
-            ? { ...flow.selectedModel, options: { fastMode: flow.fastMode || undefined } }
+            ? withModelOptions(flow.selectedModel, [
+                {
+                  id: "reasoningEffort",
+                  value: isCodexReasoningEffort(flow.effort) ? flow.effort : "high",
+                },
+                { id: "fastMode", value: flow.fastMode || undefined },
+              ])
             : flow.selectedModel;
 
       const createdThread = await onCreateThreadWithOptions({

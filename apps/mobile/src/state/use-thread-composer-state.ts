@@ -386,6 +386,7 @@ export function useThreadComposerState() {
             text: queuedMessage.text,
             attachments: queuedMessage.attachments,
           },
+          modelSelection: thread.modelSelection,
           runtimeMode: thread.runtimeMode,
           interactionMode: thread.interactionMode,
           createdAt: queuedMessage.createdAt,

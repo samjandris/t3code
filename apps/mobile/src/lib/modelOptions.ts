@@ -35,6 +35,10 @@ export function buildModelOptions(
     const providerLabel = providerDisplayLabel(provider.provider);
     for (const model of provider.models) {
       const key = `${provider.provider}:${model.slug}`;
+      const preservedOptions =
+        fallbackModelSelection?.provider === provider.provider
+          ? fallbackModelSelection.options
+          : undefined;
       options.set(key, {
         key,
         label: model.name,
@@ -44,6 +48,7 @@ export function buildModelOptions(
         selection: {
           provider: provider.provider,
           model: model.slug,
+          ...(preservedOptions ? { options: preservedOptions } : {}),
         },
       });
     }
