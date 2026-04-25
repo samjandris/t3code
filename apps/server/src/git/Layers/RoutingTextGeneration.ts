@@ -47,6 +47,7 @@ const makeRoutingTextGeneration = Effect.gen(function* () {
     claudeAgent: yield* ClaudeTextGen,
     cursor: yield* CursorTextGen,
     opencode: yield* OpenCodeTextGen,
+    pi: yield* CodexTextGen,
   };
 
   return {

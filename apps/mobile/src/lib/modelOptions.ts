@@ -26,6 +26,7 @@ const EMPTY_MODEL_CAPABILITIES = { optionDescriptors: [] };
 function providerDisplayLabel(provider: string): string {
   if (provider === "codex") return "Codex";
   if (provider === "claudeAgent") return "Claude";
+  if (provider === "pi") return "Pi";
   return provider;
 }
 

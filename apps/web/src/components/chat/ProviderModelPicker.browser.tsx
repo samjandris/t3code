@@ -455,6 +455,7 @@ describe("ProviderModelPicker", () => {
       codex: [{ slug: "gpt-5-codex", name: "GPT-5 Codex" }],
       cursor: [],
       opencode: [],
+      pi: [],
     } as const;
     const screen = await render(
       <ProviderModelPicker
@@ -932,6 +933,58 @@ describe("ProviderModelPicker", () => {
         "claudeAgent",
         "claude-sonnet-4-6",
       );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("dispatches pi model selections with colon-containing slugs", async () => {
+    const colonModelSlug = "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0";
+    const providers: ReadonlyArray<ServerProvider> = [
+      {
+        provider: "pi",
+        displayName: "Pi",
+        enabled: true,
+        installed: true,
+        version: "1.0.0",
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: new Date().toISOString(),
+        slashCommands: [],
+        skills: [],
+        models: [
+          {
+            slug: "default",
+            name: "Default",
+            isCustom: false,
+            capabilities: createModelCapabilities({ optionDescriptors: [] }),
+          },
+          {
+            slug: colonModelSlug,
+            name: "Claude Sonnet 4.5",
+            isCustom: false,
+            capabilities: createModelCapabilities({ optionDescriptors: [] }),
+          },
+        ],
+      },
+    ];
+    const mounted = await mountPicker({
+      provider: "pi",
+      model: "default",
+      lockedProvider: "pi",
+      providers,
+    });
+
+    try {
+      await page.getByRole("button").click();
+
+      await vi.waitFor(() => {
+        expect(document.body.textContent ?? "").toContain("Claude Sonnet 4.5");
+      });
+
+      await page.getByText("Claude Sonnet 4.5").first().click();
+
+      expect(mounted.onProviderModelChange).toHaveBeenCalledWith("pi", colonModelSlug);
     } finally {
       await mounted.cleanup();
     }

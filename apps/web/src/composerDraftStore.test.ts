@@ -121,7 +121,7 @@ function resetComposerDraftStore() {
 }
 
 function modelSelection(
-  provider: "codex" | "claudeAgent" | "cursor",
+  provider: "codex" | "claudeAgent" | "cursor" | "opencode" | "pi",
   model: string,
   options?: Record<string, string | boolean | undefined>,
 ): ModelSelection {
@@ -1201,6 +1201,18 @@ describe("composerDraftStore setModelSelection", () => {
       modelSelection("codex", "gpt-5.3-codex"),
     );
   });
+
+  it("stores pi model selections in the draft", () => {
+    const store = useComposerDraftStore.getState();
+    const piModel = "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0";
+
+    store.setModelSelection(threadRef, modelSelection("pi", piModel));
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.modelSelectionByProvider.pi).toEqual(
+      modelSelection("pi", piModel),
+    );
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.activeProvider).toBe("pi");
+  });
 });
 
 describe("composerDraftStore sticky composer settings", () => {
@@ -1225,6 +1237,18 @@ describe("composerDraftStore sticky composer settings", () => {
       }),
     );
     expect(useComposerDraftStore.getState().stickyActiveProvider).toBe("codex");
+  });
+
+  it("stores a sticky pi model selection", () => {
+    const store = useComposerDraftStore.getState();
+    const piModel = "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0";
+
+    store.setStickyModelSelection(modelSelection("pi", piModel));
+
+    expect(useComposerDraftStore.getState().stickyModelSelectionByProvider.pi).toEqual(
+      modelSelection("pi", piModel),
+    );
+    expect(useComposerDraftStore.getState().stickyActiveProvider).toBe("pi");
   });
 
   it("normalizes empty sticky model options by dropping selection options", () => {
