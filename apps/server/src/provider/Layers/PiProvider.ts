@@ -21,6 +21,7 @@ import {
 } from "../providerSnapshot.ts";
 import { PiProvider } from "../Services/PiProvider.ts";
 import { ServerConfig } from "../../config.ts";
+import { makePiRpcRuntime } from "../pi/PiRpcRuntime.ts";
 
 const PROVIDER = "pi" as const;
 const PI_PRESENTATION = {
@@ -62,6 +63,27 @@ const FALLBACK_MODELS: ReadonlyArray<ServerProviderModel> = [
 function modelsFromSettings(settings: PiSettings): ReadonlyArray<ServerProviderModel> {
   return providerModelsFromSettings(
     FALLBACK_MODELS,
+    PROVIDER,
+    settings.customModels,
+    PI_REASONING_CAPABILITIES,
+  );
+}
+
+function mergeDiscoveredModels(
+  settings: PiSettings,
+  discoveredModels: ReadonlyArray<ServerProviderModel>,
+): ReadonlyArray<ServerProviderModel> {
+  const builtInModels: ServerProviderModel[] = [];
+  const seen = new Set<string>();
+  for (const model of [...FALLBACK_MODELS, ...discoveredModels]) {
+    if (seen.has(model.slug)) {
+      continue;
+    }
+    seen.add(model.slug);
+    builtInModels.push(model);
+  }
+  return providerModelsFromSettings(
+    builtInModels,
     PROVIDER,
     settings.customModels,
     PI_REASONING_CAPABILITIES,
@@ -150,6 +172,21 @@ export function parsePiModelsResponse(value: unknown): ReadonlyArray<ServerProvi
   });
 }
 
+const discoverPiModels = Effect.fn("discoverPiModels")(function* (input: {
+  readonly settings: PiSettings;
+  readonly cwd: string;
+}) {
+  const runtime = yield* makePiRpcRuntime({
+    binaryPath: input.settings.binaryPath,
+    cwd: input.cwd,
+    noSession: true,
+    ...(input.settings.configDir ? { configDir: input.settings.configDir } : {}),
+  });
+  const response = yield* runtime.getAvailableModels();
+  yield* runtime.getState().pipe(Effect.ignore);
+  return parsePiModelsResponse(response);
+});
+
 const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function* (input: {
   readonly settings: PiSettings;
   readonly cwd: string;
@@ -212,12 +249,28 @@ const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function* (inpu
     });
   }
 
+  const discoveredModelsExit = yield* discoverPiModels({
+    settings: input.settings,
+    cwd: input.cwd,
+  }).pipe(Effect.scoped, Effect.exit);
+  const discoveredModels =
+    discoveredModelsExit._tag === "Success" ? discoveredModelsExit.value : [];
+  if (discoveredModelsExit._tag === "Failure") {
+    yield* Effect.logWarning("Pi model discovery failed", {
+      cause: Cause.pretty(discoveredModelsExit.cause),
+    });
+  }
+  const models =
+    discoveredModels.length > 0
+      ? mergeDiscoveredModels(input.settings, discoveredModels)
+      : fallbackModels;
+
   return buildServerProvider({
     provider: PROVIDER,
     presentation: PI_PRESENTATION,
     enabled: true,
     checkedAt,
-    models: fallbackModels,
+    models,
     probe: {
       installed: true,
       version,

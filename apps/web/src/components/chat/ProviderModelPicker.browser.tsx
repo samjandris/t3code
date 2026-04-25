@@ -1067,6 +1067,66 @@ describe("ProviderModelPicker", () => {
     }
   });
 
+  it("shows Pi in the provider sidebar when ready", async () => {
+    const providers: ReadonlyArray<ServerProvider> = [
+      ...TEST_PROVIDERS,
+      {
+        provider: "pi",
+        displayName: "Pi",
+        enabled: true,
+        installed: true,
+        version: "1.0.0",
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: new Date().toISOString(),
+        slashCommands: [],
+        skills: [],
+        models: [
+          {
+            slug: "auto",
+            name: "Pi default",
+            isCustom: false,
+            capabilities: createModelCapabilities({ optionDescriptors: [] }),
+          },
+          {
+            slug: "anthropic/claude-sonnet-4-6",
+            name: "Claude Sonnet 4.6",
+            isCustom: false,
+            capabilities: createModelCapabilities({ optionDescriptors: [] }),
+          },
+        ],
+      },
+    ];
+
+    const mounted = await mountPicker({
+      provider: "codex",
+      model: "gpt-5-codex",
+      lockedProvider: null,
+      providers,
+    });
+
+    try {
+      await page.getByRole("button").click();
+      const piButton = document.querySelector<HTMLButtonElement>(
+        '[data-model-picker-provider="pi"]',
+      );
+      expect(piButton).toBeTruthy();
+      expect(piButton?.disabled).toBe(false);
+
+      piButton?.click();
+      await vi.waitFor(() => {
+        expect(document.body.textContent ?? "").toContain("Pi default");
+      });
+      await page.getByText("Claude Sonnet 4.6").click();
+      expect(mounted.onProviderModelChange).toHaveBeenCalledWith(
+        "pi",
+        "anthropic/claude-sonnet-4-6",
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("accepts outline trigger styling", async () => {
     const mounted = await mountPicker({
       provider: "codex",

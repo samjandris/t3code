@@ -121,7 +121,7 @@ function resetComposerDraftStore() {
 }
 
 function modelSelection(
-  provider: "codex" | "claudeAgent" | "cursor",
+  provider: ProviderKind,
   model: string,
   options?: Record<string, string | boolean | undefined>,
 ): ModelSelection {
@@ -1199,6 +1199,18 @@ describe("composerDraftStore setModelSelection", () => {
 
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.modelSelectionByProvider.codex).toEqual(
       modelSelection("codex", "gpt-5.3-codex"),
+    );
+  });
+
+  it("stores Pi selections as the active provider", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setModelSelection(threadRef, modelSelection("pi", "anthropic/claude-sonnet-4-6"));
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.activeProvider).toBe("pi");
+    expect(draft?.modelSelectionByProvider.pi).toEqual(
+      modelSelection("pi", "anthropic/claude-sonnet-4-6"),
     );
   });
 });

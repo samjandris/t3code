@@ -115,6 +115,16 @@ function parseJsonLine(line: string): unknown {
   return JSON.parse(line.endsWith("\r") ? line.slice(0, -1) : line);
 }
 
+function requestPayload(id: string, method: string, params: unknown): Record<string, unknown> {
+  if (params === undefined) {
+    return { id, type: method };
+  }
+  if (isRecord(params)) {
+    return { id, type: method, ...params };
+  }
+  return { id, type: method, data: params };
+}
+
 export const makePiRpcRuntime = (
   options: PiRpcSpawnOptions,
 ): Effect.Effect<PiRpcRuntimeShape, PiRpcRuntimeError, Scope.Scope> =>
@@ -247,7 +257,7 @@ export const makePiRpcRuntime = (
         const id = randomUUID();
         const deferred = yield* Deferred.make<unknown, PiRpcRuntimeError>();
         pending.set(id, { method, deferred });
-        const payload = params === undefined ? { id, method } : { id, method, params };
+        const payload = requestPayload(id, method, params);
         const line = `${JSON.stringify(payload)}\n`;
         yield* Effect.tryPromise({
           try: () =>

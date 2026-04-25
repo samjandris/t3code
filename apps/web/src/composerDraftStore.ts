@@ -457,6 +457,13 @@ const EMPTY_COMPOSER_DRAFT_MODEL_STATE = Object.freeze<ComposerDraftModelState>(
   activeProvider: null,
   modelSelectionByProvider: EMPTY_MODEL_SELECTION_BY_PROVIDER,
 });
+const COMPOSER_PROVIDER_KINDS = [
+  "codex",
+  "claudeAgent",
+  "cursor",
+  "opencode",
+  "pi",
+] as const satisfies ReadonlyArray<ProviderKind>;
 
 const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   prompt: "",
@@ -555,9 +562,7 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
 }
 
 function normalizeProviderKind(value: unknown): ProviderKind | null {
-  return value === "codex" || value === "claudeAgent" || value === "cursor" || value === "opencode"
-    ? value
-    : null;
+  return COMPOSER_PROVIDER_KINDS.includes(value as ProviderKind) ? (value as ProviderKind) : null;
 }
 
 /**
@@ -615,7 +620,7 @@ function normalizeProviderModelOptions(
 ): ProviderOptionSelectionsByProvider | null {
   const candidate = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
   const result: Partial<Record<ProviderKind, ReadonlyArray<ProviderOptionSelection>>> = {};
-  for (const providerKey of ["codex", "claudeAgent", "cursor", "opencode"] as const) {
+  for (const providerKey of COMPOSER_PROVIDER_KINDS) {
     const selections = coerceProviderOptionSelections(candidate?.[providerKey]);
     if (selections) {
       result[providerKey] = selections;
@@ -732,7 +737,7 @@ function legacyToModelSelectionByProvider(
 ): Partial<Record<ProviderKind, ModelSelection>> {
   const result: Partial<Record<ProviderKind, ModelSelection>> = {};
   if (modelOptions) {
-    for (const provider of ["codex", "claudeAgent", "cursor", "opencode"] as const) {
+    for (const provider of COMPOSER_PROVIDER_KINDS) {
       const options = modelOptions[provider];
       if (options && options.length > 0) {
         result[provider] = createModelSelection(
@@ -2281,7 +2286,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const base = existing ?? createEmptyThreadDraft();
             const nextMap = { ...base.modelSelectionByProvider };
-            for (const provider of ["codex", "claudeAgent", "cursor", "opencode"] as const) {
+            for (const provider of COMPOSER_PROVIDER_KINDS) {
               if (!modelOptions || !(provider in modelOptions)) continue;
               const opts = modelOptions[provider];
               const current = nextMap[provider];
