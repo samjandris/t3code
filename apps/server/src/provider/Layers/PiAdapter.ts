@@ -95,6 +95,17 @@ function stringField(
   return undefined;
 }
 
+function rawStringField(
+  record: Record<string, unknown>,
+  keys: ReadonlyArray<string>,
+): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string") return value;
+  }
+  return undefined;
+}
+
 function makeEventBase(input: {
   readonly threadId: ThreadId;
   readonly turnId?: TurnId | undefined;
@@ -196,13 +207,20 @@ function eventName(payload: unknown): string | undefined {
   return stringField(payload, ["event", "type", "name", "kind"]);
 }
 
-function textDeltaFromPayload(payload: unknown): string | undefined {
+export function textDeltaFromPiPayload(payload: unknown): string | undefined {
   if (!isRecord(payload)) return undefined;
-  const direct = stringField(payload, ["delta", "textDelta", "text", "content"]);
-  if (direct) return direct;
+  const assistantMessageEvent = payload.assistantMessageEvent;
+  if (isRecord(assistantMessageEvent)) {
+    const eventType = stringField(assistantMessageEvent, ["type"]);
+    if (eventType && !eventType.includes("text_delta")) return undefined;
+    const delta = rawStringField(assistantMessageEvent, ["delta"]);
+    if (delta !== undefined) return delta;
+  }
+  const direct = rawStringField(payload, ["delta", "textDelta", "text", "content"]);
+  if (direct !== undefined) return direct;
   const message = payload.message;
   return isRecord(message)
-    ? stringField(message, ["delta", "textDelta", "text", "content"])
+    ? rawStringField(message, ["delta", "textDelta", "text", "content"])
     : undefined;
 }
 
@@ -409,7 +427,7 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
         }
 
         if (name.includes("message") || name.includes("content")) {
-          const delta = textDeltaFromPayload(event.payload);
+          const delta = textDeltaFromPiPayload(event.payload);
           if (!delta) return;
           if (ctx.activePlanCapture) {
             const captured = appendAndCaptureProposedPlan(ctx.activePlanCapture, delta);
@@ -679,11 +697,6 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
           .pipe(Effect.mapError((cause) => mapPiError(input.threadId, "prompt", cause)));
         ctx.turns.push({ id: turnId, items: [{ input: message, images, result }] });
         ctx.session = { ...ctx.session, activeTurnId: turnId, updatedAt: nowIso() };
-        yield* offerRuntimeEvent({
-          type: "turn.completed",
-          ...makeEventBase({ threadId: input.threadId, turnId, raw: result }),
-          payload: { state: "completed" },
-        });
         return {
           threadId: input.threadId,
           turnId,

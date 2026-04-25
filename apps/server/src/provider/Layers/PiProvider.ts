@@ -69,13 +69,13 @@ function modelsFromSettings(settings: PiSettings): ReadonlyArray<ServerProviderM
   );
 }
 
-function mergeDiscoveredModels(
+export function mergePiDiscoveredModels(
   settings: PiSettings,
   discoveredModels: ReadonlyArray<ServerProviderModel>,
 ): ReadonlyArray<ServerProviderModel> {
   const builtInModels: ServerProviderModel[] = [];
   const seen = new Set<string>();
-  for (const model of [...FALLBACK_MODELS, ...discoveredModels]) {
+  for (const model of discoveredModels) {
     if (seen.has(model.slug)) {
       continue;
     }
@@ -262,7 +262,7 @@ const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function* (inpu
   }
   const models =
     discoveredModels.length > 0
-      ? mergeDiscoveredModels(input.settings, discoveredModels)
+      ? mergePiDiscoveredModels(input.settings, discoveredModels)
       : fallbackModels;
 
   return buildServerProvider({
