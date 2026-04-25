@@ -149,6 +149,13 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     serverPasswordDescription:
       "If your OpenCode server requires authentication, enter the password here. NOTE: Stored in plain text on disk",
   },
+  {
+    provider: "pi",
+    title: "Pi",
+    badgeLabel: "RPC",
+    binaryPlaceholder: "Pi binary path",
+    binaryDescription: "Path to the Pi binary",
+  },
 ] as const;
 
 const PROVIDER_STATUS_STYLES = {
@@ -566,6 +573,11 @@ export function GeneralSettingsPanel() {
         DEFAULT_UNIFIED_SETTINGS.providers.opencode.serverPassword ||
       settings.providers.opencode.customModels.length > 0,
     ),
+    pi: Boolean(
+      settings.providers.pi.binaryPath !== DEFAULT_UNIFIED_SETTINGS.providers.pi.binaryPath ||
+      settings.providers.pi.configDir !== DEFAULT_UNIFIED_SETTINGS.providers.pi.configDir ||
+      settings.providers.pi.customModels.length > 0,
+    ),
   });
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
@@ -574,6 +586,7 @@ export function GeneralSettingsPanel() {
     claudeAgent: "",
     cursor: "",
     opencode: "",
+    pi: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>

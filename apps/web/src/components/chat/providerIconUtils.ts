@@ -6,6 +6,7 @@ export const PROVIDER_ICON_BY_PROVIDER: Record<ProviderKind, Icon> = {
   codex: OpenAI,
   claudeAgent: ClaudeAI,
   opencode: OpenCodeIcon,
+  pi: OpenCodeIcon,
   cursor: CursorIcon,
 };
 

@@ -57,6 +57,29 @@ it.effect("parses turn diff input when fromTurnCount <= toTurnCount", () =>
   }),
 );
 
+it.effect("decodes Pi model selections with provider options", () =>
+  Effect.gen(function* () {
+    const parsed = yield* Schema.decodeUnknownEffect(ProjectCreateCommand)({
+      type: "project.create",
+      commandId: "cmd-pi",
+      projectId: "project-pi",
+      title: "Pi Project",
+      workspaceRoot: "/tmp/pi",
+      defaultModelSelection: {
+        provider: "pi",
+        model: "auto",
+        options: [{ id: "reasoningEffort", value: "high" }],
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.deepStrictEqual(parsed.defaultModelSelection, {
+      provider: "pi",
+      model: "auto",
+      options: [{ id: "reasoningEffort", value: "high" }],
+    });
+  }),
+);
+
 it.effect("rejects turn diff input when fromTurnCount > toTurnCount", () =>
   Effect.gen(function* () {
     const result = yield* Effect.exit(

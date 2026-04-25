@@ -16,6 +16,7 @@ import { CodexTextGenerationLive } from "./CodexTextGeneration.ts";
 import { ClaudeTextGenerationLive } from "./ClaudeTextGeneration.ts";
 import { CursorTextGenerationLive } from "./CursorTextGeneration.ts";
 import { OpenCodeTextGenerationLive } from "./OpenCodeTextGeneration.ts";
+import { PiTextGenerationLive } from "./PiTextGeneration.ts";
 
 // ---------------------------------------------------------------------------
 // Internal service tags so both concrete layers can coexist.
@@ -37,6 +38,10 @@ class OpenCodeTextGen extends Context.Service<OpenCodeTextGen, TextGenerationSha
   "t3/git/Layers/RoutingTextGeneration/OpenCodeTextGen",
 ) {}
 
+class PiTextGen extends Context.Service<PiTextGen, TextGenerationShape>()(
+  "t3/git/Layers/RoutingTextGeneration/PiTextGen",
+) {}
+
 // ---------------------------------------------------------------------------
 // Routing implementation
 // ---------------------------------------------------------------------------
@@ -47,6 +52,7 @@ const makeRoutingTextGeneration = Effect.gen(function* () {
     claudeAgent: yield* ClaudeTextGen,
     cursor: yield* CursorTextGen,
     opencode: yield* OpenCodeTextGen,
+    pi: yield* PiTextGen,
   };
 
   return {
@@ -93,6 +99,14 @@ const InternalOpenCodeLayer = Layer.effect(
   }),
 ).pipe(Layer.provide(OpenCodeTextGenerationLive));
 
+const InternalPiLayer = Layer.effect(
+  PiTextGen,
+  Effect.gen(function* () {
+    const svc = yield* TextGeneration;
+    return svc;
+  }),
+).pipe(Layer.provide(PiTextGenerationLive));
+
 export const RoutingTextGenerationLive = Layer.effect(
   TextGeneration,
   makeRoutingTextGeneration,
@@ -101,4 +115,5 @@ export const RoutingTextGenerationLive = Layer.effect(
   Layer.provide(InternalClaudeLayer),
   Layer.provide(InternalCursorLayer),
   Layer.provide(InternalOpenCodeLayer),
+  Layer.provide(InternalPiLayer),
 );
