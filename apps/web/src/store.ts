@@ -1500,9 +1500,27 @@ function applyEnvironmentOrchestrationEvent(
               left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
           )
           .slice(-MAX_THREAD_PROPOSED_PLANS);
+        const latestTurn =
+          proposedPlan.turnId !== null &&
+          thread.latestTurn?.turnId === proposedPlan.turnId &&
+          thread.latestTurn.completedAt === null
+            ? buildLatestTurn({
+                previous: thread.latestTurn,
+                turnId: proposedPlan.turnId,
+                state:
+                  thread.latestTurn.state === "interrupted" || thread.latestTurn.state === "error"
+                    ? thread.latestTurn.state
+                    : "completed",
+                requestedAt: thread.latestTurn.requestedAt,
+                startedAt: thread.latestTurn.startedAt ?? proposedPlan.createdAt,
+                completedAt: proposedPlan.updatedAt,
+                assistantMessageId: thread.latestTurn.assistantMessageId,
+              })
+            : thread.latestTurn;
         return {
           ...thread,
           proposedPlans,
+          latestTurn,
           updatedAt: event.occurredAt,
         };
       });

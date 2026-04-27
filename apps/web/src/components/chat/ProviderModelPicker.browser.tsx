@@ -1115,8 +1115,9 @@ describe("ProviderModelPicker", () => {
 
       piButton?.click();
       await vi.waitFor(() => {
-        expect(document.body.textContent ?? "").toContain("Pi default");
+        expect(document.body.textContent ?? "").toContain("Claude Sonnet 4.6");
       });
+      expect(document.body.textContent ?? "").not.toContain("Pi default");
       await page.getByText("Claude Sonnet 4.6").click();
       expect(mounted.onProviderModelChange).toHaveBeenCalledWith(
         "pi",

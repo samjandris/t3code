@@ -28,6 +28,7 @@ import {
 } from "./Schemas.ts";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
+type OrchestrationLatestTurn = NonNullable<OrchestrationThread["latestTurn"]>;
 const MAX_THREAD_MESSAGES = 2_000;
 const MAX_THREAD_CHECKPOINTS = 500;
 
@@ -489,11 +490,31 @@ export function projectEvent(
               left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
           )
           .slice(-200);
+        const latestTurn: OrchestrationThread["latestTurn"] = (() => {
+          if (
+            payload.proposedPlan.turnId === null ||
+            thread.latestTurn?.turnId !== payload.proposedPlan.turnId ||
+            thread.latestTurn.completedAt !== null
+          ) {
+            return thread.latestTurn;
+          }
+          const state: OrchestrationLatestTurn["state"] =
+            thread.latestTurn.state === "interrupted" || thread.latestTurn.state === "error"
+              ? thread.latestTurn.state
+              : "completed";
+          return {
+            ...thread.latestTurn,
+            state,
+            startedAt: thread.latestTurn.startedAt ?? payload.proposedPlan.createdAt,
+            completedAt: payload.proposedPlan.updatedAt,
+          };
+        })();
 
         return {
           ...nextBase,
           threads: updateThread(nextBase.threads, payload.threadId, {
             proposedPlans,
+            latestTurn,
             updatedAt: event.occurredAt,
           }),
         };

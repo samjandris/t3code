@@ -1462,6 +1462,20 @@ describe("ProviderRuntimeIngestion", () => {
         entry.id === "plan:thread-1:turn:turn-plan-buffer",
     );
     expect(proposedPlan?.planMarkdown).toBe("## Buffered plan\n\n- first\n- second");
+    expect(thread.session?.status).toBe("ready");
+    expect(thread.session?.activeTurnId).toBeNull();
+    expect(thread.latestTurn).toMatchObject({
+      turnId: "turn-plan-buffer",
+      state: "completed",
+      startedAt: now,
+      completedAt: now,
+    });
+    expect(
+      thread.messages.some(
+        (message: ProviderRuntimeTestMessage) =>
+          message.role === "assistant" && message.turnId === "turn-plan-buffer",
+      ),
+    ).toBe(false);
   });
 
   it("buffers assistant deltas by default until completion", async () => {

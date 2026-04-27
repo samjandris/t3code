@@ -7,6 +7,7 @@ import {
   RuntimeRequestId,
   ThreadId,
   TurnId,
+  type ToolLifecycleItemType,
   type ProviderRuntimeEvent,
   type ProviderSendTurnInput,
   type ProviderSession,
@@ -28,6 +29,7 @@ import {
 import { PiAdapter, type PiAdapterShape } from "../Services/PiAdapter.ts";
 import {
   appendAndCaptureProposedPlan,
+  captureProposedPlanFromText,
   createPlanModeCaptureState,
   wrapPiPlanModePrompt,
   type PlanModeCaptureState,
@@ -70,6 +72,7 @@ interface PiSessionContext {
   readonly runtime: PiRpcRuntimeShape;
   readonly turns: Array<PiTurnSnapshot>;
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
+  readonly completedTurnIds: Set<TurnId>;
   eventFiber: Fiber.Fiber<void, never> | undefined;
   activeTurnId: TurnId | undefined;
   activePlanCapture: PlanModeCaptureState | undefined;
@@ -224,14 +227,135 @@ export function textDeltaFromPiPayload(payload: unknown): string | undefined {
     : undefined;
 }
 
-function toolIdFromPayload(payload: unknown): string {
-  if (!isRecord(payload)) return randomUUID();
-  return stringField(payload, ["toolCallId", "tool_call_id", "id", "itemId"]) ?? randomUUID();
+export function isPiTurnCompletionPayload(payload: unknown): boolean {
+  const name = eventName(payload)?.toLowerCase() ?? "";
+  const compactName = name.replace(/[-_.\s]/g, "");
+  return name === "agent_end" || compactName === "agentend";
 }
 
-function toolTitleFromPayload(payload: unknown): string | undefined {
+function toolIdFromPayload(payload: unknown): string {
+  if (!isRecord(payload)) return randomUUID();
+  return (
+    stringField(payload, ["toolCallId", "tool_call_id", "id", "itemId"]) ??
+    (isRecord(payload.toolCall)
+      ? stringField(payload.toolCall, ["id", "toolCallId"])
+      : undefined) ??
+    randomUUID()
+  );
+}
+
+function toolNameFromPayload(payload: unknown): string | undefined {
   if (!isRecord(payload)) return undefined;
-  return stringField(payload, ["title", "name", "tool", "command"]);
+  return (
+    stringField(payload, ["toolName", "tool_name", "name", "tool", "command"]) ??
+    (isRecord(payload.toolCall)
+      ? stringField(payload.toolCall, ["toolName", "tool_name", "name", "tool"])
+      : undefined)
+  );
+}
+
+export function piToolItemType(toolName: string | undefined): ToolLifecycleItemType {
+  const normalized = (toolName ?? "").toLowerCase();
+  if (
+    normalized.includes("bash") ||
+    normalized.includes("command") ||
+    normalized.includes("shell") ||
+    normalized.includes("terminal")
+  ) {
+    return "command_execution";
+  }
+  if (
+    normalized.includes("edit") ||
+    normalized.includes("write") ||
+    normalized.includes("file") ||
+    normalized.includes("patch") ||
+    normalized.includes("replace") ||
+    normalized.includes("create") ||
+    normalized.includes("delete")
+  ) {
+    return "file_change";
+  }
+  if (normalized.includes("web")) return "web_search";
+  if (normalized.includes("mcp")) return "mcp_tool_call";
+  if (normalized.includes("image")) return "image_view";
+  if (
+    normalized.includes("task") ||
+    normalized.includes("agent") ||
+    normalized.includes("subtask")
+  ) {
+    return "collab_agent_tool_call";
+  }
+  return "dynamic_tool_call";
+}
+
+function piToolTitle(itemType: ToolLifecycleItemType, toolName: string | undefined): string {
+  switch (itemType) {
+    case "command_execution":
+      return "Command run";
+    case "file_change":
+      return "File change";
+    case "web_search":
+      return "Web search";
+    case "mcp_tool_call":
+      return "MCP tool call";
+    case "image_view":
+      return "Image view";
+    case "collab_agent_tool_call":
+      return "Subagent task";
+    default:
+      return toolName ? `Tool: ${toolName}` : "Tool call";
+  }
+}
+
+function textFromPiToolContent(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    const text = value
+      .flatMap((entry) =>
+        isRecord(entry) && typeof entry.text === "string"
+          ? [entry.text]
+          : typeof entry === "string"
+            ? [entry]
+            : [],
+      )
+      .join("");
+    return text || undefined;
+  }
+  if (isRecord(value)) {
+    if (typeof value.text === "string") return value.text;
+    if (Array.isArray(value.content)) return textFromPiToolContent(value.content);
+  }
+  return undefined;
+}
+
+function stringifyCompact(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") return value;
+  try {
+    const serialized = JSON.stringify(value);
+    if (!serialized) return undefined;
+    return serialized.length > 500 ? `${serialized.slice(0, 497)}...` : serialized;
+  } catch {
+    return undefined;
+  }
+}
+
+export function piToolDetail(payload: unknown): string | undefined {
+  if (!isRecord(payload)) return undefined;
+  const args = payload.args;
+  if (isRecord(args)) {
+    const command = stringField(args, ["command", "cmd", "script"]);
+    if (command) return command;
+    const path = stringField(args, ["path", "filePath", "file", "target"]);
+    if (path) return path;
+  }
+  const partialResult = isRecord(payload.partialResult) ? payload.partialResult : undefined;
+  const partialContent = partialResult ? textFromPiToolContent(partialResult.content) : undefined;
+  if (partialContent) return partialContent;
+  const result = isRecord(payload.result) ? payload.result : undefined;
+  const resultContent = result ? textFromPiToolContent(result.content) : undefined;
+  if (resultContent) return resultContent;
+  return stringifyCompact(args);
 }
 
 function extensionUiRequestId(payload: unknown): string | undefined {
@@ -384,6 +508,41 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
         };
       });
 
+    const completeActiveTurn = (ctx: PiSessionContext, raw: unknown) =>
+      Effect.gen(function* () {
+        const turnId = ctx.activeTurnId;
+        if (!turnId || ctx.completedTurnIds.has(turnId)) return;
+        ctx.completedTurnIds.add(turnId);
+
+        if (ctx.activePlanCapture) {
+          const captured = captureProposedPlanFromText(ctx.activePlanCapture.text);
+          if (!captured.planMarkdown && captured.visibleText.length > 0) {
+            yield* offerRuntimeEvent({
+              type: "content.delta",
+              ...makeEventBase({
+                threadId: ctx.threadId,
+                turnId,
+                raw,
+              }),
+              payload: { streamKind: "assistant_text", delta: captured.visibleText },
+            });
+          }
+          ctx.activePlanCapture = undefined;
+        }
+
+        yield* offerRuntimeEvent({
+          type: "turn.completed",
+          ...makeEventBase({
+            threadId: ctx.threadId,
+            turnId,
+            raw,
+          }),
+          payload: { state: "completed" },
+        });
+        ctx.activeTurnId = undefined;
+        ctx.session = { ...ctx.session, activeTurnId: undefined, updatedAt: nowIso() };
+      });
+
     const handlePiRuntimeEvent = (ctx: PiSessionContext, event: PiRpcEvent) =>
       Effect.gen(function* () {
         yield* logNative(
@@ -442,7 +601,7 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
                 payload: { planMarkdown: captured.planMarkdown },
               });
             }
-            if (captured.complete && captured.visibleText.length === 0) return;
+            return;
           }
           yield* offerRuntimeEvent({
             type: "content.delta",
@@ -458,10 +617,22 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
 
         if (name.includes("tool")) {
           const itemId = toolIdFromPayload(event.payload);
+          const toolName = toolNameFromPayload(event.payload);
+          const itemType = piToolItemType(toolName);
           const status =
-            name.includes("end") || name.includes("complete") ? "completed" : "inProgress";
+            isRecord(event.payload) && event.payload.isError === true
+              ? "failed"
+              : name.includes("end") || name.includes("complete")
+                ? "completed"
+                : "inProgress";
+          const detail = piToolDetail(event.payload);
           yield* offerRuntimeEvent({
-            type: status === "completed" ? "item.completed" : "item.updated",
+            type:
+              name.includes("start") || name.includes("toolcall_start")
+                ? "item.started"
+                : status === "completed" || status === "failed"
+                  ? "item.completed"
+                  : "item.updated",
             ...makeEventBase({
               threadId: ctx.threadId,
               turnId: ctx.activeTurnId,
@@ -469,29 +640,18 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
               raw: event.payload,
             }),
             payload: {
-              itemType: "dynamic_tool_call",
+              itemType,
               status,
-              ...(toolTitleFromPayload(event.payload)
-                ? { title: toolTitleFromPayload(event.payload) }
-                : {}),
+              title: piToolTitle(itemType, toolName),
+              ...(detail ? { detail } : {}),
               data: isRecord(event.payload) ? event.payload : { payload: event.payload },
             },
           });
           return;
         }
 
-        if (name.includes("agent_end") || name.includes("turn_end")) {
-          if (ctx.activeTurnId) {
-            yield* offerRuntimeEvent({
-              type: "turn.completed",
-              ...makeEventBase({
-                threadId: ctx.threadId,
-                turnId: ctx.activeTurnId,
-                raw: event.payload,
-              }),
-              payload: { state: "completed" },
-            });
-          }
+        if (isPiTurnCompletionPayload(event.payload)) {
+          yield* completeActiveTurn(ctx, event.payload);
         }
       });
 
@@ -593,6 +753,7 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
           runtime,
           turns: [],
           pendingUserInputs: new Map(),
+          completedTurnIds: new Set(),
           eventFiber: undefined,
           activeTurnId: undefined,
           activePlanCapture: undefined,
@@ -601,7 +762,7 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
 
         yield* applyModelSelection(ctx, input.modelSelection);
         const fiber = yield* Stream.runForEach(runtime.streamEvents, (event) =>
-          handlePiRuntimeEvent(ctx, event).pipe(Effect.catch((cause) => Effect.logError(cause))),
+          handlePiRuntimeEvent(ctx, event),
         ).pipe(Effect.forkIn(scope), Effect.orDie);
         ctx.eventFiber = fiber;
         sessions.set(input.threadId, ctx);
@@ -696,7 +857,6 @@ export const makePiAdapter = (opts?: PiAdapterLiveOptions) =>
           })
           .pipe(Effect.mapError((cause) => mapPiError(input.threadId, "prompt", cause)));
         ctx.turns.push({ id: turnId, items: [{ input: message, images, result }] });
-        ctx.session = { ...ctx.session, activeTurnId: turnId, updatedAt: nowIso() };
         return {
           threadId: input.threadId,
           turnId,

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { mergePiDiscoveredModels, parsePiModelsResponse } from "./PiProvider.ts";
+import {
+  mergePiDiscoveredModels,
+  parsePiModelsResponse,
+  piModelsFromSettings,
+} from "./PiProvider.ts";
 
 describe("PiProvider", () => {
   it("maps Pi RPC model records to provider models", () => {
@@ -56,6 +60,28 @@ describe("PiProvider", () => {
     );
 
     expect(models.map((model) => model.slug)).toEqual(["anthropic/claude-sonnet"]);
+  });
+
+  it("does not expose Pi's internal auto fallback when discovery is unavailable", () => {
+    const models = piModelsFromSettings({
+      enabled: true,
+      binaryPath: "pi",
+      configDir: "",
+      customModels: [],
+    });
+
+    expect(models.map((model) => model.slug)).toEqual([]);
+  });
+
+  it("keeps custom models when discovery is unavailable", () => {
+    const models = piModelsFromSettings({
+      enabled: true,
+      binaryPath: "pi",
+      configDir: "",
+      customModels: ["openrouter/custom-model"],
+    });
+
+    expect(models.map((model) => model.slug)).toEqual(["openrouter/custom-model"]);
   });
 
   it("appends custom models after discovered models", () => {

@@ -41,6 +41,7 @@ export function normalizeCustomModelSlugs(
     const normalized = normalizeModelSlug(candidate, provider);
     if (
       !normalized ||
+      isHiddenInternalModel(provider, normalized) ||
       normalized.length > MAX_CUSTOM_MODEL_LENGTH ||
       builtInModelSlugs.has(normalized) ||
       seen.has(normalized)
@@ -58,13 +59,20 @@ export function normalizeCustomModelSlugs(
   return normalizedModels;
 }
 
+function isHiddenInternalModel(provider: ProviderKind, slug: string): boolean {
+  return provider === "pi" && slug === "auto";
+}
+
 export function getAppModelOptions(
   settings: UnifiedSettings,
   providers: ReadonlyArray<ServerProvider>,
   provider: ProviderKind,
   selectedModel?: string | null,
 ): AppModelOption[] {
-  const options: AppModelOption[] = getProviderModels(providers, provider).map(
+  const providerModels = getProviderModels(providers, provider).filter(
+    (model) => !isHiddenInternalModel(provider, model.slug),
+  );
+  const options: AppModelOption[] = providerModels.map(
     ({ slug, name, shortName, subProvider, isCustom }) => ({
       slug,
       name,
@@ -76,9 +84,7 @@ export function getAppModelOptions(
   const seen = new Set(options.map((option) => option.slug));
   const trimmedSelectedModel = selectedModel?.trim().toLowerCase();
   const builtInModelSlugs = new Set(
-    getProviderModels(providers, provider)
-      .filter((model) => !model.isCustom)
-      .map((model) => model.slug),
+    providerModels.filter((model) => !model.isCustom).map((model) => model.slug),
   );
 
   const customModels = settings.providers[provider].customModels;
@@ -101,6 +107,7 @@ export function getAppModelOptions(
     options.some((option) => option.name.toLowerCase() === trimmedSelectedModel);
   if (
     normalizedSelectedModel &&
+    !isHiddenInternalModel(provider, normalizedSelectedModel) &&
     !seen.has(normalizedSelectedModel) &&
     !selectedModelMatchesExistingName
   ) {

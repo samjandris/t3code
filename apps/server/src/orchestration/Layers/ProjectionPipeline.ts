@@ -694,6 +694,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           }
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
+            latestTurnId:
+              event.type === "thread.proposed-plan-upserted" &&
+              event.payload.proposedPlan.turnId !== null &&
+              (existingRow.value.latestTurnId === null ||
+                existingRow.value.latestTurnId === event.payload.proposedPlan.turnId)
+                ? event.payload.proposedPlan.turnId
+                : existingRow.value.latestTurnId,
             updatedAt: event.occurredAt,
           });
           yield* refreshThreadShellSummary(event.payload.threadId);
@@ -709,7 +716,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           }
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
-            latestTurnId: event.payload.session.activeTurnId,
+            latestTurnId: event.payload.session.activeTurnId ?? existingRow.value.latestTurnId,
             updatedAt: event.occurredAt,
           });
           yield* refreshThreadShellSummary(event.payload.threadId);
@@ -1085,6 +1092,48 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             requestedAt: event.payload.createdAt,
             startedAt: event.payload.createdAt,
             completedAt: event.payload.streaming ? null : event.payload.updatedAt,
+            checkpointTurnCount: null,
+            checkpointRef: null,
+            checkpointStatus: null,
+            checkpointFiles: [],
+          });
+          return;
+        }
+
+        case "thread.proposed-plan-upserted": {
+          const turnId = event.payload.proposedPlan.turnId;
+          if (turnId === null) {
+            return;
+          }
+          const existingTurn = yield* projectionTurnRepository.getByTurnId({
+            threadId: event.payload.threadId,
+            turnId,
+          });
+          const completedAt = event.payload.proposedPlan.updatedAt;
+          if (Option.isSome(existingTurn)) {
+            yield* projectionTurnRepository.upsertByTurnId({
+              ...existingTurn.value,
+              state:
+                existingTurn.value.state === "interrupted" || existingTurn.value.state === "error"
+                  ? existingTurn.value.state
+                  : "completed",
+              startedAt: existingTurn.value.startedAt ?? event.payload.proposedPlan.createdAt,
+              requestedAt: existingTurn.value.requestedAt ?? event.payload.proposedPlan.createdAt,
+              completedAt: existingTurn.value.completedAt ?? completedAt,
+            });
+            return;
+          }
+          yield* projectionTurnRepository.upsertByTurnId({
+            turnId,
+            threadId: event.payload.threadId,
+            pendingMessageId: null,
+            sourceProposedPlanThreadId: null,
+            sourceProposedPlanId: null,
+            assistantMessageId: null,
+            state: "completed",
+            requestedAt: event.payload.proposedPlan.createdAt,
+            startedAt: event.payload.proposedPlan.createdAt,
+            completedAt,
             checkpointTurnCount: null,
             checkpointRef: null,
             checkpointStatus: null,

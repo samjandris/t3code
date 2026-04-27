@@ -51,16 +51,9 @@ export const PI_REASONING_CAPABILITIES: ModelCapabilities = createModelCapabilit
 
 const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({ optionDescriptors: [] });
 
-const FALLBACK_MODELS: ReadonlyArray<ServerProviderModel> = [
-  {
-    slug: "auto",
-    name: "Pi default",
-    isCustom: false,
-    capabilities: PI_REASONING_CAPABILITIES,
-  },
-];
+const FALLBACK_MODELS: ReadonlyArray<ServerProviderModel> = [];
 
-function modelsFromSettings(settings: PiSettings): ReadonlyArray<ServerProviderModel> {
+export function piModelsFromSettings(settings: PiSettings): ReadonlyArray<ServerProviderModel> {
   return providerModelsFromSettings(
     FALLBACK_MODELS,
     PROVIDER,
@@ -92,7 +85,7 @@ export function mergePiDiscoveredModels(
 
 function makePendingPiProvider(settings: PiSettings): ServerProvider {
   const checkedAt = new Date().toISOString();
-  const models = modelsFromSettings(settings);
+  const models = piModelsFromSettings(settings);
   if (!settings.enabled) {
     return buildServerProvider({
       provider: PROVIDER,
@@ -192,7 +185,7 @@ const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function* (inpu
   readonly cwd: string;
 }) {
   const checkedAt = new Date().toISOString();
-  const fallbackModels = modelsFromSettings(input.settings);
+  const fallbackModels = piModelsFromSettings(input.settings);
 
   if (!input.settings.enabled) {
     return makePendingPiProvider(input.settings);
