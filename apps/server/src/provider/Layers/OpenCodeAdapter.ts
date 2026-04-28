@@ -4,6 +4,7 @@ import {
   EventId,
   type ProviderRuntimeEvent,
   type ProviderSession,
+  type RuntimePlanStep,
   RuntimeItemId,
   RuntimeRequestId,
   ThreadId,
@@ -220,6 +221,26 @@ function mapPermissionDecision(reply: "once" | "always" | "reject"): string {
     default:
       return "decline";
   }
+}
+
+function mapOpenCodeTodoStatus(status: string | undefined): RuntimePlanStep["status"] {
+  switch (status) {
+    case "completed":
+      return "completed";
+    case "in_progress":
+      return "inProgress";
+    default:
+      return "pending";
+  }
+}
+
+function extractPlanStepsFromOpenCodeTodos(
+  todos: ReadonlyArray<{ readonly content?: string; readonly status?: string }>,
+): ReadonlyArray<RuntimePlanStep> {
+  return todos.map((todo) => ({
+    step: todo.content?.trim() || "Task",
+    status: mapOpenCodeTodoStatus(todo.status),
+  }));
 }
 
 function resolveTurnSnapshot(
@@ -967,6 +988,25 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
               }),
               type: "user-input.resolved",
               payload: { answers: {} },
+            });
+            break;
+          }
+
+          case "todo.updated": {
+            const plan = extractPlanStepsFromOpenCodeTodos(event.properties.todos);
+            if (plan.length === 0) {
+              break;
+            }
+            yield* emit({
+              ...buildEventBase({
+                threadId: context.session.threadId,
+                turnId,
+                raw: event,
+              }),
+              type: "turn.plan.updated",
+              payload: {
+                plan,
+              },
             });
             break;
           }
