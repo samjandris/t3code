@@ -26,11 +26,13 @@
   },
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/patch-expo-dev-launcher.mjs && node scripts/patch-react-native-nitro-modules.mjs && node scripts/patch-pierre-diffs-utils.mjs",
     "dev": "node scripts/dev-runner.ts dev",
     "dev:server": "node scripts/dev-runner.ts dev:server",
     "dev:web": "node scripts/dev-runner.ts dev:web",
     "dev:marketing": "turbo run dev --filter=@t3tools/marketing",
     "dev:desktop": "node scripts/dev-runner.ts dev:desktop",
+    "mobile:install:iphone": "bun --cwd apps/mobile run ios:iphone",
     "start": "turbo run start --filter=t3",
     "start:desktop": "turbo run start --filter=@t3tools/desktop",
     "start:marketing": "turbo run preview --filter=@t3tools/marketing",
@@ -72,6 +74,7 @@
     "@effect/sql-sqlite-bun": "catalog:",
     "@effect/vitest": "catalog:",
     "effect": "catalog:",
+    "lightningcss": "1.30.1",
     "vite": "^8.0.0"
   },
   "engines": {

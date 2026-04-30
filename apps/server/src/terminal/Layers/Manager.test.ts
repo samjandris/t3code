@@ -4,7 +4,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   DEFAULT_TERMINAL_ID,
+  type TerminalAttachStreamEvent,
   type TerminalEvent,
+  type TerminalMetadataStreamEvent,
   type TerminalOpenInput,
   type TerminalRestartInput,
 } from "@t3tools/contracts";
@@ -280,6 +282,33 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("TerminalManager", (
     }),
   );
 
+  it.effect("attaches to running sessions without restarting them", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+
+      yield* manager.open(openInput());
+      const scope = yield* Effect.scope;
+      const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+      const unsubscribe = yield* manager.attachStream(
+        {
+          threadId: "thread-1",
+          terminalId: DEFAULT_TERMINAL_ID,
+          cols: 100,
+          rows: 40,
+        },
+        (event) => Ref.update(attachEvents, (events) => [...events, event]),
+      );
+      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe));
+
+      const snapshot = (yield* Ref.get(attachEvents)).find((event) => event.type === "snapshot");
+      expect(snapshot).toBeDefined();
+      if (!snapshot || snapshot.type !== "snapshot") return;
+      assert.equal(snapshot.snapshot.threadId, "thread-1");
+      assert.equal(snapshot.snapshot.terminalId, DEFAULT_TERMINAL_ID);
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
   const makeDirectory = (filePath: string) =>
     Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) =>
       fs.makeDirectory(filePath, { recursive: true }),
@@ -436,6 +465,32 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("TerminalManager", (
       assert.equal(snapshot.history, "");
       assert.equal(snapshot.status, "running");
       expect(ptyAdapter.spawnInputs).toHaveLength(2);
+      yield* waitFor(Effect.map(readFileString(historyLogPath(logsDir)), (text) => text === ""));
+    }),
+  );
+
+  it.effect("restarts a running session when open is called with a different cwd", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, logsDir, baseDir } = yield* createManager();
+      const originalCwd = path.join(baseDir, "original");
+      const differentCwd = path.join(baseDir, "different");
+      yield* makeDirectory(originalCwd);
+      yield* makeDirectory(differentCwd);
+
+      yield* manager.open(openInput({ cwd: originalCwd }));
+      const firstProcess = ptyAdapter.processes[0];
+      expect(firstProcess).toBeDefined();
+      if (!firstProcess) return;
+
+      firstProcess.emitData("before reopen\n");
+      yield* waitFor(pathExists(historyLogPath(logsDir)));
+
+      const reopened = yield* manager.open(openInput({ cwd: differentCwd }));
+
+      expect(ptyAdapter.spawnInputs).toHaveLength(2);
+      assert.equal(firstProcess.killed, true);
+      assert.equal(reopened.cwd, differentCwd);
+      assert.equal(reopened.history, "");
       yield* waitFor(Effect.map(readFileString(historyLogPath(logsDir)), (text) => text === ""));
     }),
   );
@@ -778,6 +833,21 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("TerminalManager", (
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("publishes closed events when terminals are explicitly closed", () =>
+    Effect.gen(function* () {
+      const { manager, getEvents } = yield* createManager();
+      yield* manager.open(openInput({ terminalId: "default" }));
+      yield* manager.open(openInput({ terminalId: "sidecar" }));
+
+      yield* manager.close({ threadId: "thread-1" });
+
+      const closedEvents = (yield* getEvents).filter(
+        (event): event is Extract<TerminalEvent, { type: "closed" }> => event.type === "closed",
+      );
+      expect(closedEvents.map((event) => event.terminalId).sort()).toEqual(["default", "sidecar"]);
+    }),
+  );
+
   it.effect("evicts oldest inactive terminal sessions when retention limit is exceeded", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter, logsDir, getEvents } = yield* createManager(5, {
@@ -1053,6 +1123,101 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("TerminalManager", (
     }),
   );
 
+  it.effect("subscribes terminal metadata with an initial snapshot and live deltas", () =>
+    Effect.gen(function* () {
+      const { manager } = yield* createManager();
+      yield* manager.open(openInput({ threadId: "existing-thread" }));
+
+      const scope = yield* Effect.scope;
+      const metadataEvents = yield* Ref.make<ReadonlyArray<TerminalMetadataStreamEvent>>([]);
+      const unsubscribe = yield* manager.subscribeMetadata((event) =>
+        Ref.update(metadataEvents, (events) => [...events, event]),
+      );
+      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe));
+
+      const initialEvents = yield* Ref.get(metadataEvents);
+      expect(initialEvents[0]).toMatchObject({
+        type: "snapshot",
+        terminals: [
+          {
+            threadId: "existing-thread",
+            terminalId: DEFAULT_TERMINAL_ID,
+          },
+        ],
+      });
+
+      yield* manager.open(openInput({ threadId: "new-thread" }));
+
+      yield* waitFor(
+        Effect.map(Ref.get(metadataEvents), (events) =>
+          events.some(
+            (event) =>
+              event.type === "upsert" &&
+              event.terminal.threadId === "new-thread" &&
+              event.terminal.terminalId === DEFAULT_TERMINAL_ID,
+          ),
+        ),
+        "1200 millis",
+      );
+
+      yield* manager.close({ threadId: "new-thread", terminalId: DEFAULT_TERMINAL_ID });
+
+      yield* waitFor(
+        Effect.map(Ref.get(metadataEvents), (events) =>
+          events.some(
+            (event) =>
+              event.type === "remove" &&
+              event.threadId === "new-thread" &&
+              event.terminalId === DEFAULT_TERMINAL_ID,
+          ),
+        ),
+        "1200 millis",
+      );
+    }),
+  );
+
+  it.effect(
+    "streams attach snapshots followed by live events without duplicate start snapshots",
+    () =>
+      Effect.gen(function* () {
+        const { manager, ptyAdapter } = yield* createManager(5, {
+          ptyAdapter: new FakePtyAdapter("async"),
+        });
+        const scope = yield* Effect.scope;
+        const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+        const unsubscribe = yield* manager.attachStream(openInput(), (event) =>
+          Ref.update(attachEvents, (events) => [...events, event]),
+        );
+        yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe));
+
+        const process = ptyAdapter.processes[0];
+        expect(process).toBeDefined();
+        if (!process) return;
+
+        expect(yield* Ref.get(attachEvents)).toMatchObject([
+          {
+            type: "snapshot",
+            snapshot: {
+              threadId: "thread-1",
+              terminalId: DEFAULT_TERMINAL_ID,
+            },
+          },
+        ]);
+
+        process.emitData("hello from attach\n");
+
+        yield* waitFor(
+          Effect.map(Ref.get(attachEvents), (events) =>
+            events.some((event) => event.type === "output" && event.data === "hello from attach\n"),
+          ),
+          "1200 millis",
+        );
+
+        const events = yield* Ref.get(attachEvents);
+        expect(events.filter((event) => event.type === "snapshot")).toHaveLength(1);
+      }),
+  );
+
   it.effect("preserves queued PTY output ordering through exit callbacks", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter, getEvents } = yield* createManager(5, {
@@ -1082,10 +1247,26 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("TerminalManager", (
         (event) => event.type === "output" || event.type === "exited",
       );
       expect(relevant).toEqual([
-        expect.objectContaining({ type: "output", data: "first\n" }),
-        expect.objectContaining({ type: "output", data: "second\n" }),
-        expect.objectContaining({ type: "exited", exitCode: 0, exitSignal: 0 }),
+        expect.objectContaining({ type: "output", data: "first\n", sequence: 2 }),
+        expect.objectContaining({ type: "output", data: "second\n", sequence: 3 }),
+        expect.objectContaining({ type: "exited", exitCode: 0, exitSignal: 0, sequence: 4 }),
       ]);
+
+      const scope = yield* Effect.scope;
+      const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+      const unsubscribe = yield* manager.attachStream(
+        {
+          threadId: "thread-1",
+          terminalId: DEFAULT_TERMINAL_ID,
+        },
+        (event) => Ref.update(attachEvents, (events) => [...events, event]),
+      );
+      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe));
+
+      const snapshot = (yield* Ref.get(attachEvents)).find((event) => event.type === "snapshot");
+      expect(snapshot).toBeDefined();
+      if (!snapshot || snapshot.type !== "snapshot") return;
+      expect(snapshot.snapshot.sequence).toBe(4);
     }),
   );
 
