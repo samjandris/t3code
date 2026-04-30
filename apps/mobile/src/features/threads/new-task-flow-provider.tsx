@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
-  ClaudeAgentEffort,
   EnvironmentId,
   GitBranch,
   ModelSelection,
@@ -15,7 +14,11 @@ import { pipe } from "effect/Function";
 
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
-import { buildModelOptions, groupModelOptionsForMenu } from "../../lib/modelOptions";
+import {
+  buildModelOptions,
+  getModelSelectionProviderKey,
+  groupModelOptionsForMenu,
+} from "../../lib/modelOptions";
 import { groupProjectsByRepository } from "../../lib/repositoryGroups";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { useClientSettings } from "../../state/use-client-settings";
@@ -290,7 +293,8 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     modelOptions.find(
       (option) =>
         selectedModel &&
-        option.selection.provider === selectedModel.provider &&
+        getModelSelectionProviderKey(option.selection) ===
+          getModelSelectionProviderKey(selectedModel) &&
         option.selection.model === selectedModel.model,
     ) ?? null;
 

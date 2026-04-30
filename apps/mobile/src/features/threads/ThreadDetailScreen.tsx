@@ -21,6 +21,7 @@ import { AppText as Text } from "../../components/AppText";
 import type { StatusTone } from "../../components/StatusPill";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import type { MobileLayoutVariant } from "../../lib/mobileLayout";
+import { getModelSelectionProviderKey } from "../../lib/modelOptions";
 import type {
   PendingApproval,
   PendingUserInput,
@@ -195,7 +196,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const { onOpenDrawer, onRefresh } = props;
 
   const insets = useSafeAreaInsets();
-  const agentLabel = `${props.selectedThread.modelSelection.provider} agent`;
+  const agentLabel = `${getModelSelectionProviderKey(props.selectedThread.modelSelection) ?? "Agent"} agent`;
   const composerBottomInset = Math.max(insets.bottom, 12);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const composerChrome = composerExpanded ? COMPOSER_EXPANDED_CHROME : COMPOSER_COLLAPSED_CHROME;

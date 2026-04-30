@@ -1,7 +1,7 @@
 import type {
   ClientSettings,
   ModelSelection,
-  ProviderKind,
+  ProviderDriverKind,
   ProviderOptionDescriptor,
   ServerConfig as T3ServerConfig,
   ServerProvider,
@@ -14,6 +14,7 @@ export type ModelOption = {
   readonly label: string;
   readonly subtitle: string;
   readonly providerKey: string;
+  readonly providerDriver: ProviderDriverKind;
   readonly providerLabel: string;
   readonly selection: ModelSelection;
 };
@@ -37,8 +38,21 @@ export type ModelMenuAction = {
 
 const EMPTY_MODEL_CAPABILITIES = { optionDescriptors: [] };
 
-function providerDisplayLabel(provider: ProviderKind): string {
-  return PROVIDER_DISPLAY_NAMES[provider];
+function providerDisplayLabel(provider: ServerProvider): string {
+  return provider.displayName ?? PROVIDER_DISPLAY_NAMES[provider.driver] ?? provider.instanceId;
+}
+
+export function getModelSelectionProviderKey(
+  selection: ModelSelection | null | undefined,
+): string | null {
+  return selection?.instanceId ?? null;
+}
+
+export function getModelSelectionDriver(
+  config: T3ServerConfig | null | undefined,
+  selection: ModelSelection | null | undefined,
+): ProviderDriverKind | null {
+  return findServerProvider(config, getModelSelectionProviderKey(selection))?.driver ?? null;
 }
 
 export function buildModelOptions(
@@ -52,21 +66,22 @@ export function buildModelOptions(
       continue;
     }
 
-    const providerLabel = providerDisplayLabel(provider.provider);
+    const providerLabel = providerDisplayLabel(provider);
     for (const model of provider.models) {
-      const key = `${provider.provider}:${model.slug}`;
+      const key = `${provider.instanceId}:${model.slug}`;
       const preservedOptions =
-        fallbackModelSelection?.provider === provider.provider
+        fallbackModelSelection?.instanceId === provider.instanceId
           ? fallbackModelSelection.options
           : undefined;
       options.set(key, {
         key,
         label: model.name,
         subtitle: providerLabel,
-        providerKey: provider.provider,
+        providerKey: provider.instanceId,
+        providerDriver: provider.driver,
         providerLabel,
         selection: {
-          provider: provider.provider,
+          instanceId: provider.instanceId,
           model: model.slug,
           ...(preservedOptions ? { options: preservedOptions } : {}),
         },
@@ -75,15 +90,15 @@ export function buildModelOptions(
   }
 
   if (fallbackModelSelection) {
-    const key = `${fallbackModelSelection.provider}:${fallbackModelSelection.model}`;
+    const key = `${fallbackModelSelection.instanceId}:${fallbackModelSelection.model}`;
     if (!options.has(key)) {
-      const providerLabel = providerDisplayLabel(fallbackModelSelection.provider);
       options.set(key, {
         key,
         label: fallbackModelSelection.model,
-        subtitle: providerLabel,
-        providerKey: fallbackModelSelection.provider,
-        providerLabel,
+        subtitle: fallbackModelSelection.instanceId,
+        providerKey: fallbackModelSelection.instanceId,
+        providerDriver: fallbackModelSelection.instanceId as unknown as ProviderDriverKind,
+        providerLabel: fallbackModelSelection.instanceId,
         selection: fallbackModelSelection,
       });
     }
@@ -121,9 +136,13 @@ export function buildFavoriteModelGroup(
     return null;
   }
 
-  const optionsByKey = new Map(options.map((option) => [option.key, option]));
   const favoriteModels = favorites
-    .map((favorite) => optionsByKey.get(`${favorite.provider}:${favorite.model}`))
+    .map((favorite) =>
+      options.find(
+        (option) =>
+          option.providerKey === favorite.provider && option.selection.model === favorite.model,
+      ),
+    )
     .filter((option): option is ModelOption => option !== undefined);
 
   if (favoriteModels.length === 0) {
@@ -153,7 +172,7 @@ function isSelectedModel(
 ): boolean {
   return (
     !!selection &&
-    option.selection.provider === selection.provider &&
+    option.selection.instanceId === selection.instanceId &&
     option.selection.model === selection.model
   );
 }
@@ -207,7 +226,7 @@ export function findServerProvider(
   config: T3ServerConfig | null | undefined,
   provider: string | null | undefined,
 ): ServerProvider | null {
-  return config?.providers.find((entry) => entry.provider === provider) ?? null;
+  return config?.providers.find((entry) => entry.instanceId === provider) ?? null;
 }
 
 export function getModelOptionDescriptors(
@@ -218,7 +237,7 @@ export function getModelOptionDescriptors(
     return [];
   }
 
-  const provider = findServerProvider(config, selection.provider);
+  const provider = findServerProvider(config, selection.instanceId);
   const model = provider?.models.find((entry) => entry.slug === selection.model);
   return getProviderOptionDescriptors({
     caps: model?.capabilities ?? EMPTY_MODEL_CAPABILITIES,
@@ -245,7 +264,7 @@ export function setModelSelectionOptionValue(
   return {
     ...selection,
     options: nextOptions,
-  } as ModelSelection;
+  };
 }
 
 export function formatProviderOptionValue(

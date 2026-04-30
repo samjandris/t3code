@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ServerConfig } from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId, type ServerConfig } from "@t3tools/contracts";
 import { buildModelMenuActions, buildModelOptions, groupModelOptionsForMenu } from "./modelOptions";
 
 const BASE_PROVIDER = {
@@ -18,12 +18,14 @@ const CONFIG = {
   providers: [
     {
       ...BASE_PROVIDER,
-      provider: "cursor" as const,
+      instanceId: ProviderInstanceId.make("cursor"),
+      driver: ProviderDriverKind.make("cursor"),
       models: [{ slug: "composer-2", name: "Composer 2", isCustom: false, capabilities: null }],
     },
     {
       ...BASE_PROVIDER,
-      provider: "opencode" as const,
+      instanceId: ProviderInstanceId.make("opencode"),
+      driver: ProviderDriverKind.make("opencode"),
       models: [
         {
           slug: "github-copilot/claude-sonnet-4-6",
@@ -35,7 +37,8 @@ const CONFIG = {
     },
     {
       ...BASE_PROVIDER,
-      provider: "codex" as const,
+      instanceId: ProviderInstanceId.make("codex"),
+      driver: ProviderDriverKind.make("codex"),
       models: [{ slug: "gpt-5.4", name: "GPT-5.4", isCustom: false, capabilities: null }],
     },
   ],
@@ -53,8 +56,11 @@ describe("mobile model options", () => {
   it("adds favorites as the first menu section with provider subtitles", () => {
     const options = buildModelOptions(CONFIG, null);
     const groups = groupModelOptionsForMenu(options, [
-      { provider: "opencode", model: "github-copilot/claude-sonnet-4-6" },
-      { provider: "cursor", model: "composer-2" },
+      {
+        provider: ProviderInstanceId.make("opencode"),
+        model: "github-copilot/claude-sonnet-4-6",
+      },
+      { provider: ProviderInstanceId.make("cursor"), model: "composer-2" },
     ]);
     const actions = buildModelMenuActions(groups, null);
 

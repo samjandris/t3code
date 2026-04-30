@@ -3378,7 +3378,7 @@ export default function ChatView(props: ChatViewProps) {
               resolvedTheme={resolvedTheme}
               settings={settings}
               keybindings={keybindings}
-              terminalOpen={Boolean(terminalState.terminalOpen)}
+              terminalOpen={Boolean(terminalUiState.terminalOpen)}
               gitCwd={gitCwd}
               promptRef={promptRef}
               composerImagesRef={composerImagesRef}

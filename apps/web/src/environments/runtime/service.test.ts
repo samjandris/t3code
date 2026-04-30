@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  shouldApplyProjectionEvent,
-  shouldApplyProjectionSnapshot,
-} from "./service";
+import { shouldApplyProjectionEvent, shouldApplyProjectionSnapshot } from "./service";
 
 describe("shouldApplyProjectionSnapshot", () => {
   it("accepts the first snapshot for an environment", () => {

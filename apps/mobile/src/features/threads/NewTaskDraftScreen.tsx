@@ -8,7 +8,11 @@ import Animated, { useAnimatedKeyboard, useAnimatedStyle } from "react-native-re
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../lib/useThemeColor";
 
-import { EnvironmentId, type ModelSelection, type ProviderOptionSelection } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type ModelSelection,
+  type ProviderOptionSelection,
+} from "@t3tools/contracts";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentValue,
@@ -25,6 +29,8 @@ import {
   findServerProvider,
   formatProviderOptionValue,
   getModelOptionDescriptors,
+  getModelSelectionDriver,
+  getModelSelectionProviderKey,
 } from "../../lib/modelOptions";
 import { buildThreadRoutePath } from "../../lib/routes";
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
@@ -67,8 +73,9 @@ export function NewTaskDraftScreen(props: {
     : null;
   const selectedProviderStatus = findServerProvider(
     selectedServerConfig,
-    flow.selectedModel?.provider,
+    getModelSelectionProviderKey(flow.selectedModel),
   );
+  const selectedProviderDriver = getModelSelectionDriver(selectedServerConfig, flow.selectedModel);
   const selectedModelWithOptions = flow.selectedModel
     ? withModelOptions(flow.selectedModel, flow.modelOptionSelections)
     : null;
@@ -489,9 +496,7 @@ export function NewTaskDraftScreen(props: {
             onPressAction={({ nativeEvent }) => handleModelMenuAction(nativeEvent.event)}
             themeVariant={isDarkMode ? "dark" : "light"}
           >
-            <ControlPill
-              iconNode={<ProviderIcon provider={flow.selectedModel?.provider} size={16} />}
-            />
+            <ControlPill iconNode={<ProviderIcon provider={selectedProviderDriver} size={16} />} />
           </MenuView>
           <MenuView
             actions={optionsMenuActions}

@@ -40,6 +40,8 @@ import {
   findServerProvider,
   formatProviderOptionValue,
   getModelOptionDescriptors,
+  getModelSelectionDriver,
+  getModelSelectionProviderKey,
   groupModelOptionsForMenu,
   setModelSelectionOptionValue,
 } from "../../lib/modelOptions";
@@ -171,7 +173,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.queueCount > 0;
 
   const sendLabel = props.activeThreadBusy || props.queueCount > 0 ? "Queue" : "Send";
-  const modelProvider = props.selectedThread.modelSelection?.provider ?? null;
+  const modelProvider = getModelSelectionDriver(
+    props.serverConfig,
+    props.selectedThread.modelSelection,
+  );
   const currentModelSelection = props.selectedThread.modelSelection;
   const currentInteractionMode = props.selectedThread.interactionMode ?? "default";
 
@@ -253,8 +258,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   // ── Build menu items ─────────────────────────────────────
   const selectedProviderStatus = useMemo(() => {
-    return findServerProvider(props.serverConfig, props.selectedThread.modelSelection.provider);
-  }, [props.serverConfig, props.selectedThread.modelSelection.provider]);
+    return findServerProvider(
+      props.serverConfig,
+      getModelSelectionProviderKey(props.selectedThread.modelSelection),
+    );
+  }, [props.serverConfig, props.selectedThread.modelSelection]);
 
   const composerMenuItems: ComposerCommandItem[] = useMemo(() => {
     if (!composerTrigger) return [];
@@ -453,9 +461,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const providerGroups = useMemo(() => {
     const lockedProvider =
       props.selectedThread.session?.providerName ??
-      (props.selectedThread.messages.length > 0 ? currentModelSelection.provider : null);
+      (props.selectedThread.messages.length > 0
+        ? getModelSelectionDriver(props.serverConfig, currentModelSelection)
+        : null);
     const options = buildModelOptions(props.serverConfig, currentModelSelection).filter(
-      (option) => lockedProvider === null || option.providerKey === lockedProvider,
+      (option) => lockedProvider === null || option.providerDriver === lockedProvider,
     );
     return groupModelOptionsForMenu(options, clientSettings.favorites);
   }, [
@@ -538,9 +548,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     const modelKey = event.slice("model:".length);
     const lockedProvider =
       props.selectedThread.session?.providerName ??
-      (props.selectedThread.messages.length > 0 ? currentModelSelection.provider : null);
+      (props.selectedThread.messages.length > 0
+        ? getModelSelectionDriver(props.serverConfig, currentModelSelection)
+        : null);
     const options = buildModelOptions(props.serverConfig, currentModelSelection).filter(
-      (option) => lockedProvider === null || option.providerKey === lockedProvider,
+      (option) => lockedProvider === null || option.providerDriver === lockedProvider,
     );
     const option = options.find((o) => o.key === modelKey);
     if (option) {
