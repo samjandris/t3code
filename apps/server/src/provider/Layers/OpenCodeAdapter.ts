@@ -5,6 +5,7 @@ import {
   ProviderInstanceId,
   type ProviderRuntimeEvent,
   type ProviderSession,
+  type RuntimePlanStep,
   RuntimeItemId,
   RuntimeRequestId,
   ThreadId,
@@ -34,6 +35,10 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
+import {
+  OPENCODE_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
+  OPENCODE_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
+} from "../OpencodeDeveloperInstructions.ts";
 import { type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import {
   buildOpenCodePermissionRules,
@@ -51,6 +56,9 @@ import {
 import * as Option from "effect/Option";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
+const PROPOSED_PLAN_BLOCK_REGEX = /<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/i;
+const PROPOSED_PLAN_OPEN_TAG = "<proposed_plan>";
+const PROPOSED_PLAN_CLOSE_TAG = "</proposed_plan>";
 
 interface OpenCodeTurnSnapshot {
   readonly id: TurnId;
@@ -75,10 +83,11 @@ interface OpenCodeSessionContext {
   readonly messageRoleById: Map<string, "user" | "assistant">;
   readonly partById: Map<string, Part>;
   readonly emittedTextByPartId: Map<string, string>;
+  readonly emittedProposedPlanLengthByPartId: Map<string, number>;
   readonly completedAssistantPartIds: Set<string>;
+  readonly capturedProposedPlanKeys: Set<string>;
   readonly turns: Array<OpenCodeTurnSnapshot>;
   activeTurnId: TurnId | undefined;
-  activeAgent: string | undefined;
   activeVariant: string | undefined;
   /**
    * One-shot guard flipped by `stopOpenCodeContext` / `emitUnexpectedExit`.
@@ -228,6 +237,26 @@ function mapPermissionDecision(reply: "once" | "always" | "reject"): string {
   }
 }
 
+function mapOpenCodeTodoStatus(status: string | undefined): RuntimePlanStep["status"] {
+  switch (status) {
+    case "completed":
+      return "completed";
+    case "in_progress":
+      return "inProgress";
+    default:
+      return "pending";
+  }
+}
+
+function extractPlanStepsFromOpenCodeTodos(
+  todos: ReadonlyArray<{ readonly content?: string; readonly status?: string }>,
+): ReadonlyArray<RuntimePlanStep> {
+  return todos.map((todo) => ({
+    step: todo.content?.trim() || "Task",
+    status: mapOpenCodeTodoStatus(todo.status),
+  }));
+}
+
 function resolveTurnSnapshot(
   context: OpenCodeSessionContext,
   turnId: TurnId,
@@ -345,13 +374,18 @@ export function appendOpenCodeAssistantTextDelta(
   };
 }
 
-const isoFromEpochMs = (value: number) =>
-  DateTime.make(value).pipe(
+function isoFromEpochMs(value: number | undefined): string | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+
+  return DateTime.make(value).pipe(
     Option.match({
       onNone: () => undefined,
       onSome: DateTime.formatIso,
     }),
   );
+}
 
 function messageRoleForPart(
   context: OpenCodeSessionContext,
@@ -448,6 +482,101 @@ const stopOpenCodeContext = Effect.fn("stopOpenCodeContext")(function* (
   yield* Scope.close(context.sessionScope, Exit.void);
   return true;
 });
+
+function resolveSystemInstructions(interactionMode: "default" | "plan"): string {
+  return interactionMode === "plan"
+    ? OPENCODE_PLAN_MODE_DEVELOPER_INSTRUCTIONS
+    : OPENCODE_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS;
+}
+
+function projectStreamingProposedPlanContent(text: string | undefined): {
+  visibleText: string | undefined;
+  planText: string | undefined;
+} {
+  if (!text) {
+    return {
+      visibleText: undefined,
+      planText: undefined,
+    };
+  }
+
+  let visibleText = "";
+  let planText = "";
+  let outsidePlan = true;
+  let openTagBuffer = "";
+  let closeTagBuffer = "";
+
+  for (let index = 0; index < text.length; ) {
+    const char = text[index]!;
+    const normalizedChar = char.toLowerCase();
+
+    if (outsidePlan) {
+      const expectedChar = PROPOSED_PLAN_OPEN_TAG[openTagBuffer.length];
+      if (expectedChar && normalizedChar === expectedChar) {
+        openTagBuffer += char;
+        index += 1;
+        if (openTagBuffer.length === PROPOSED_PLAN_OPEN_TAG.length) {
+          openTagBuffer = "";
+          outsidePlan = false;
+        }
+        continue;
+      }
+
+      if (openTagBuffer.length > 0) {
+        visibleText += openTagBuffer;
+        openTagBuffer = "";
+        continue;
+      }
+
+      visibleText += char;
+      index += 1;
+      continue;
+    }
+
+    const expectedChar = PROPOSED_PLAN_CLOSE_TAG[closeTagBuffer.length];
+    if (expectedChar && normalizedChar === expectedChar) {
+      closeTagBuffer += char;
+      index += 1;
+      if (closeTagBuffer.length === PROPOSED_PLAN_CLOSE_TAG.length) {
+        closeTagBuffer = "";
+        outsidePlan = true;
+      }
+      continue;
+    }
+
+    if (closeTagBuffer.length > 0) {
+      planText += closeTagBuffer;
+      closeTagBuffer = "";
+      continue;
+    }
+
+    planText += char;
+    index += 1;
+  }
+
+  return {
+    visibleText,
+    planText: planText.length > 0 ? planText : undefined,
+  };
+}
+
+function extractProposedPlanMarkdown(text: string | undefined): string | undefined {
+  const match = text ? PROPOSED_PLAN_BLOCK_REGEX.exec(text) : null;
+  const planMarkdown = match?.[1]?.trim();
+  return planMarkdown && planMarkdown.length > 0 ? planMarkdown : undefined;
+}
+
+function extractStreamingProposedPlanText(text: string | undefined): string | undefined {
+  return projectStreamingProposedPlanContent(text).planText;
+}
+
+function stripProposedPlanBlockFromVisibleText(text: string | undefined): string | undefined {
+  return projectStreamingProposedPlanContent(text).visibleText;
+}
+
+function proposedPlanCaptureKey(input: { readonly partId: string; readonly planMarkdown: string }) {
+  return `part:${input.partId}:plan:${input.planMarkdown}`;
+}
 
 export function makeOpenCodeAdapter(
   openCodeSettings: OpenCodeSettings,
@@ -565,28 +694,22 @@ export function makeOpenCodeAdapter(
       yield* Scope.close(context.sessionScope, Exit.void);
     });
 
-    /** Emit content.delta and item.completed events for an assistant text part. */
     const emitAssistantTextDelta = Effect.fn("emitAssistantTextDelta")(function* (
       context: OpenCodeSessionContext,
       part: Part,
       turnId: TurnId | undefined,
       raw: unknown,
     ) {
-      const text = textFromPart(part);
-      if (text === undefined) {
+      const rawText = textFromPart(part);
+      if (rawText === undefined) {
         return;
       }
+
+      const text =
+        part.type === "text" ? (stripProposedPlanBlockFromVisibleText(rawText) ?? "") : rawText;
       const previousText = context.emittedTextByPartId.get(part.id);
       const { latestText, deltaToEmit } = mergeOpenCodeAssistantText(previousText, text);
       context.emittedTextByPartId.set(part.id, latestText);
-      if (latestText !== text) {
-        context.partById.set(
-          part.id,
-          (part.type === "text" || part.type === "reasoning"
-            ? { ...part, text: latestText }
-            : part) satisfies Part,
-        );
-      }
       if (deltaToEmit.length > 0) {
         yield* emit({
           ...(yield* buildEventBase({
@@ -607,11 +730,53 @@ export function makeOpenCodeAdapter(
         });
       }
 
+      if (part.type === "text") {
+        const planText = extractStreamingProposedPlanText(rawText);
+        if (planText) {
+          const previousLength = context.emittedProposedPlanLengthByPartId.get(part.id) ?? 0;
+          if (planText.length > previousLength) {
+            context.emittedProposedPlanLengthByPartId.set(part.id, planText.length);
+            yield* emit({
+              ...(yield* buildEventBase({
+                threadId: context.session.threadId,
+                turnId,
+                itemId: part.id,
+                createdAt: isoFromEpochMs(part.time?.start),
+                raw,
+              })),
+              type: "turn.proposed.delta",
+              payload: {
+                delta: planText.slice(previousLength),
+              },
+            });
+          }
+        }
+      }
+
       if (
         part.type === "text" &&
         part.time?.end !== undefined &&
         !context.completedAssistantPartIds.has(part.id)
       ) {
+        const planMarkdown = extractProposedPlanMarkdown(rawText);
+        if (planMarkdown) {
+          const captureKey = proposedPlanCaptureKey({ partId: part.id, planMarkdown });
+          if (!context.capturedProposedPlanKeys.has(captureKey)) {
+            context.capturedProposedPlanKeys.add(captureKey);
+            yield* emit({
+              ...(yield* buildEventBase({
+                threadId: context.session.threadId,
+                turnId,
+                itemId: part.id,
+                createdAt: isoFromEpochMs(part.time.end),
+                raw,
+              })),
+              type: "turn.proposed.completed",
+              payload: { planMarkdown },
+            });
+          }
+        }
+
         context.completedAssistantPartIds.add(part.id);
         yield* emit({
           ...(yield* buildEventBase({
@@ -683,39 +848,20 @@ export function makeOpenCodeAdapter(
           if (role !== "assistant") {
             break;
           }
-          const streamKind = resolveTextStreamKind(existingPart);
           const delta = event.properties.delta;
           if (delta.length === 0) {
             break;
           }
-          const previousText =
-            context.emittedTextByPartId.get(event.properties.partID) ??
-            textFromPart(existingPart) ??
-            "";
-          const { nextText, deltaToEmit } = appendOpenCodeAssistantTextDelta(previousText, delta);
-          if (deltaToEmit.length === 0) {
+          if (existingPart.type !== "text" && existingPart.type !== "reasoning") {
             break;
           }
-          context.emittedTextByPartId.set(event.properties.partID, nextText);
-          if (existingPart.type === "text" || existingPart.type === "reasoning") {
-            context.partById.set(event.properties.partID, {
-              ...existingPart,
-              text: nextText,
-            });
-          }
-          yield* emit({
-            ...(yield* buildEventBase({
-              threadId: context.session.threadId,
-              turnId,
-              itemId: event.properties.partID,
-              raw: event,
-            })),
-            type: "content.delta",
-            payload: {
-              streamKind,
-              delta: deltaToEmit,
-            },
-          });
+
+          const nextPart = {
+            ...existingPart,
+            text: existingPart.text + delta,
+          };
+          context.partById.set(event.properties.partID, nextPart);
+          yield* emitAssistantTextDelta(context, nextPart, turnId, event);
           break;
         }
 
@@ -859,6 +1005,25 @@ export function makeOpenCodeAdapter(
             })),
             type: "user-input.resolved",
             payload: { answers: {} },
+          });
+          break;
+        }
+
+        case "todo.updated": {
+          const plan = extractPlanStepsFromOpenCodeTodos(event.properties.todos);
+          if (plan.length === 0) {
+            break;
+          }
+          yield* emit({
+            ...(yield* buildEventBase({
+              threadId: context.session.threadId,
+              turnId,
+              raw: event,
+            })),
+            type: "turn.plan.updated",
+            payload: {
+              plan,
+            },
           });
           break;
         }
@@ -1109,11 +1274,12 @@ export function makeOpenCodeAdapter(
           pendingQuestions: new Map(),
           partById: new Map(),
           emittedTextByPartId: new Map(),
+          emittedProposedPlanLengthByPartId: new Map(),
           messageRoleById: new Map(),
           completedAssistantPartIds: new Set(),
+          capturedProposedPlanKeys: new Set(),
           turns: [],
           activeTurnId: undefined,
-          activeAgent: undefined,
           activeVariant: undefined,
           stopped: yield* Ref.make(false),
           sessionScope: started.sessionScope,
@@ -1183,9 +1349,12 @@ export function makeOpenCodeAdapter(
 
       const agent = getModelSelectionStringOptionValue(modelSelection, "agent");
       const variant = getModelSelectionStringOptionValue(modelSelection, "variant");
+      const interactionMode = input.interactionMode ?? "default";
+      const system = resolveSystemInstructions(interactionMode);
 
+      context.emittedProposedPlanLengthByPartId.clear();
+      context.capturedProposedPlanKeys.clear();
       context.activeTurnId = turnId;
-      context.activeAgent = agent ?? (input.interactionMode === "plan" ? "plan" : undefined);
       context.activeVariant = variant;
       yield* updateProviderSession(
         context,
@@ -1210,8 +1379,9 @@ export function makeOpenCodeAdapter(
         context.client.session.promptAsync({
           sessionID: context.openCodeSessionId,
           model: parsedModel,
-          ...(context.activeAgent ? { agent: context.activeAgent } : {}),
+          ...(agent ? { agent } : {}),
           ...(context.activeVariant ? { variant: context.activeVariant } : {}),
+          system,
           parts: [...(text ? [{ type: "text" as const, text }] : []), ...fileParts],
         }),
       ).pipe(
@@ -1223,7 +1393,6 @@ export function makeOpenCodeAdapter(
         Effect.tapError((requestError) =>
           Effect.gen(function* () {
             context.activeTurnId = undefined;
-            context.activeAgent = undefined;
             context.activeVariant = undefined;
             yield* updateProviderSession(
               context,
