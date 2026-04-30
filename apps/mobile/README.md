@@ -36,6 +36,18 @@ Build and run the local iOS preview app:
 bun run ios:preview
 ```
 
+Install a standalone preview build to a connected iPhone without Metro:
+
+```bash
+bun run ios:iphone
+```
+
+From the repo root, use:
+
+```bash
+bun run mobile:install:iphone
+```
+
 Force the review diff highlighter engine:
 
 ```bash

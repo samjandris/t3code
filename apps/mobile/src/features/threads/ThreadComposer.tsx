@@ -35,11 +35,12 @@ import { ControlPill } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import {
+  buildModelMenuActions,
   buildModelOptions,
   findServerProvider,
   formatProviderOptionValue,
   getModelOptionDescriptors,
-  groupByProvider,
+  groupModelOptionsForMenu,
   setModelSelectionOptionValue,
 } from "../../lib/modelOptions";
 import type { RemoteClientConnectionState } from "../../lib/connection";
@@ -50,6 +51,7 @@ import {
   scoreQueryMatch,
 } from "@t3tools/shared/searchRanking";
 import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
+import { useClientSettings } from "../../state/use-client-settings";
 import { getEnvironmentClient } from "../../state/use-remote-environment-registry";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
 
@@ -135,6 +137,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const placeholderColor = isDarkMode ? "#a1a1aa" : themePlaceholderColor;
   const foregroundColor = useThemeColor("--color-foreground");
   const inputRef = useRef<RNTextInput>(null);
+  const clientSettings = useClientSettings();
   const [isFocused, setIsFocused] = useState(false);
   const wasExpandedBeforePreviewRef = useRef(false);
   const { onExpandedChange } = props;
@@ -454,8 +457,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     const options = buildModelOptions(props.serverConfig, currentModelSelection).filter(
       (option) => lockedProvider === null || option.providerKey === lockedProvider,
     );
-    return groupByProvider(options);
+    return groupModelOptionsForMenu(options, clientSettings.favorites);
   }, [
+    clientSettings.favorites,
     props.serverConfig,
     currentModelSelection,
     props.selectedThread.messages.length,
@@ -463,25 +467,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   ]);
 
   const modelMenuActions = useMemo(
-    () =>
-      providerGroups.map((group) => ({
-        id: `provider:${group.providerKey}`,
-        title: group.providerLabel,
-        subtitle: group.models.find(
-          (model) =>
-            model.selection.provider === currentModelSelection.provider &&
-            model.selection.model === currentModelSelection.model,
-        )?.label,
-        subactions: group.models.map((option) => ({
-          id: `model:${option.key}`,
-          title: option.label,
-          state:
-            option.selection.provider === currentModelSelection.provider &&
-            option.selection.model === currentModelSelection.model
-              ? ("on" as const)
-              : undefined,
-        })),
-      })),
+    () => buildModelMenuActions(providerGroups, currentModelSelection),
     [providerGroups, currentModelSelection],
   );
 

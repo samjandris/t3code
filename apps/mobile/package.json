@@ -19,6 +19,7 @@
     "eas:android:prod": "eas build --profile production -p android",
     "ios": "EXPO_NO_GIT_STATUS=1 expo prebuild --clean --platform ios && expo run:ios",
     "ios:dev": "APP_VARIANT=development EXPO_NO_GIT_STATUS=1 expo prebuild --clean --platform ios && expo run:ios",
+    "ios:iphone": "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=preview EXPO_NO_GIT_STATUS=1 expo prebuild --platform ios && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 APP_VARIANT=preview EXPO_NO_GIT_STATUS=1 expo run:ios --device --configuration Release --no-bundler",
     "ios:preview": "APP_VARIANT=preview EXPO_NO_GIT_STATUS=1 expo prebuild --clean --platform ios && expo run:ios",
     "ios:prod": "APP_VARIANT=production EXPO_NO_GIT_STATUS=1 expo prebuild --clean --platform ios && expo run:ios",
     "eas:ios:dev": "eas build --profile development -p ios",
@@ -31,7 +32,7 @@
     "config:preview": "APP_VARIANT=preview expo config",
     "config:prod": "APP_VARIANT=production expo config",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun --bun tsc --noEmit"
   },
   "dependencies": {
     "@callstack/liquid-glass": "^0.7.1",

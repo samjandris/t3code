@@ -1,11 +1,18 @@
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
+import * as Schema from "effect/Schema";
 import * as SecureStore from "expo-secure-store";
 
+import {
+  ClientSettingsSchema,
+  DEFAULT_CLIENT_SETTINGS,
+  type ClientSettings,
+} from "@t3tools/contracts";
 import type { SavedRemoteConnection } from "./connection";
 
 const CONNECTIONS_KEY = "t3code.connections";
 const PREFERENCES_KEY = "t3code.preferences";
+const CLIENT_SETTINGS_KEY = "t3code:client-settings:v1";
 
 export interface MobilePreferences {
   readonly terminalFontSize?: number;
@@ -90,4 +97,22 @@ export async function savePreferencesPatch(
   };
   await writeStorageItem(PREFERENCES_KEY, JSON.stringify(next));
   return next;
+}
+
+export async function loadClientSettings(): Promise<ClientSettings> {
+  const raw = await readStorageItem(CLIENT_SETTINGS_KEY);
+  if (!raw?.trim()) {
+    return DEFAULT_CLIENT_SETTINGS;
+  }
+
+  try {
+    return Schema.decodeUnknownSync(ClientSettingsSchema)(JSON.parse(raw));
+  } catch {
+    return DEFAULT_CLIENT_SETTINGS;
+  }
+}
+
+export async function saveClientSettings(settings: ClientSettings): Promise<void> {
+  const encoded = Schema.encodeSync(ClientSettingsSchema)(settings);
+  await writeStorageItem(CLIENT_SETTINGS_KEY, JSON.stringify(encoded));
 }

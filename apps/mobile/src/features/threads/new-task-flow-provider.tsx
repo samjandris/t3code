@@ -15,9 +15,10 @@ import { pipe } from "effect/Function";
 
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import { buildModelOptions, groupModelOptionsForMenu } from "../../lib/modelOptions";
 import { groupProjectsByRepository } from "../../lib/repositoryGroups";
 import { scopedProjectKey } from "../../lib/scopedEntities";
+import { useClientSettings } from "../../state/use-client-settings";
 import { gitBranchManager, useGitBranches } from "../../state/use-git-branches";
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
 import {
@@ -114,6 +115,7 @@ const NewTaskFlowContext = React.createContext<NewTaskFlowContextValue | null>(n
 export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const { projects, serverConfigByEnvironmentId, threads } = useRemoteCatalog();
   const { savedConnectionsById } = useRemoteEnvironmentState();
+  const clientSettings = useClientSettings();
 
   const repositoryGroups = useMemo(
     () => groupProjectsByRepository({ projects, threads }),
@@ -292,7 +294,10 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         option.selection.model === selectedModel.model,
     ) ?? null;
 
-  const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
+  const providerGroups = useMemo(
+    () => groupModelOptionsForMenu(modelOptions, clientSettings.favorites),
+    [clientSettings.favorites, modelOptions],
+  );
   const branchTarget = useMemo(
     () => ({
       environmentId: selectedProject?.environmentId ?? null,

@@ -21,6 +21,7 @@ import { ProviderIcon } from "../../components/ProviderIcon";
 
 import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/composerImages";
 import {
+  buildModelMenuActions,
   findServerProvider,
   formatProviderOptionValue,
   getModelOptionDescriptors,
@@ -129,27 +130,7 @@ export function NewTaskDraftScreen(props: {
   );
 
   const modelMenuActions = useMemo(
-    () =>
-      flow.providerGroups.map((group) => ({
-        id: `provider:${group.providerKey}`,
-        title: group.providerLabel,
-        subtitle: group.models.find(
-          (model) =>
-            flow.selectedModel &&
-            model.selection.provider === flow.selectedModel.provider &&
-            model.selection.model === flow.selectedModel.model,
-        )?.label,
-        subactions: group.models.map((option) => ({
-          id: `model:${option.key}`,
-          title: option.label,
-          state:
-            flow.selectedModel &&
-            option.selection.provider === flow.selectedModel.provider &&
-            option.selection.model === flow.selectedModel.model
-              ? ("on" as const)
-              : undefined,
-        })),
-      })),
+    () => buildModelMenuActions(flow.providerGroups, flow.selectedModel),
     [flow.providerGroups, flow.selectedModel],
   );
 

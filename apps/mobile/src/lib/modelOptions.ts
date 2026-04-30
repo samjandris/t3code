@@ -1,9 +1,12 @@
 import type {
+  ClientSettings,
   ModelSelection,
+  ProviderKind,
   ProviderOptionDescriptor,
   ServerConfig as T3ServerConfig,
   ServerProvider,
 } from "@t3tools/contracts";
+import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
 import { getProviderOptionCurrentValue, getProviderOptionDescriptors } from "@t3tools/shared/model";
 
 export type ModelOption = {
@@ -19,14 +22,23 @@ export type ProviderGroup = {
   readonly providerKey: string;
   readonly providerLabel: string;
   readonly models: ReadonlyArray<ModelOption>;
+  readonly isFavorites?: boolean;
+};
+
+export type ModelMenuAction = {
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly image?: string;
+  readonly state?: "on";
+  readonly displayInline?: boolean;
+  readonly subactions?: ModelMenuAction[];
 };
 
 const EMPTY_MODEL_CAPABILITIES = { optionDescriptors: [] };
 
-function providerDisplayLabel(provider: string): string {
-  if (provider === "codex") return "Codex";
-  if (provider === "claudeAgent") return "Claude";
-  return provider;
+function providerDisplayLabel(provider: ProviderKind): string {
+  return PROVIDER_DISPLAY_NAMES[provider];
 }
 
 export function buildModelOptions(
@@ -99,6 +111,96 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     providerLabel: group.providerLabel,
     models: group.models,
   }));
+}
+
+export function buildFavoriteModelGroup(
+  options: ReadonlyArray<ModelOption>,
+  favorites: ClientSettings["favorites"],
+): ProviderGroup | null {
+  if (favorites.length === 0) {
+    return null;
+  }
+
+  const optionsByKey = new Map(options.map((option) => [option.key, option]));
+  const favoriteModels = favorites
+    .map((favorite) => optionsByKey.get(`${favorite.provider}:${favorite.model}`))
+    .filter((option): option is ModelOption => option !== undefined);
+
+  if (favoriteModels.length === 0) {
+    return null;
+  }
+
+  return {
+    providerKey: "favorites",
+    providerLabel: "Favorites",
+    models: favoriteModels,
+    isFavorites: true,
+  };
+}
+
+export function groupModelOptionsForMenu(
+  options: ReadonlyArray<ModelOption>,
+  favorites: ClientSettings["favorites"],
+): ReadonlyArray<ProviderGroup> {
+  const favoriteGroup = buildFavoriteModelGroup(options, favorites);
+  const providerGroups = groupByProvider(options);
+  return favoriteGroup ? [favoriteGroup, ...providerGroups] : providerGroups;
+}
+
+function isSelectedModel(
+  option: ModelOption,
+  selection: ModelSelection | null | undefined,
+): boolean {
+  return (
+    !!selection &&
+    option.selection.provider === selection.provider &&
+    option.selection.model === selection.model
+  );
+}
+
+function providerGroupToMenuAction(
+  group: ProviderGroup,
+  selectedModel: ModelSelection | null | undefined,
+): ModelMenuAction {
+  return {
+    id: `provider:${group.providerKey}`,
+    title: group.providerLabel,
+    ...(group.isFavorites ? { image: "star.fill" } : {}),
+    subtitle: group.models.find((model) => isSelectedModel(model, selectedModel))?.label,
+    subactions: group.models.map((option) => ({
+      id: `model:${option.key}`,
+      title: option.label,
+      ...(group.isFavorites ? { subtitle: option.providerLabel } : {}),
+      state: isSelectedModel(option, selectedModel) ? "on" : undefined,
+    })),
+  };
+}
+
+export function buildModelMenuActions(
+  groups: ReadonlyArray<ProviderGroup>,
+  selectedModel: ModelSelection | null | undefined,
+): ModelMenuAction[] {
+  const actions = groups.map((group) => providerGroupToMenuAction(group, selectedModel));
+  const [firstAction, ...remainingActions] = actions;
+  const hasFavorites = groups[0]?.isFavorites === true && firstAction !== undefined;
+  if (!hasFavorites) {
+    return actions;
+  }
+
+  return [
+    {
+      id: "model-section:favorites",
+      title: "",
+      displayInline: true,
+      subactions: [firstAction],
+    },
+    {
+      id: "model-section:providers",
+      title: "",
+      displayInline: true,
+      subactions: remainingActions,
+    },
+  ];
 }
 
 export function findServerProvider(
