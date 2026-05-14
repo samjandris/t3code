@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - dev
     tags:
       - "v*.*.*"
       - "!v*-nightly.*"
@@ -23,24 +25,29 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   id-token: none
+
+env:
+  T3CODE_RELEASE_SOURCE_BRANCH: dev
+  T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
 
 jobs:
   check_changes:
     name: Check for changes since last nightly
     if: github.event_name == 'schedule'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ env.T3CODE_RELEASE_SOURCE_BRANCH }}
           fetch-depth: 0
 
       - id: check
-        name: Compare HEAD to last nightly tag
+        name: Compare release source branch to last nightly tag
         run: |
           last_nightly_tag=$(git tag --list 'v*-nightly.*' 'nightly-v*' --sort=-creatordate | head -n 1)
           if [[ -z "$last_nightly_tag" ]]; then
@@ -53,10 +60,10 @@ jobs:
           head_sha=$(git rev-parse HEAD)
 
           if [[ "$last_nightly_sha" == "$head_sha" ]]; then
-            echo "No changes on main since last nightly release ($last_nightly_tag). Skipping."
+            echo "No changes on ${T3CODE_RELEASE_SOURCE_BRANCH} since last nightly release ($last_nightly_tag). Skipping."
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Changes detected on main since $last_nightly_tag ($last_nightly_sha → $head_sha). Proceeding."
+            echo "Changes detected on ${T3CODE_RELEASE_SOURCE_BRANCH} since $last_nightly_tag ($last_nightly_sha → $head_sha). Proceeding."
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -64,9 +71,9 @@ jobs:
     name: Preflight
     needs: [check_changes]
     if: |
-      !failure() && !cancelled() &&
+      always() && !cancelled() &&
       (github.event_name != 'schedule' || needs.check_changes.outputs.has_changes == 'true')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       release_channel: ${{ steps.release_meta.outputs.release_channel }}
@@ -78,12 +85,17 @@ jobs:
       cli_dist_tag: ${{ steps.release_meta.outputs.cli_dist_tag }}
       is_prerelease: ${{ steps.release_meta.outputs.is_prerelease }}
       make_latest: ${{ steps.release_meta.outputs.make_latest }}
-      ref: ${{ github.sha }}
+      ref: ${{ steps.release_ref.outputs.ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event_name == 'push' && github.ref || env.T3CODE_RELEASE_SOURCE_BRANCH }}
           fetch-depth: 0
+
+      - id: release_ref
+        name: Resolve release source ref
+        run: echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -105,10 +117,10 @@ jobs:
           DISPATCH_CHANNEL: ${{ github.event.inputs.channel }}
           DISPATCH_VERSION: ${{ github.event.inputs.version }}
           NIGHTLY_DATE: ${{ github.run_started_at }}
-          NIGHTLY_SHA: ${{ github.sha }}
+          NIGHTLY_SHA: ${{ steps.release_ref.outputs.ref }}
           NIGHTLY_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_CHANNEL:-stable}" == "nightly" ) ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "dev" ) || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_CHANNEL:-stable}" == "nightly" ) ]]; then
             nightly_date="$(date -u -d "$NIGHTLY_DATE" +%Y%m%d)"
 
             node scripts/resolve-nightly-release.ts \
@@ -172,7 +184,7 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     needs: preflight
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.preflight.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -180,22 +192,22 @@ jobs:
       matrix:
         include:
           - label: macOS arm64
-            runner: blacksmith-12vcpu-macos-26
+            runner: macos-15
             platform: mac
             target: dmg
             arch: arm64
           - label: macOS x64
-            runner: blacksmith-12vcpu-macos-26
+            runner: macos-15
             platform: mac
             target: dmg
             arch: x64
           - label: Linux x64
-            runner: blacksmith-32vcpu-ubuntu-2404
+            runner: ubuntu-24.04
             platform: linux
             target: AppImage
             arch: x64
           - label: Windows x64
-            runner: blacksmith-32vcpu-windows-2025
+            runner: windows-2025
             platform: win
             target: nsis
             arch: x64
@@ -429,7 +441,7 @@ jobs:
   publish_cli:
     name: Publish CLI to npm
     needs: [preflight, build]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' }}
+    if: ${{ vars.PUBLISH_CLI_TO_NPM == 'true' && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04 # blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
@@ -470,19 +482,11 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [preflight, build, publish_cli]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' && needs.publish_cli.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [preflight, build]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - id: app_token
-        name: Mint release app token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -564,7 +568,7 @@ jobs:
             release-assets/*.blockmap
             release-assets/*.yml
           fail_on_unmatched_files: true
-          token: ${{ steps.app_token.outputs.token }}
+          token: ${{ github.token }}
 
       - name: Publish first release
         if: needs.preflight.outputs.previous_tag == ''
@@ -584,13 +588,13 @@ jobs:
             release-assets/*.blockmap
             release-assets/*.yml
           fail_on_unmatched_files: true
-          token: ${{ steps.app_token.outputs.token }}
+          token: ${{ github.token }}
 
   deploy_web:
     name: Deploy hosted web app
     needs: [preflight, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    if: ${{ vars.DEPLOY_HOSTED_WEB == 'true' && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -677,9 +681,9 @@ jobs:
 
   finalize:
     name: Finalize release
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
+    if: ${{ vars.FINALIZE_STABLE_RELEASE == 'true' && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
     needs: [preflight, release]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - id: app_token
@@ -693,7 +697,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ env.T3CODE_RELEASE_SOURCE_BRANCH }}
           fetch-depth: 0
           token: ${{ steps.app_token.outputs.token }}
           persist-credentials: true
@@ -748,18 +752,19 @@ jobs:
 
           git add apps/server/package.json apps/desktop/package.json apps/web/package.json packages/contracts/package.json pnpm-lock.yaml
           git commit -m "chore(release): prepare $RELEASE_TAG"
-          git push origin HEAD:main
+          git push origin "HEAD:${T3CODE_RELEASE_SOURCE_BRANCH}"
 
   announce_discord:
     name: Announce release on Discord
     if: |
       always() && !cancelled() &&
+      vars.ANNOUNCE_DISCORD_RELEASES == 'true' &&
       needs.preflight.result == 'success' &&
       needs.release.result == 'success' &&
       needs.deploy_web.result == 'success' &&
       (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
     needs: [preflight, release, deploy_web, finalize]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout
