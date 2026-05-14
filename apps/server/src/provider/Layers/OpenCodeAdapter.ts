@@ -406,18 +406,13 @@ export function appendOpenCodeAssistantTextDelta(
   };
 }
 
-function isoFromEpochMs(value: number | undefined): string | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return undefined;
-  }
-
-  return DateTime.make(value).pipe(
+const isoFromEpochMs = (value: number) =>
+  DateTime.make(value).pipe(
     Option.match({
       onNone: () => undefined,
       onSome: DateTime.formatIso,
     }),
   );
-}
 
 function messageRoleForPart(
   context: OpenCodeSessionContext,
@@ -726,21 +721,22 @@ export function makeOpenCodeAdapter(
       yield* Scope.close(context.sessionScope, Exit.void);
     });
 
+    /** Emit content.delta and item.completed events for an assistant text part. */
     const emitAssistantTextDelta = Effect.fn("emitAssistantTextDelta")(function* (
       context: OpenCodeSessionContext,
       part: Part,
       turnId: TurnId | undefined,
       raw: unknown,
     ) {
-      const rawText = textFromPart(part);
-      if (rawText === undefined) {
+      const text = textFromPart(part);
+      if (text === undefined) {
         return;
       }
 
-      const text =
-        part.type === "text" ? (stripProposedPlanBlockFromVisibleText(rawText) ?? "") : rawText;
+      const visibleText =
+        part.type === "text" ? (stripProposedPlanBlockFromVisibleText(text) ?? "") : text;
       const previousText = context.emittedTextByPartId.get(part.id);
-      const { latestText, deltaToEmit } = mergeOpenCodeAssistantText(previousText, text);
+      const { latestText, deltaToEmit } = mergeOpenCodeAssistantText(previousText, visibleText);
       context.emittedTextByPartId.set(part.id, latestText);
       if (deltaToEmit.length > 0) {
         yield* emit({
@@ -763,7 +759,7 @@ export function makeOpenCodeAdapter(
       }
 
       if (part.type === "text") {
-        const planText = extractStreamingProposedPlanText(rawText);
+        const planText = extractStreamingProposedPlanText(text);
         if (planText) {
           const previousLength = context.emittedProposedPlanLengthByPartId.get(part.id) ?? 0;
           if (planText.length > previousLength) {
@@ -773,7 +769,7 @@ export function makeOpenCodeAdapter(
                 threadId: context.session.threadId,
                 turnId,
                 itemId: part.id,
-                createdAt: isoFromEpochMs(part.time?.start),
+                createdAt: part.time !== undefined ? isoFromEpochMs(part.time.start) : undefined,
                 raw,
               })),
               type: "turn.proposed.delta",
@@ -790,7 +786,7 @@ export function makeOpenCodeAdapter(
         part.time?.end !== undefined &&
         !context.completedAssistantPartIds.has(part.id)
       ) {
-        const planMarkdown = extractProposedPlanMarkdown(rawText);
+        const planMarkdown = extractProposedPlanMarkdown(text);
         if (planMarkdown) {
           const captureKey = proposedPlanCaptureKey({ partId: part.id, planMarkdown });
           if (!context.capturedProposedPlanKeys.has(captureKey)) {
