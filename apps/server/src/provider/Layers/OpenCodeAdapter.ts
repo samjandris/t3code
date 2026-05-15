@@ -872,6 +872,7 @@ export function makeOpenCodeAdapter(
               ...(title ? { title } : {}),
               ...(detail ? { detail } : {}),
               data: {
+                toolCallId: part.callID,
                 tool: part.tool,
                 state: part.state,
               },
