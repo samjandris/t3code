@@ -8,6 +8,7 @@ import {
   type RuntimePlanStep,
   RuntimeItemId,
   RuntimeRequestId,
+  RuntimeTaskId,
   ThreadId,
   type ToolLifecycleItemType,
   TurnId,
@@ -59,6 +60,7 @@ const PROVIDER = ProviderDriverKind.make("opencode");
 const PROPOSED_PLAN_BLOCK_REGEX = /<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/i;
 const PROPOSED_PLAN_OPEN_TAG = "<proposed_plan>";
 const PROPOSED_PLAN_CLOSE_TAG = "</proposed_plan>";
+const OPENCODE_REASONING_SUMMARY_MAX_LENGTH = 180;
 
 interface OpenCodeTurnSnapshot {
   readonly id: TurnId;
@@ -84,6 +86,8 @@ interface OpenCodeSessionContext {
   readonly partById: Map<string, Part>;
   readonly emittedTextByPartId: Map<string, string>;
   readonly emittedProposedPlanLengthByPartId: Map<string, number>;
+  readonly latestReasoningSummaryByMessageId: Map<string, string>;
+  readonly emittedReasoningSummaryByMessageId: Map<string, string>;
   readonly completedAssistantPartIds: Set<string>;
   readonly capturedProposedPlanKeys: Set<string>;
   readonly turns: Array<OpenCodeTurnSnapshot>;
@@ -377,6 +381,44 @@ function resolveLatestAssistantText(previousText: string | undefined, nextText: 
     return previousText;
   }
   return nextText;
+}
+
+function truncateOpenCodeReasoningSummary(value: string): string {
+  return value.length > OPENCODE_REASONING_SUMMARY_MAX_LENGTH
+    ? `${value.slice(0, OPENCODE_REASONING_SUMMARY_MAX_LENGTH - 3)}...`
+    : value;
+}
+
+function cleanOpenCodeReasoningSummaryLine(value: string): string {
+  return value
+    .replace(/^\s{0,3}#{1,6}\s+/, "")
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "")
+    .replace(/^\s*(?:thinking|reasoning|analysis)\s*[:-]\s*/i, "")
+    .trim();
+}
+
+function extractOpenCodeReasoningSummary(text: string | undefined): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("```")) {
+      continue;
+    }
+
+    const summary = cleanOpenCodeReasoningSummaryLine(trimmed);
+    if (summary.length > 0) {
+      return truncateOpenCodeReasoningSummary(summary);
+    }
+  }
+
+  return undefined;
+}
+
+function reasoningTaskIdForMessage(messageId: string): RuntimeTaskId {
+  return RuntimeTaskId.make(`opencode-reasoning-${messageId}`);
 }
 
 export function mergeOpenCodeAssistantText(
@@ -721,6 +763,58 @@ export function makeOpenCodeAdapter(
       yield* Scope.close(context.sessionScope, Exit.void);
     });
 
+    const emitOpenCodeReasoningSummary = Effect.fn("emitOpenCodeReasoningSummary")(function* (
+      context: OpenCodeSessionContext,
+      input: {
+        readonly part: Extract<Part, { type: "reasoning" }>;
+        readonly summary: string;
+        readonly raw: unknown;
+      },
+    ) {
+      const messageId = input.part.messageID;
+      if (context.emittedReasoningSummaryByMessageId.get(messageId) === input.summary) {
+        return;
+      }
+
+      const taskId = reasoningTaskIdForMessage(messageId);
+      context.emittedReasoningSummaryByMessageId.set(messageId, input.summary);
+      yield* emit({
+        ...(yield* buildEventBase({
+          threadId: context.session.threadId,
+          turnId: context.activeTurnId,
+          itemId: taskId,
+          createdAt: isoFromEpochMs(input.part.time.start),
+          raw: input.raw,
+        })),
+        type: "task.progress",
+        payload: {
+          taskId,
+          description: input.summary,
+          summary: input.summary,
+        },
+      });
+    });
+
+    const updateAndEmitReasoningSummary = Effect.fn("updateAndEmitReasoningSummary")(function* (
+      context: OpenCodeSessionContext,
+      input: {
+        readonly part: Extract<Part, { type: "reasoning" }>;
+        readonly raw: unknown;
+      },
+    ) {
+      const summary = extractOpenCodeReasoningSummary(input.part.text);
+      if (summary === undefined) {
+        return;
+      }
+
+      context.latestReasoningSummaryByMessageId.set(input.part.messageID, summary);
+      yield* emitOpenCodeReasoningSummary(context, {
+        part: input.part,
+        summary,
+        raw: input.raw,
+      });
+    });
+
     /** Emit content.delta and item.completed events for an assistant text part. */
     const emitAssistantTextDelta = Effect.fn("emitAssistantTextDelta")(function* (
       context: OpenCodeSessionContext,
@@ -856,6 +950,9 @@ export function makeOpenCodeAdapter(
               if (part.messageID !== event.properties.info.id) {
                 continue;
               }
+              if (part.type === "reasoning") {
+                yield* updateAndEmitReasoningSummary(context, { part, raw: event });
+              }
               yield* emitAssistantTextDelta(context, part, turnId, event);
             }
           }
@@ -889,6 +986,9 @@ export function makeOpenCodeAdapter(
             text: existingPart.text + delta,
           };
           context.partById.set(event.properties.partID, nextPart);
+          if (nextPart.type === "reasoning") {
+            yield* updateAndEmitReasoningSummary(context, { part: nextPart, raw: event });
+          }
           yield* emitAssistantTextDelta(context, nextPart, turnId, event);
           break;
         }
@@ -899,6 +999,9 @@ export function makeOpenCodeAdapter(
           const messageRole = messageRoleForPart(context, part);
 
           if (messageRole === "assistant") {
+            if (part.type === "reasoning") {
+              yield* updateAndEmitReasoningSummary(context, { part, raw: event });
+            }
             yield* emitAssistantTextDelta(context, part, turnId, event);
           }
 
@@ -1318,6 +1421,8 @@ export function makeOpenCodeAdapter(
           partById: new Map(),
           emittedTextByPartId: new Map(),
           emittedProposedPlanLengthByPartId: new Map(),
+          latestReasoningSummaryByMessageId: new Map(),
+          emittedReasoningSummaryByMessageId: new Map(),
           messageRoleById: new Map(),
           completedAssistantPartIds: new Set(),
           capturedProposedPlanKeys: new Set(),
@@ -1397,6 +1502,8 @@ export function makeOpenCodeAdapter(
 
       context.emittedProposedPlanLengthByPartId.clear();
       context.capturedProposedPlanKeys.clear();
+      context.latestReasoningSummaryByMessageId.clear();
+      context.emittedReasoningSummaryByMessageId.clear();
       context.activeTurnId = turnId;
       context.activeVariant = variant;
       yield* updateProviderSession(

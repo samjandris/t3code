@@ -589,26 +589,48 @@ function collapseDerivedWorkLogEntries(
   entries: ReadonlyArray<DerivedWorkLogEntry>,
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
+  const toolCallIndexById = new Map<string, number>();
   for (const entry of entries) {
+    if (entry.toolCallId && isCollapsibleToolLifecycleEntry(entry)) {
+      const existingIndex = toolCallIndexById.get(entry.toolCallId);
+      if (existingIndex !== undefined) {
+        const existing = collapsed[existingIndex];
+        if (existing && shouldCollapseToolLifecycleEntries(existing, entry)) {
+          collapsed[existingIndex] = mergeDerivedWorkLogEntries(existing, entry);
+          continue;
+        }
+      }
+    }
+
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
       collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
       continue;
     }
     collapsed.push(entry);
+    if (entry.toolCallId && isCollapsibleToolLifecycleEntry(entry)) {
+      toolCallIndexById.set(entry.toolCallId, collapsed.length - 1);
+    }
   }
   return collapsed;
+}
+
+function isCollapsibleToolLifecycleEntry(entry: DerivedWorkLogEntry): boolean {
+  return entry.activityKind === "tool.updated" || entry.activityKind === "tool.completed";
 }
 
 function shouldCollapseToolLifecycleEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): boolean {
-  if (previous.activityKind !== "tool.updated" && previous.activityKind !== "tool.completed") {
+  if (!isCollapsibleToolLifecycleEntry(previous)) {
     return false;
   }
-  if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
+  if (!isCollapsibleToolLifecycleEntry(next)) {
     return false;
+  }
+  if (previous.toolCallId !== undefined && previous.toolCallId === next.toolCallId) {
+    return true;
   }
   if (previous.activityKind === "tool.completed") {
     return false;
