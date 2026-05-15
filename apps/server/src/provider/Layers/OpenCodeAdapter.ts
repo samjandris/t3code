@@ -5,8 +5,10 @@ import {
   ProviderInstanceId,
   type ProviderRuntimeEvent,
   type ProviderSession,
+  type RuntimePlanStep,
   RuntimeItemId,
   RuntimeRequestId,
+  RuntimeTaskId,
   ThreadId,
   type ToolLifecycleItemType,
   TurnId,
@@ -51,6 +53,7 @@ import {
 import * as Option from "effect/Option";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
+const OPENCODE_REASONING_SUMMARY_MAX_LENGTH = 180;
 
 interface OpenCodeTurnSnapshot {
   readonly id: TurnId;
@@ -75,6 +78,8 @@ interface OpenCodeSessionContext {
   readonly messageRoleById: Map<string, "user" | "assistant">;
   readonly partById: Map<string, Part>;
   readonly emittedTextByPartId: Map<string, string>;
+  readonly latestReasoningSummaryByMessageId: Map<string, string>;
+  readonly emittedReasoningSummaryByMessageId: Map<string, string>;
   readonly completedAssistantPartIds: Set<string>;
   readonly turns: Array<OpenCodeTurnSnapshot>;
   activeTurnId: TurnId | undefined;
@@ -97,6 +102,11 @@ interface OpenCodeSessionContext {
   readonly sessionScope: Scope.Closeable;
 }
 
+interface OpenCodeResumeState {
+  readonly sessionID: string;
+  readonly directory?: string;
+}
+
 export interface OpenCodeAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
   readonly environment?: NodeJS.ProcessEnv;
@@ -105,6 +115,33 @@ export interface OpenCodeAdapterLiveOptions {
 }
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+
+function readOpenCodeResumeState(resumeCursor: unknown): OpenCodeResumeState | undefined {
+  if (!resumeCursor || typeof resumeCursor !== "object") {
+    return undefined;
+  }
+
+  const cursor = resumeCursor as {
+    sessionID?: unknown;
+    directory?: unknown;
+  };
+  const sessionID =
+    typeof cursor.sessionID === "string" && cursor.sessionID.trim().length > 0
+      ? cursor.sessionID.trim()
+      : undefined;
+  if (!sessionID) {
+    return undefined;
+  }
+
+  const directory =
+    typeof cursor.directory === "string" && cursor.directory.trim().length > 0
+      ? cursor.directory.trim()
+      : undefined;
+  return {
+    sessionID,
+    ...(directory ? { directory } : {}),
+  };
+}
 
 /**
  * Map a tagged OpenCodeRuntimeError produced by {@link runOpenCodeSdk} into
@@ -228,6 +265,26 @@ function mapPermissionDecision(reply: "once" | "always" | "reject"): string {
   }
 }
 
+function mapOpenCodeTodoStatus(status: string | undefined): RuntimePlanStep["status"] {
+  switch (status) {
+    case "completed":
+      return "completed";
+    case "in_progress":
+      return "inProgress";
+    default:
+      return "pending";
+  }
+}
+
+function extractPlanStepsFromOpenCodeTodos(
+  todos: ReadonlyArray<{ readonly content?: string; readonly status?: string }>,
+): ReadonlyArray<RuntimePlanStep> {
+  return todos.map((todo) => ({
+    step: todo.content?.trim() || "Task",
+    status: mapOpenCodeTodoStatus(todo.status),
+  }));
+}
+
 function resolveTurnSnapshot(
   context: OpenCodeSessionContext,
   turnId: TurnId,
@@ -316,6 +373,44 @@ function resolveLatestAssistantText(previousText: string | undefined, nextText: 
     return previousText;
   }
   return nextText;
+}
+
+function truncateOpenCodeReasoningSummary(value: string): string {
+  return value.length > OPENCODE_REASONING_SUMMARY_MAX_LENGTH
+    ? `${value.slice(0, OPENCODE_REASONING_SUMMARY_MAX_LENGTH - 3)}...`
+    : value;
+}
+
+function cleanOpenCodeReasoningSummaryLine(value: string): string {
+  return value
+    .replace(/^\s{0,3}#{1,6}\s+/, "")
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "")
+    .replace(/^\s*(?:thinking|reasoning|analysis)\s*[:-]\s*/i, "")
+    .trim();
+}
+
+function extractOpenCodeReasoningSummary(text: string | undefined): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("```")) {
+      continue;
+    }
+
+    const summary = cleanOpenCodeReasoningSummaryLine(trimmed);
+    if (summary.length > 0) {
+      return truncateOpenCodeReasoningSummary(summary);
+    }
+  }
+
+  return undefined;
+}
+
+function reasoningTaskIdForMessage(messageId: string): RuntimeTaskId {
+  return RuntimeTaskId.make(`opencode-reasoning-${messageId}`);
 }
 
 export function mergeOpenCodeAssistantText(
@@ -565,6 +660,58 @@ export function makeOpenCodeAdapter(
       yield* Scope.close(context.sessionScope, Exit.void);
     });
 
+    const emitOpenCodeReasoningSummary = Effect.fn("emitOpenCodeReasoningSummary")(function* (
+      context: OpenCodeSessionContext,
+      input: {
+        readonly part: Extract<Part, { type: "reasoning" }>;
+        readonly summary: string;
+        readonly raw: unknown;
+      },
+    ) {
+      const messageId = input.part.messageID;
+      if (context.emittedReasoningSummaryByMessageId.get(messageId) === input.summary) {
+        return;
+      }
+
+      const taskId = reasoningTaskIdForMessage(messageId);
+      context.emittedReasoningSummaryByMessageId.set(messageId, input.summary);
+      yield* emit({
+        ...(yield* buildEventBase({
+          threadId: context.session.threadId,
+          turnId: context.activeTurnId,
+          itemId: taskId,
+          createdAt: isoFromEpochMs(input.part.time.start),
+          raw: input.raw,
+        })),
+        type: "task.progress",
+        payload: {
+          taskId,
+          description: input.summary,
+          summary: input.summary,
+        },
+      });
+    });
+
+    const updateAndEmitReasoningSummary = Effect.fn("updateAndEmitReasoningSummary")(function* (
+      context: OpenCodeSessionContext,
+      input: {
+        readonly part: Extract<Part, { type: "reasoning" }>;
+        readonly raw: unknown;
+      },
+    ) {
+      const summary = extractOpenCodeReasoningSummary(input.part.text);
+      if (summary === undefined) {
+        return;
+      }
+
+      context.latestReasoningSummaryByMessageId.set(input.part.messageID, summary);
+      yield* emitOpenCodeReasoningSummary(context, {
+        part: input.part,
+        summary,
+        raw: input.raw,
+      });
+    });
+
     /** Emit content.delta and item.completed events for an assistant text part. */
     const emitAssistantTextDelta = Effect.fn("emitAssistantTextDelta")(function* (
       context: OpenCodeSessionContext,
@@ -576,17 +723,10 @@ export function makeOpenCodeAdapter(
       if (text === undefined) {
         return;
       }
+
       const previousText = context.emittedTextByPartId.get(part.id);
       const { latestText, deltaToEmit } = mergeOpenCodeAssistantText(previousText, text);
       context.emittedTextByPartId.set(part.id, latestText);
-      if (latestText !== text) {
-        context.partById.set(
-          part.id,
-          (part.type === "text" || part.type === "reasoning"
-            ? { ...part, text: latestText }
-            : part) satisfies Part,
-        );
-      }
       if (deltaToEmit.length > 0) {
         yield* emit({
           ...(yield* buildEventBase({
@@ -663,6 +803,9 @@ export function makeOpenCodeAdapter(
               if (part.messageID !== event.properties.info.id) {
                 continue;
               }
+              if (part.type === "reasoning") {
+                yield* updateAndEmitReasoningSummary(context, { part, raw: event });
+              }
               yield* emitAssistantTextDelta(context, part, turnId, event);
             }
           }
@@ -683,39 +826,23 @@ export function makeOpenCodeAdapter(
           if (role !== "assistant") {
             break;
           }
-          const streamKind = resolveTextStreamKind(existingPart);
           const delta = event.properties.delta;
           if (delta.length === 0) {
             break;
           }
-          const previousText =
-            context.emittedTextByPartId.get(event.properties.partID) ??
-            textFromPart(existingPart) ??
-            "";
-          const { nextText, deltaToEmit } = appendOpenCodeAssistantTextDelta(previousText, delta);
-          if (deltaToEmit.length === 0) {
+          if (existingPart.type !== "text" && existingPart.type !== "reasoning") {
             break;
           }
-          context.emittedTextByPartId.set(event.properties.partID, nextText);
-          if (existingPart.type === "text" || existingPart.type === "reasoning") {
-            context.partById.set(event.properties.partID, {
-              ...existingPart,
-              text: nextText,
-            });
+
+          const nextPart = {
+            ...existingPart,
+            text: existingPart.text + delta,
+          };
+          context.partById.set(event.properties.partID, nextPart);
+          if (nextPart.type === "reasoning") {
+            yield* updateAndEmitReasoningSummary(context, { part: nextPart, raw: event });
           }
-          yield* emit({
-            ...(yield* buildEventBase({
-              threadId: context.session.threadId,
-              turnId,
-              itemId: event.properties.partID,
-              raw: event,
-            })),
-            type: "content.delta",
-            payload: {
-              streamKind,
-              delta: deltaToEmit,
-            },
-          });
+          yield* emitAssistantTextDelta(context, nextPart, turnId, event);
           break;
         }
 
@@ -725,6 +852,9 @@ export function makeOpenCodeAdapter(
           const messageRole = messageRoleForPart(context, part);
 
           if (messageRole === "assistant") {
+            if (part.type === "reasoning") {
+              yield* updateAndEmitReasoningSummary(context, { part, raw: event });
+            }
             yield* emitAssistantTextDelta(context, part, turnId, event);
           }
 
@@ -859,6 +989,25 @@ export function makeOpenCodeAdapter(
             })),
             type: "user-input.resolved",
             payload: { answers: {} },
+          });
+          break;
+        }
+
+        case "todo.updated": {
+          const plan = extractPlanStepsFromOpenCodeTodos(event.properties.todos);
+          if (plan.length === 0) {
+            break;
+          }
+          yield* emit({
+            ...(yield* buildEventBase({
+              threadId: context.session.threadId,
+              turnId,
+              raw: event,
+            })),
+            type: "turn.plan.updated",
+            payload: {
+              plan,
+            },
           });
           break;
         }
@@ -1020,7 +1169,8 @@ export function makeOpenCodeAdapter(
         const binaryPath = openCodeSettings.binaryPath;
         const serverUrl = openCodeSettings.serverUrl;
         const serverPassword = openCodeSettings.serverPassword;
-        const directory = input.cwd ?? serverConfig.cwd;
+        const resumeState = readOpenCodeResumeState(input.resumeCursor);
+        const directory = resumeState?.directory ?? input.cwd ?? serverConfig.cwd;
         const existing = sessions.get(input.threadId);
         if (existing) {
           yield* stopOpenCodeContext(existing);
@@ -1044,16 +1194,22 @@ export function makeOpenCodeAdapter(
                 directory,
                 ...(server.external && serverPassword ? { serverPassword } : {}),
               });
-              const openCodeSession = yield* runOpenCodeSdk("session.create", () =>
-                client.session.create({
-                  title: `T3 Code ${input.threadId}`,
-                  permission: buildOpenCodePermissionRules(input.runtimeMode),
-                }),
-              );
+              const openCodeSession = yield* resumeState
+                ? runOpenCodeSdk("session.get", () =>
+                    client.session.get({ sessionID: resumeState.sessionID }),
+                  )
+                : runOpenCodeSdk("session.create", () =>
+                    client.session.create({
+                      title: `T3 Code ${input.threadId}`,
+                      permission: buildOpenCodePermissionRules(input.runtimeMode),
+                    }),
+                  );
               if (!openCodeSession.data) {
                 return yield* new OpenCodeRuntimeError({
-                  operation: "session.create",
-                  detail: "OpenCode session.create returned no session payload.",
+                  operation: resumeState ? "session.get" : "session.create",
+                  detail: resumeState
+                    ? "OpenCode session.get returned no session payload."
+                    : "OpenCode session.create returned no session payload.",
                 });
               }
               return {
@@ -1061,6 +1217,7 @@ export function makeOpenCodeAdapter(
                 server,
                 client,
                 openCodeSession: openCodeSession.data,
+                resumed: resumeState !== undefined,
               };
             }).pipe(Effect.provideService(Scope.Scope, sessionScope)),
           );
@@ -1077,24 +1234,31 @@ export function makeOpenCodeAdapter(
         if (raceWinner) {
           // Another call won the race – clean up the session we just created
           // (including the remote SDK session) and return the existing one.
-          yield* runOpenCodeSdk("session.abort", () =>
-            started.client.session.abort({
-              sessionID: started.openCodeSession.id,
-            }),
-          ).pipe(Effect.ignore);
+          if (!started.resumed) {
+            yield* runOpenCodeSdk("session.abort", () =>
+              started.client.session.abort({
+                sessionID: started.openCodeSession.id,
+              }),
+            ).pipe(Effect.ignore);
+          }
           yield* Scope.close(started.sessionScope, Exit.void).pipe(Effect.ignore);
           return raceWinner.session;
         }
 
         const createdAt = yield* nowIso;
+        const sessionDirectory = started.openCodeSession.directory || directory;
         const session: ProviderSession = {
           provider: PROVIDER,
           providerInstanceId: boundInstanceId,
           status: "ready",
           runtimeMode: input.runtimeMode,
-          cwd: directory,
+          cwd: sessionDirectory,
           ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
           threadId: input.threadId,
+          resumeCursor: {
+            sessionID: started.openCodeSession.id,
+            directory: sessionDirectory,
+          },
           createdAt,
           updatedAt: createdAt,
         };
@@ -1103,12 +1267,14 @@ export function makeOpenCodeAdapter(
           session,
           client: started.client,
           server: started.server,
-          directory,
+          directory: sessionDirectory,
           openCodeSessionId: started.openCodeSession.id,
           pendingPermissions: new Map(),
           pendingQuestions: new Map(),
           partById: new Map(),
           emittedTextByPartId: new Map(),
+          latestReasoningSummaryByMessageId: new Map(),
+          emittedReasoningSummaryByMessageId: new Map(),
           messageRoleById: new Map(),
           completedAssistantPartIds: new Set(),
           turns: [],
@@ -1184,6 +1350,8 @@ export function makeOpenCodeAdapter(
       const agent = getModelSelectionStringOptionValue(modelSelection, "agent");
       const variant = getModelSelectionStringOptionValue(modelSelection, "variant");
 
+      context.latestReasoningSummaryByMessageId.clear();
+      context.emittedReasoningSummaryByMessageId.clear();
       context.activeTurnId = turnId;
       context.activeAgent = agent ?? (input.interactionMode === "plan" ? "plan" : undefined);
       context.activeVariant = variant;
@@ -1415,6 +1583,7 @@ export function makeOpenCodeAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        resumeCursorInvalidationReasons: ["runtime-mode-change", "cwd-change"],
       },
       startSession,
       sendTurn,
