@@ -65,6 +65,7 @@ interface DerivedWorkLogEntry extends WorkLogEntry {
   activityKind: OrchestrationThreadActivity["kind"];
   collapseKey?: string;
   toolCallId?: string;
+  taskId?: string;
 }
 
 export interface PendingApproval {
@@ -494,7 +495,13 @@ export function deriveWorkLogEntries(
     .filter((activity) => !isPlanBoundaryToolActivity(activity))
     .map(toDerivedWorkLogEntry);
   return collapseDerivedWorkLogEntries(entries).map(
-    ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
+    ({
+      activityKind: _activityKind,
+      collapseKey: _collapseKey,
+      toolCallId: _toolCallId,
+      taskId: _taskId,
+      ...entry
+    }) => entry,
   );
 }
 
@@ -531,6 +538,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
+  const taskId = isTaskActivity ? extractTaskId(payload) : null;
   const detail = isTaskActivity
     ? !taskDetailAsLabel &&
       payload &&
@@ -578,6 +586,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (toolCallId) {
     entry.toolCallId = toolCallId;
   }
+  if (taskId) {
+    entry.taskId = taskId;
+  }
   const collapseKey = deriveToolLifecycleCollapseKey(entry);
   if (collapseKey) {
     entry.collapseKey = collapseKey;
@@ -590,7 +601,16 @@ function collapseDerivedWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
   const toolCallIndexById = new Map<string, number>();
+  const taskProgressIndexById = new Map<string, number>();
   for (const entry of entries) {
+    if (entry.taskId && entry.activityKind === "task.progress") {
+      const existingIndex = taskProgressIndexById.get(entry.taskId);
+      if (existingIndex !== undefined) {
+        collapsed[existingIndex] = mergeDerivedWorkLogEntries(collapsed[existingIndex]!, entry);
+        continue;
+      }
+    }
+
     if (entry.toolCallId && isCollapsibleToolLifecycleEntry(entry)) {
       const existingIndex = toolCallIndexById.get(entry.toolCallId);
       if (existingIndex !== undefined) {
@@ -610,6 +630,9 @@ function collapseDerivedWorkLogEntries(
     collapsed.push(entry);
     if (entry.toolCallId && isCollapsibleToolLifecycleEntry(entry)) {
       toolCallIndexById.set(entry.toolCallId, collapsed.length - 1);
+    }
+    if (entry.taskId && entry.activityKind === "task.progress") {
+      taskProgressIndexById.set(entry.taskId, collapsed.length - 1);
     }
   }
   return collapsed;
@@ -660,6 +683,7 @@ function mergeDerivedWorkLogEntries(
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
+  const taskId = next.taskId ?? previous.taskId;
   return {
     ...previous,
     ...next,
@@ -672,6 +696,7 @@ function mergeDerivedWorkLogEntries(
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
     ...(toolCallId ? { toolCallId } : {}),
+    ...(taskId ? { taskId } : {}),
   };
 }
 
@@ -920,6 +945,10 @@ function extractToolTitle(payload: Record<string, unknown> | null): string | nul
 function extractToolCallId(payload: Record<string, unknown> | null): string | null {
   const data = asRecord(payload?.data);
   return asTrimmedString(data?.toolCallId);
+}
+
+function extractTaskId(payload: Record<string, unknown> | null): string | null {
+  return asTrimmedString(payload?.taskId);
 }
 
 function normalizeInlinePreview(value: string): string {
