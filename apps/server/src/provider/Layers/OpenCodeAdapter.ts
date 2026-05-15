@@ -723,7 +723,6 @@ export function makeOpenCodeAdapter(
       if (text === undefined) {
         return;
       }
-
       const previousText = context.emittedTextByPartId.get(part.id);
       const { latestText, deltaToEmit } = mergeOpenCodeAssistantText(previousText, text);
       context.emittedTextByPartId.set(part.id, latestText);
