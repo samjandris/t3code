@@ -445,8 +445,8 @@ const make = Effect.gen(function* () {
     if (existingSessionThreadId) {
       const runtimeModeChanged = thread.runtimeMode !== thread.session?.runtimeMode;
       const cwdChanged = effectiveCwd !== activeSession?.cwd;
-      const sessionModelSwitch = (yield* providerService.getCapabilities(desiredInstanceId))
-        .sessionModelSwitch;
+      const capabilities = yield* providerService.getCapabilities(desiredInstanceId);
+      const sessionModelSwitch = capabilities.sessionModelSwitch;
       const modelChanged =
         requestedModelSelection !== undefined &&
         requestedModelSelection.model !== activeSession?.model;
@@ -470,7 +470,15 @@ const make = Effect.gen(function* () {
         return existingSessionThreadId;
       }
 
-      const resumeCursor = shouldRestartForModelChange
+      const resumeCursorInvalidationReasons = new Set(
+        capabilities.resumeCursorInvalidationReasons ?? ["unsupported-model-change"],
+      );
+      const shouldClearResumeCursor =
+        (runtimeModeChanged && resumeCursorInvalidationReasons.has("runtime-mode-change")) ||
+        (cwdChanged && resumeCursorInvalidationReasons.has("cwd-change")) ||
+        (shouldRestartForModelChange &&
+          resumeCursorInvalidationReasons.has("unsupported-model-change"));
+      const resumeCursor = shouldClearResumeCursor
         ? undefined
         : (activeSession?.resumeCursor ?? undefined);
       yield* Effect.logInfo("provider command reactor restarting provider session", {
@@ -490,6 +498,7 @@ const make = Effect.gen(function* () {
         instanceChanged,
         shouldRestartForModelChange,
         shouldRestartForModelSelectionChange,
+        shouldClearResumeCursor,
         hasResumeCursor: resumeCursor !== undefined,
       });
       const restartedSession = yield* startProviderSession(
