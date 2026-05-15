@@ -5,6 +5,7 @@ import {
   ProviderInstanceId,
   type ProviderRuntimeEvent,
   type ProviderSession,
+  type RuntimePlanStep,
   RuntimeItemId,
   RuntimeRequestId,
   ThreadId,
@@ -34,6 +35,10 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
+import {
+  OPENCODE_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
+  OPENCODE_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
+} from "../OpencodeDeveloperInstructions.ts";
 import { type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import {
   buildOpenCodePermissionRules,
@@ -51,6 +56,9 @@ import {
 import * as Option from "effect/Option";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
+const PROPOSED_PLAN_BLOCK_REGEX = /<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>/i;
+const PROPOSED_PLAN_OPEN_TAG = "<proposed_plan>";
+const PROPOSED_PLAN_CLOSE_TAG = "</proposed_plan>";
 
 interface OpenCodeTurnSnapshot {
   readonly id: TurnId;
@@ -75,10 +83,11 @@ interface OpenCodeSessionContext {
   readonly messageRoleById: Map<string, "user" | "assistant">;
   readonly partById: Map<string, Part>;
   readonly emittedTextByPartId: Map<string, string>;
+  readonly emittedProposedPlanLengthByPartId: Map<string, number>;
   readonly completedAssistantPartIds: Set<string>;
+  readonly capturedProposedPlanKeys: Set<string>;
   readonly turns: Array<OpenCodeTurnSnapshot>;
   activeTurnId: TurnId | undefined;
-  activeAgent: string | undefined;
   activeVariant: string | undefined;
   /**
    * One-shot guard flipped by `stopOpenCodeContext` / `emitUnexpectedExit`.
@@ -97,6 +106,11 @@ interface OpenCodeSessionContext {
   readonly sessionScope: Scope.Closeable;
 }
 
+interface OpenCodeResumeState {
+  readonly sessionID: string;
+  readonly directory?: string;
+}
+
 export interface OpenCodeAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
   readonly environment?: NodeJS.ProcessEnv;
@@ -105,6 +119,33 @@ export interface OpenCodeAdapterLiveOptions {
 }
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+
+function readOpenCodeResumeState(resumeCursor: unknown): OpenCodeResumeState | undefined {
+  if (!resumeCursor || typeof resumeCursor !== "object") {
+    return undefined;
+  }
+
+  const cursor = resumeCursor as {
+    sessionID?: unknown;
+    directory?: unknown;
+  };
+  const sessionID =
+    typeof cursor.sessionID === "string" && cursor.sessionID.trim().length > 0
+      ? cursor.sessionID.trim()
+      : undefined;
+  if (!sessionID) {
+    return undefined;
+  }
+
+  const directory =
+    typeof cursor.directory === "string" && cursor.directory.trim().length > 0
+      ? cursor.directory.trim()
+      : undefined;
+  return {
+    sessionID,
+    ...(directory ? { directory } : {}),
+  };
+}
 
 /**
  * Map a tagged OpenCodeRuntimeError produced by {@link runOpenCodeSdk} into
@@ -226,6 +267,26 @@ function mapPermissionDecision(reply: "once" | "always" | "reject"): string {
     default:
       return "decline";
   }
+}
+
+function mapOpenCodeTodoStatus(status: string | undefined): RuntimePlanStep["status"] {
+  switch (status) {
+    case "completed":
+      return "completed";
+    case "in_progress":
+      return "inProgress";
+    default:
+      return "pending";
+  }
+}
+
+function extractPlanStepsFromOpenCodeTodos(
+  todos: ReadonlyArray<{ readonly content?: string; readonly status?: string }>,
+): ReadonlyArray<RuntimePlanStep> {
+  return todos.map((todo) => ({
+    step: todo.content?.trim() || "Task",
+    status: mapOpenCodeTodoStatus(todo.status),
+  }));
 }
 
 function resolveTurnSnapshot(
@@ -449,6 +510,101 @@ const stopOpenCodeContext = Effect.fn("stopOpenCodeContext")(function* (
   return true;
 });
 
+function resolveSystemInstructions(interactionMode: "default" | "plan"): string {
+  return interactionMode === "plan"
+    ? OPENCODE_PLAN_MODE_DEVELOPER_INSTRUCTIONS
+    : OPENCODE_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS;
+}
+
+function projectStreamingProposedPlanContent(text: string | undefined): {
+  visibleText: string | undefined;
+  planText: string | undefined;
+} {
+  if (!text) {
+    return {
+      visibleText: undefined,
+      planText: undefined,
+    };
+  }
+
+  let visibleText = "";
+  let planText = "";
+  let outsidePlan = true;
+  let openTagBuffer = "";
+  let closeTagBuffer = "";
+
+  for (let index = 0; index < text.length; ) {
+    const char = text[index]!;
+    const normalizedChar = char.toLowerCase();
+
+    if (outsidePlan) {
+      const expectedChar = PROPOSED_PLAN_OPEN_TAG[openTagBuffer.length];
+      if (expectedChar && normalizedChar === expectedChar) {
+        openTagBuffer += char;
+        index += 1;
+        if (openTagBuffer.length === PROPOSED_PLAN_OPEN_TAG.length) {
+          openTagBuffer = "";
+          outsidePlan = false;
+        }
+        continue;
+      }
+
+      if (openTagBuffer.length > 0) {
+        visibleText += openTagBuffer;
+        openTagBuffer = "";
+        continue;
+      }
+
+      visibleText += char;
+      index += 1;
+      continue;
+    }
+
+    const expectedChar = PROPOSED_PLAN_CLOSE_TAG[closeTagBuffer.length];
+    if (expectedChar && normalizedChar === expectedChar) {
+      closeTagBuffer += char;
+      index += 1;
+      if (closeTagBuffer.length === PROPOSED_PLAN_CLOSE_TAG.length) {
+        closeTagBuffer = "";
+        outsidePlan = true;
+      }
+      continue;
+    }
+
+    if (closeTagBuffer.length > 0) {
+      planText += closeTagBuffer;
+      closeTagBuffer = "";
+      continue;
+    }
+
+    planText += char;
+    index += 1;
+  }
+
+  return {
+    visibleText,
+    planText: planText.length > 0 ? planText : undefined,
+  };
+}
+
+function extractProposedPlanMarkdown(text: string | undefined): string | undefined {
+  const match = text ? PROPOSED_PLAN_BLOCK_REGEX.exec(text) : null;
+  const planMarkdown = match?.[1]?.trim();
+  return planMarkdown && planMarkdown.length > 0 ? planMarkdown : undefined;
+}
+
+function extractStreamingProposedPlanText(text: string | undefined): string | undefined {
+  return projectStreamingProposedPlanContent(text).planText;
+}
+
+function stripProposedPlanBlockFromVisibleText(text: string | undefined): string | undefined {
+  return projectStreamingProposedPlanContent(text).visibleText;
+}
+
+function proposedPlanCaptureKey(input: { readonly partId: string; readonly planMarkdown: string }) {
+  return `part:${input.partId}:plan:${input.planMarkdown}`;
+}
+
 export function makeOpenCodeAdapter(
   openCodeSettings: OpenCodeSettings,
   options?: OpenCodeAdapterLiveOptions,
@@ -576,17 +732,12 @@ export function makeOpenCodeAdapter(
       if (text === undefined) {
         return;
       }
+
+      const visibleText =
+        part.type === "text" ? (stripProposedPlanBlockFromVisibleText(text) ?? "") : text;
       const previousText = context.emittedTextByPartId.get(part.id);
-      const { latestText, deltaToEmit } = mergeOpenCodeAssistantText(previousText, text);
+      const { latestText, deltaToEmit } = mergeOpenCodeAssistantText(previousText, visibleText);
       context.emittedTextByPartId.set(part.id, latestText);
-      if (latestText !== text) {
-        context.partById.set(
-          part.id,
-          (part.type === "text" || part.type === "reasoning"
-            ? { ...part, text: latestText }
-            : part) satisfies Part,
-        );
-      }
       if (deltaToEmit.length > 0) {
         yield* emit({
           ...(yield* buildEventBase({
@@ -607,11 +758,53 @@ export function makeOpenCodeAdapter(
         });
       }
 
+      if (part.type === "text") {
+        const planText = extractStreamingProposedPlanText(text);
+        if (planText) {
+          const previousLength = context.emittedProposedPlanLengthByPartId.get(part.id) ?? 0;
+          if (planText.length > previousLength) {
+            context.emittedProposedPlanLengthByPartId.set(part.id, planText.length);
+            yield* emit({
+              ...(yield* buildEventBase({
+                threadId: context.session.threadId,
+                turnId,
+                itemId: part.id,
+                createdAt: part.time !== undefined ? isoFromEpochMs(part.time.start) : undefined,
+                raw,
+              })),
+              type: "turn.proposed.delta",
+              payload: {
+                delta: planText.slice(previousLength),
+              },
+            });
+          }
+        }
+      }
+
       if (
         part.type === "text" &&
         part.time?.end !== undefined &&
         !context.completedAssistantPartIds.has(part.id)
       ) {
+        const planMarkdown = extractProposedPlanMarkdown(text);
+        if (planMarkdown) {
+          const captureKey = proposedPlanCaptureKey({ partId: part.id, planMarkdown });
+          if (!context.capturedProposedPlanKeys.has(captureKey)) {
+            context.capturedProposedPlanKeys.add(captureKey);
+            yield* emit({
+              ...(yield* buildEventBase({
+                threadId: context.session.threadId,
+                turnId,
+                itemId: part.id,
+                createdAt: isoFromEpochMs(part.time.end),
+                raw,
+              })),
+              type: "turn.proposed.completed",
+              payload: { planMarkdown },
+            });
+          }
+        }
+
         context.completedAssistantPartIds.add(part.id);
         yield* emit({
           ...(yield* buildEventBase({
@@ -683,39 +876,20 @@ export function makeOpenCodeAdapter(
           if (role !== "assistant") {
             break;
           }
-          const streamKind = resolveTextStreamKind(existingPart);
           const delta = event.properties.delta;
           if (delta.length === 0) {
             break;
           }
-          const previousText =
-            context.emittedTextByPartId.get(event.properties.partID) ??
-            textFromPart(existingPart) ??
-            "";
-          const { nextText, deltaToEmit } = appendOpenCodeAssistantTextDelta(previousText, delta);
-          if (deltaToEmit.length === 0) {
+          if (existingPart.type !== "text" && existingPart.type !== "reasoning") {
             break;
           }
-          context.emittedTextByPartId.set(event.properties.partID, nextText);
-          if (existingPart.type === "text" || existingPart.type === "reasoning") {
-            context.partById.set(event.properties.partID, {
-              ...existingPart,
-              text: nextText,
-            });
-          }
-          yield* emit({
-            ...(yield* buildEventBase({
-              threadId: context.session.threadId,
-              turnId,
-              itemId: event.properties.partID,
-              raw: event,
-            })),
-            type: "content.delta",
-            payload: {
-              streamKind,
-              delta: deltaToEmit,
-            },
-          });
+
+          const nextPart = {
+            ...existingPart,
+            text: existingPart.text + delta,
+          };
+          context.partById.set(event.properties.partID, nextPart);
+          yield* emitAssistantTextDelta(context, nextPart, turnId, event);
           break;
         }
 
@@ -859,6 +1033,25 @@ export function makeOpenCodeAdapter(
             })),
             type: "user-input.resolved",
             payload: { answers: {} },
+          });
+          break;
+        }
+
+        case "todo.updated": {
+          const plan = extractPlanStepsFromOpenCodeTodos(event.properties.todos);
+          if (plan.length === 0) {
+            break;
+          }
+          yield* emit({
+            ...(yield* buildEventBase({
+              threadId: context.session.threadId,
+              turnId,
+              raw: event,
+            })),
+            type: "turn.plan.updated",
+            payload: {
+              plan,
+            },
           });
           break;
         }
@@ -1020,7 +1213,8 @@ export function makeOpenCodeAdapter(
         const binaryPath = openCodeSettings.binaryPath;
         const serverUrl = openCodeSettings.serverUrl;
         const serverPassword = openCodeSettings.serverPassword;
-        const directory = input.cwd ?? serverConfig.cwd;
+        const resumeState = readOpenCodeResumeState(input.resumeCursor);
+        const directory = resumeState?.directory ?? input.cwd ?? serverConfig.cwd;
         const existing = sessions.get(input.threadId);
         if (existing) {
           yield* stopOpenCodeContext(existing);
@@ -1044,16 +1238,22 @@ export function makeOpenCodeAdapter(
                 directory,
                 ...(server.external && serverPassword ? { serverPassword } : {}),
               });
-              const openCodeSession = yield* runOpenCodeSdk("session.create", () =>
-                client.session.create({
-                  title: `T3 Code ${input.threadId}`,
-                  permission: buildOpenCodePermissionRules(input.runtimeMode),
-                }),
-              );
+              const openCodeSession = yield* resumeState
+                ? runOpenCodeSdk("session.get", () =>
+                    client.session.get({ sessionID: resumeState.sessionID }),
+                  )
+                : runOpenCodeSdk("session.create", () =>
+                    client.session.create({
+                      title: `T3 Code ${input.threadId}`,
+                      permission: buildOpenCodePermissionRules(input.runtimeMode),
+                    }),
+                  );
               if (!openCodeSession.data) {
                 return yield* new OpenCodeRuntimeError({
-                  operation: "session.create",
-                  detail: "OpenCode session.create returned no session payload.",
+                  operation: resumeState ? "session.get" : "session.create",
+                  detail: resumeState
+                    ? "OpenCode session.get returned no session payload."
+                    : "OpenCode session.create returned no session payload.",
                 });
               }
               return {
@@ -1061,6 +1261,7 @@ export function makeOpenCodeAdapter(
                 server,
                 client,
                 openCodeSession: openCodeSession.data,
+                resumed: resumeState !== undefined,
               };
             }).pipe(Effect.provideService(Scope.Scope, sessionScope)),
           );
@@ -1077,24 +1278,31 @@ export function makeOpenCodeAdapter(
         if (raceWinner) {
           // Another call won the race – clean up the session we just created
           // (including the remote SDK session) and return the existing one.
-          yield* runOpenCodeSdk("session.abort", () =>
-            started.client.session.abort({
-              sessionID: started.openCodeSession.id,
-            }),
-          ).pipe(Effect.ignore);
+          if (!started.resumed) {
+            yield* runOpenCodeSdk("session.abort", () =>
+              started.client.session.abort({
+                sessionID: started.openCodeSession.id,
+              }),
+            ).pipe(Effect.ignore);
+          }
           yield* Scope.close(started.sessionScope, Exit.void).pipe(Effect.ignore);
           return raceWinner.session;
         }
 
         const createdAt = yield* nowIso;
+        const sessionDirectory = started.openCodeSession.directory || directory;
         const session: ProviderSession = {
           provider: PROVIDER,
           providerInstanceId: boundInstanceId,
           status: "ready",
           runtimeMode: input.runtimeMode,
-          cwd: directory,
+          cwd: sessionDirectory,
           ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
           threadId: input.threadId,
+          resumeCursor: {
+            sessionID: started.openCodeSession.id,
+            directory: sessionDirectory,
+          },
           createdAt,
           updatedAt: createdAt,
         };
@@ -1103,17 +1311,18 @@ export function makeOpenCodeAdapter(
           session,
           client: started.client,
           server: started.server,
-          directory,
+          directory: sessionDirectory,
           openCodeSessionId: started.openCodeSession.id,
           pendingPermissions: new Map(),
           pendingQuestions: new Map(),
           partById: new Map(),
           emittedTextByPartId: new Map(),
+          emittedProposedPlanLengthByPartId: new Map(),
           messageRoleById: new Map(),
           completedAssistantPartIds: new Set(),
+          capturedProposedPlanKeys: new Set(),
           turns: [],
           activeTurnId: undefined,
-          activeAgent: undefined,
           activeVariant: undefined,
           stopped: yield* Ref.make(false),
           sessionScope: started.sessionScope,
@@ -1183,9 +1392,12 @@ export function makeOpenCodeAdapter(
 
       const agent = getModelSelectionStringOptionValue(modelSelection, "agent");
       const variant = getModelSelectionStringOptionValue(modelSelection, "variant");
+      const interactionMode = input.interactionMode ?? "default";
+      const system = resolveSystemInstructions(interactionMode);
 
+      context.emittedProposedPlanLengthByPartId.clear();
+      context.capturedProposedPlanKeys.clear();
       context.activeTurnId = turnId;
-      context.activeAgent = agent ?? (input.interactionMode === "plan" ? "plan" : undefined);
       context.activeVariant = variant;
       yield* updateProviderSession(
         context,
@@ -1210,8 +1422,9 @@ export function makeOpenCodeAdapter(
         context.client.session.promptAsync({
           sessionID: context.openCodeSessionId,
           model: parsedModel,
-          ...(context.activeAgent ? { agent: context.activeAgent } : {}),
+          ...(agent ? { agent } : {}),
           ...(context.activeVariant ? { variant: context.activeVariant } : {}),
+          system,
           parts: [...(text ? [{ type: "text" as const, text }] : []), ...fileParts],
         }),
       ).pipe(
@@ -1223,7 +1436,6 @@ export function makeOpenCodeAdapter(
         Effect.tapError((requestError) =>
           Effect.gen(function* () {
             context.activeTurnId = undefined;
-            context.activeAgent = undefined;
             context.activeVariant = undefined;
             yield* updateProviderSession(
               context,
@@ -1415,6 +1627,7 @@ export function makeOpenCodeAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        resumeCursorInvalidationReasons: ["runtime-mode-change", "cwd-change"],
       },
       startSession,
       sendTurn,
