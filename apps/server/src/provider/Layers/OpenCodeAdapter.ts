@@ -632,6 +632,14 @@ export function makeOpenCodeAdapter(
       const previousText = context.emittedTextByPartId.get(part.id);
       const { latestText, deltaToEmit } = mergeOpenCodeAssistantText(previousText, text);
       context.emittedTextByPartId.set(part.id, latestText);
+      if (latestText !== text) {
+        context.partById.set(
+          part.id,
+          (part.type === "text" || part.type === "reasoning"
+            ? { ...part, text: latestText }
+            : part) satisfies Part,
+        );
+      }
       if (deltaToEmit.length > 0) {
         yield* emit({
           ...(yield* buildEventBase({
@@ -728,20 +736,39 @@ export function makeOpenCodeAdapter(
           if (role !== "assistant") {
             break;
           }
+          const streamKind = resolveTextStreamKind(existingPart);
           const delta = event.properties.delta;
           if (delta.length === 0) {
             break;
           }
-          if (existingPart.type !== "text" && existingPart.type !== "reasoning") {
+          const previousText =
+            context.emittedTextByPartId.get(event.properties.partID) ??
+            textFromPart(existingPart) ??
+            "";
+          const { nextText, deltaToEmit } = appendOpenCodeAssistantTextDelta(previousText, delta);
+          if (deltaToEmit.length === 0) {
             break;
           }
-
-          const nextPart = {
-            ...existingPart,
-            text: existingPart.text + delta,
-          };
-          context.partById.set(event.properties.partID, nextPart);
-          yield* emitAssistantTextDelta(context, nextPart, turnId, event);
+          context.emittedTextByPartId.set(event.properties.partID, nextText);
+          if (existingPart.type === "text" || existingPart.type === "reasoning") {
+            context.partById.set(event.properties.partID, {
+              ...existingPart,
+              text: nextText,
+            });
+          }
+          yield* emit({
+            ...(yield* buildEventBase({
+              threadId: context.session.threadId,
+              turnId,
+              itemId: event.properties.partID,
+              raw: event,
+            })),
+            type: "content.delta",
+            payload: {
+              streamKind,
+              delta: deltaToEmit,
+            },
+          });
           break;
         }
 
