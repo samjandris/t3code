@@ -15,6 +15,10 @@
       "types": "./src/composerTrigger.ts",
       "import": "./src/composerTrigger.ts"
     },
+    "./proposedPlan": {
+      "types": "./src/proposedPlan.ts",
+      "import": "./src/proposedPlan.ts"
+    },
     "./orchestrationTiming": {
       "types": "./src/orchestrationTiming.ts",
       "import": "./src/orchestrationTiming.ts"

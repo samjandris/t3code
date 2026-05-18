@@ -368,6 +368,7 @@ export function ThreadRouteScreen() {
           httpBaseUrl={selectedEnvironmentConnection?.httpBaseUrl ?? null}
           bearerToken={selectedEnvironmentConnection?.bearerToken ?? null}
           selectedThreadFeed={composer.selectedThreadFeed}
+          activeProposedPlan={composer.activeProposedPlan}
           activeWorkStartedAt={composer.activeWorkStartedAt}
           activePendingApproval={requests.activePendingApproval}
           respondingApprovalId={requests.respondingApprovalId}
@@ -392,6 +393,7 @@ export function ThreadRouteScreen() {
           serverConfig={serverConfig}
           onStopThread={commands.onStopThread}
           onSendMessage={composer.onSendMessage}
+          onImplementActivePlan={composer.onImplementActivePlan}
           onUpdateThreadModelSelection={commands.onUpdateThreadModelSelection}
           onUpdateThreadRuntimeMode={commands.onUpdateThreadRuntimeMode}
           onUpdateThreadInteractionMode={commands.onUpdateThreadInteractionMode}

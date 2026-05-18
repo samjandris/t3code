@@ -2,6 +2,7 @@ import type {
   ApprovalRequestId,
   EnvironmentId,
   ModelSelection,
+  OrchestrationProposedPlan,
   OrchestrationThread,
   ProviderApprovalDecision,
   ProviderInteractionMode,
@@ -45,6 +46,7 @@ export interface ThreadDetailScreenProps {
   readonly httpBaseUrl: string | null;
   readonly bearerToken: string | null;
   readonly selectedThreadFeed: ReadonlyArray<ThreadFeedEntry>;
+  readonly activeProposedPlan: OrchestrationProposedPlan | null;
   readonly activeWorkStartedAt: string | null;
   readonly activePendingApproval: PendingApproval | null;
   readonly respondingApprovalId: ApprovalRequestId | null;
@@ -70,6 +72,7 @@ export interface ThreadDetailScreenProps {
   readonly onRefresh: () => Promise<void>;
   readonly onStopThread: () => Promise<void>;
   readonly onSendMessage: () => void;
+  readonly onImplementActivePlan: () => void;
   readonly onUpdateThreadModelSelection: (modelSelection: ModelSelection) => Promise<void>;
   readonly onUpdateThreadRuntimeMode: (runtimeMode: RuntimeMode) => Promise<void>;
   readonly onUpdateThreadInteractionMode: (
@@ -327,6 +330,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 placeholder="Ask the repo agent, or run a command…"
                 connectionState={props.connectionStateLabel}
                 selectedThread={props.selectedThread}
+                activeProposedPlan={props.activeProposedPlan}
                 serverConfig={props.serverConfig}
                 queueCount={props.selectedThreadQueueCount}
                 activeThreadBusy={props.activeThreadBusy}
@@ -340,6 +344,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 onRefresh={props.onRefresh}
                 onStopThread={props.onStopThread}
                 onSendMessage={props.onSendMessage}
+                onImplementActivePlan={props.onImplementActivePlan}
                 onUpdateModelSelection={props.onUpdateThreadModelSelection}
                 onUpdateRuntimeMode={props.onUpdateThreadRuntimeMode}
                 onUpdateInteractionMode={props.onUpdateThreadInteractionMode}

@@ -3,6 +3,7 @@ import type {
   CommandId,
   EnvironmentId,
   MessageId,
+  OrchestrationProposedPlan,
   OrchestrationThread,
   OrchestrationThreadActivity,
   TurnId,
@@ -41,6 +42,10 @@ export interface QueuedThreadMessage {
   readonly text: string;
   readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
   readonly createdAt: string;
+  readonly interactionMode?: OrchestrationThread["interactionMode"];
+  readonly sourceProposedPlan?: NonNullable<
+    OrchestrationThread["latestTurn"]
+  >["sourceProposedPlan"];
 }
 
 export interface ThreadFeedActivity {
@@ -49,6 +54,16 @@ export interface ThreadFeedActivity {
   readonly summary: string;
   readonly detail: string | null;
   readonly status: string | null;
+}
+
+export interface ActivePlanState {
+  readonly createdAt: string;
+  readonly turnId: TurnId | null;
+  readonly explanation?: string | null;
+  readonly steps: ReadonlyArray<{
+    readonly step: string;
+    readonly status: "pending" | "inProgress" | "completed";
+  }>;
 }
 
 interface WorkLogEntry {
@@ -89,10 +104,23 @@ type RawThreadFeedEntry =
       readonly id: string;
       readonly createdAt: string;
       readonly activity: ThreadFeedActivity;
+    }
+  | {
+      readonly type: "active-plan";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly activePlan: ActivePlanState;
+    }
+  | {
+      readonly type: "proposed-plan";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly proposedPlan: OrchestrationProposedPlan;
     };
 
 export type ThreadFeedEntry =
   | Extract<RawThreadFeedEntry, { type: "message" | "queued-message" }>
+  | Extract<RawThreadFeedEntry, { type: "active-plan" | "proposed-plan" }>
   | {
       readonly type: "activity-group";
       readonly id: string;
@@ -853,6 +881,66 @@ export function derivePendingUserInputs(
   return Arr.sortWith(openByRequestId.values(), (s) => new Date(s.createdAt), Order.Date);
 }
 
+export function deriveActivePlanState(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurnId: TurnId | undefined,
+): ActivePlanState | null {
+  const ordered = Arr.sort(activities, activityOrder);
+  const planActivities = ordered.filter((activity) => activity.kind === "turn.plan.updated");
+  const latest =
+    (latestTurnId
+      ? planActivities.findLast((activity) => activity.turnId === latestTurnId)
+      : undefined) ?? planActivities.at(-1);
+  if (!latest) {
+    return null;
+  }
+
+  const payload =
+    latest.payload && typeof latest.payload === "object"
+      ? (latest.payload as Record<string, unknown>)
+      : null;
+  const rawPlan = payload?.plan;
+  if (!Array.isArray(rawPlan)) {
+    return null;
+  }
+
+  const steps = rawPlan
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const record = entry as Record<string, unknown>;
+      if (typeof record.step !== "string") {
+        return null;
+      }
+      const status =
+        record.status === "completed" || record.status === "inProgress" ? record.status : "pending";
+      return {
+        step: record.step,
+        status,
+      };
+    })
+    .filter(
+      (
+        step,
+      ): step is {
+        step: string;
+        status: "pending" | "inProgress" | "completed";
+      } => step !== null,
+    );
+
+  if (steps.length === 0) {
+    return null;
+  }
+
+  return {
+    createdAt: latest.createdAt,
+    turnId: latest.turnId,
+    ...(payload && "explanation" in payload
+      ? { explanation: typeof payload.explanation === "string" ? payload.explanation : null }
+      : {}),
+    steps,
+  };
+}
+
 export function setPendingUserInputCustomAnswer(
   draft: PendingUserInputDraftAnswer | undefined,
   customAnswer: string,
@@ -897,6 +985,10 @@ export function buildThreadFeed(
     thread.activities,
     thread.latestTurn?.turnId ?? undefined,
   );
+  const activePlan = deriveActivePlanState(
+    thread.activities,
+    thread.latestTurn?.turnId ?? undefined,
+  );
   const entries = Arr.sortWith(
     [
       ...loadedMessages.map<RawThreadFeedEntry>((message) => ({
@@ -911,6 +1003,22 @@ export function buildThreadFeed(
         createdAt: queuedMessage.createdAt,
         queuedMessage,
         sending: queuedMessage.messageId === dispatchingQueuedMessageId,
+      })),
+      ...(activePlan
+        ? [
+            {
+              type: "active-plan" as const,
+              id: `active-plan:${activePlan.turnId ?? "latest"}:${activePlan.createdAt}`,
+              createdAt: activePlan.createdAt,
+              activePlan,
+            },
+          ]
+        : []),
+      ...thread.proposedPlans.map<RawThreadFeedEntry>((proposedPlan) => ({
+        type: "proposed-plan",
+        id: proposedPlan.id,
+        createdAt: proposedPlan.createdAt,
+        proposedPlan,
       })),
       ...workLogEntries
         .filter((entry) => {

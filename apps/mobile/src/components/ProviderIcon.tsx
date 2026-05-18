@@ -21,6 +21,26 @@ export function ProviderIcon(props: ProviderIconProps) {
     );
   }
 
+  if (props.provider === "opencode") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 32 40" fill="none">
+        <Path fill={isDarkMode ? "#4B4646" : "#CFCECD"} d="M24 32H8V16H24V32Z" />
+        <Path fill={isDarkMode ? "#F1ECEC" : "#211E1E"} d="M24 8H8V32H24V8ZM32 40H0V0H32V40Z" />
+      </Svg>
+    );
+  }
+
+  if (props.provider === "cursor") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 256 256" fill="none">
+        <Path
+          fill={isDarkMode ? "#f8fafc" : "#111827"}
+          d="M49.7 23.8 218.4 119c12.9 7.3 10.2 26.7-4.4 30.2l-64.2 15.3-33.1 56.9c-7.6 13.1-27.5 8.2-28.2-6.9L79 153.1 28.9 111c-11.7-9.8-3.6-28.8 11.5-27l64.7 7.8L49.7 23.8Zm46.5 77.6 17.1 88 20.4-35.1a16.1 16.1 0 0 1 10.2-7.6l39.7-9.5-87.4-49.3 20.3 24.9-20.3-11.4Z"
+        />
+      </Svg>
+    );
+  }
+
   return (
     <Svg width={size} height={size} viewBox="0 0 256 260" fill="none">
       <Path

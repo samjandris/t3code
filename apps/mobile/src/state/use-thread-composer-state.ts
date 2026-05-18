@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo } from "react";
 import { EnvironmentScopedThreadShell } from "@t3tools/client-runtime";
 import { CommandId, MessageId, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { deriveActiveWorkStartedAt } from "@t3tools/shared/orchestrationTiming";
+import {
+  buildPlanImplementationPrompt,
+  resolvePlanFollowUpSubmission,
+} from "@t3tools/shared/proposedPlan";
 import { Atom } from "effect/unstable/reactivity";
 
 import {
@@ -257,6 +261,36 @@ export function useThreadComposerState() {
     ? (draftAttachmentsByThreadKey[selectedThreadKey] ?? [])
     : [];
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
+  const activeProposedPlan = useMemo(() => {
+    if (!selectedThread) {
+      return null;
+    }
+    if (selectedThread.interactionMode !== "plan") {
+      return null;
+    }
+    if (selectedThread.latestTurn?.state === "running") {
+      return null;
+    }
+    if (
+      selectedThread.session?.status === "running" ||
+      selectedThread.session?.status === "starting"
+    ) {
+      return null;
+    }
+    const latestTurnId = selectedThread.latestTurn?.turnId ?? null;
+    const plans = selectedThread.proposedPlans.filter((plan) => plan.implementedAt === null);
+    const matchingTurnPlan = latestTurnId
+      ? [...plans]
+          .filter((plan) => plan.turnId === latestTurnId)
+          .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+          .at(-1)
+      : undefined;
+    return (
+      matchingTurnPlan ??
+      [...plans].sort((left, right) => left.updatedAt.localeCompare(right.updatedAt)).at(-1) ??
+      null
+    );
+  }, [selectedThread]);
 
   const selectedThreadSessionActivity = useMemo(() => {
     if (!selectedThread?.session) {
@@ -311,7 +345,10 @@ export function useThreadComposerState() {
             attachments: queuedMessage.attachments,
           },
           runtimeMode: thread.runtimeMode,
-          interactionMode: thread.interactionMode,
+          interactionMode: queuedMessage.interactionMode ?? thread.interactionMode,
+          ...(queuedMessage.sourceProposedPlan
+            ? { sourceProposedPlan: queuedMessage.sourceProposedPlan }
+            : {}),
           createdAt: queuedMessage.createdAt,
         });
 
@@ -352,7 +389,19 @@ export function useThreadComposerState() {
     const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
     const text = (draftMessageByThreadKey[threadKey] ?? "").trim();
     const attachments = draftAttachmentsByThreadKey[threadKey] ?? [];
-    if (text.length === 0 && attachments.length === 0) {
+    const isPlanFollowUp = activeProposedPlan !== null;
+    if (text.length === 0 && attachments.length === 0 && !isPlanFollowUp) {
+      return;
+    }
+    const followUp =
+      activeProposedPlan && attachments.length === 0
+        ? resolvePlanFollowUpSubmission({
+            draftText: text,
+            planMarkdown: activeProposedPlan.planMarkdown,
+          })
+        : null;
+    const messageText = followUp?.text ?? text;
+    if (messageText.trim().length === 0 && attachments.length === 0) {
       return;
     }
 
@@ -362,12 +411,50 @@ export function useThreadComposerState() {
       threadId: selectedThreadShell.id,
       messageId: MessageId.make(uuidv4()),
       commandId: CommandId.make(uuidv4()),
-      text,
-      attachments,
+      text: messageText,
+      attachments: followUp?.interactionMode === "default" ? [] : attachments,
       createdAt,
+      ...(followUp ? { interactionMode: followUp.interactionMode } : {}),
+      ...(followUp?.interactionMode === "default" && activeProposedPlan
+        ? {
+            sourceProposedPlan: {
+              threadId: selectedThreadShell.id,
+              planId: activeProposedPlan.id,
+            },
+          }
+        : {}),
     });
     clearDraft(threadKey);
-  }, [draftAttachmentsByThreadKey, draftMessageByThreadKey, selectedThreadShell]);
+  }, [
+    activeProposedPlan,
+    draftAttachmentsByThreadKey,
+    draftMessageByThreadKey,
+    selectedThreadShell,
+  ]);
+
+  const onImplementActivePlan = useCallback(() => {
+    if (!selectedThreadShell || !activeProposedPlan) {
+      return;
+    }
+
+    const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
+    const createdAt = new Date().toISOString();
+    enqueueQueuedMessage({
+      environmentId: selectedThreadShell.environmentId,
+      threadId: selectedThreadShell.id,
+      messageId: MessageId.make(uuidv4()),
+      commandId: CommandId.make(uuidv4()),
+      text: buildPlanImplementationPrompt(activeProposedPlan.planMarkdown),
+      attachments: [],
+      createdAt,
+      interactionMode: "default",
+      sourceProposedPlan: {
+        threadId: selectedThreadShell.id,
+        planId: activeProposedPlan.id,
+      },
+    });
+    clearDraft(threadKey);
+  }, [activeProposedPlan, selectedThreadShell]);
 
   const onChangeDraftMessage = useCallback(
     (value: string) => {
@@ -456,6 +543,7 @@ export function useThreadComposerState() {
     selectedThreadFeed,
     selectedThreadQueueCount,
     activeWorkStartedAt,
+    activeProposedPlan,
     draftMessage,
     draftAttachments,
     activeThreadBusy,
@@ -465,5 +553,6 @@ export function useThreadComposerState() {
     onNativePasteImages,
     onRemoveDraftImage,
     onSendMessage,
+    onImplementActivePlan,
   };
 }

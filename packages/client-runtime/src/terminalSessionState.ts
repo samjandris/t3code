@@ -681,10 +681,103 @@ export function createTerminalSessionManager(config: TerminalSessionManagerConfi
     readonly client: TerminalMetadataClient;
     readonly options?: { readonly onResubscribe?: () => void };
   }): () => void {
-    return input.client.terminal.onEvent(
-      (event) => applyAttachEvent({ environmentId: input.environmentId }, event),
-      input.options,
-    );
+    return input.client.terminal.onEvent((event) => {
+      const knownTarget = getKnownTerminalSessionTarget({
+        environmentId: input.environmentId,
+        threadId: ThreadId.make(event.threadId),
+        terminalId: event.terminalId,
+      });
+      const existingSummary =
+        knownTarget === null
+          ? null
+          : getMetadata(input.environmentId)[keyFromKnownTarget(knownTarget)]?.summary;
+
+      switch (event.type) {
+        case "output":
+        case "cleared":
+          return;
+        case "started":
+        case "restarted":
+          applyMetadataEvent(
+            { environmentId: input.environmentId },
+            {
+              type: "upsert",
+              terminal: summaryFromSnapshot(event.snapshot),
+            },
+          );
+          return;
+        case "exited":
+          applyMetadataEvent(
+            { environmentId: input.environmentId },
+            {
+              type: "upsert",
+              terminal: {
+                ...(existingSummary ??
+                  summaryFromSnapshot({
+                    threadId: event.threadId,
+                    terminalId: event.terminalId,
+                    cwd: "",
+                    worktreePath: null,
+                    status: "exited",
+                    pid: null,
+                    history: "",
+                    exitCode: event.exitCode,
+                    exitSignal: event.exitSignal,
+                    updatedAt: event.createdAt,
+                  })),
+                status: "exited",
+                pid: null,
+                exitCode: event.exitCode,
+                exitSignal: event.exitSignal,
+                updatedAt: event.createdAt,
+                hasRunningSubprocess: false,
+              },
+            },
+          );
+          return;
+        case "error":
+          applyMetadataEvent(
+            { environmentId: input.environmentId },
+            {
+              type: "upsert",
+              terminal: {
+                ...(existingSummary ??
+                  summaryFromSnapshot({
+                    threadId: event.threadId,
+                    terminalId: event.terminalId,
+                    cwd: "",
+                    worktreePath: null,
+                    status: "error",
+                    pid: null,
+                    history: "",
+                    exitCode: null,
+                    exitSignal: null,
+                    updatedAt: event.createdAt,
+                  })),
+                status: "error",
+                updatedAt: event.createdAt,
+                hasRunningSubprocess: false,
+              },
+            },
+          );
+          return;
+        case "activity":
+          if (existingSummary) {
+            applyMetadataEvent(
+              { environmentId: input.environmentId },
+              {
+                type: "upsert",
+                terminal: {
+                  ...existingSummary,
+                  hasRunningSubprocess: event.hasRunningSubprocess,
+                  updatedAt: event.createdAt,
+                },
+              },
+            );
+          }
+          return;
+      }
+    }, input.options);
   }
 
   function attach(input: {

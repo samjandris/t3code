@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./wsTransport.ts", () => ({
   WsTransport: class WsTransport {
     dispose = vi.fn(async () => undefined);
+    isHeartbeatFresh = vi.fn(() => true);
     reconnect = vi.fn(async () => undefined);
     request = vi.fn();
     requestStream = vi.fn();
@@ -40,6 +41,7 @@ describe("createWsRpcClient", () => {
     const order: string[] = [];
     const transport = {
       dispose: vi.fn(async () => undefined),
+      isHeartbeatFresh: vi.fn(() => true),
       reconnect: vi.fn(async () => {
         order.push("reconnect");
       }),
@@ -48,7 +50,7 @@ describe("createWsRpcClient", () => {
       subscribe: vi.fn(() => () => undefined),
     } satisfies Pick<
       WsTransport,
-      "dispose" | "reconnect" | "request" | "requestStream" | "subscribe"
+      "dispose" | "isHeartbeatFresh" | "reconnect" | "request" | "requestStream" | "subscribe"
     >;
 
     const client = createWsRpcClient(transport as unknown as WsTransport, {
@@ -88,13 +90,14 @@ describe("createWsRpcClient", () => {
 
     const transport = {
       dispose: vi.fn(async () => undefined),
+      isHeartbeatFresh: vi.fn(() => true),
       reconnect: vi.fn(async () => undefined),
       request: vi.fn(),
       requestStream: vi.fn(),
       subscribe,
     } satisfies Pick<
       WsTransport,
-      "dispose" | "reconnect" | "request" | "requestStream" | "subscribe"
+      "dispose" | "isHeartbeatFresh" | "reconnect" | "request" | "requestStream" | "subscribe"
     >;
 
     const client = createWsRpcClient(transport as unknown as WsTransport);
@@ -133,13 +136,14 @@ describe("createWsRpcClient", () => {
     const subscribe = vi.fn(() => () => undefined);
     const transport = {
       dispose: vi.fn(async () => undefined),
+      isHeartbeatFresh: vi.fn(() => true),
       reconnect: vi.fn(async () => undefined),
       request: vi.fn(),
       requestStream: vi.fn(),
       subscribe,
     } satisfies Pick<
       WsTransport,
-      "dispose" | "reconnect" | "request" | "requestStream" | "subscribe"
+      "dispose" | "isHeartbeatFresh" | "reconnect" | "request" | "requestStream" | "subscribe"
     >;
 
     const client = createWsRpcClient(transport as unknown as WsTransport);

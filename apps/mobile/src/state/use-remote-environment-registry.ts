@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useMemo } from "react";
-import { Alert } from "react-native";
+import { Alert, AppState, type AppStateStatus } from "react-native";
 
 import {
   type EnvironmentRuntimeState,
@@ -30,6 +30,7 @@ import {
 import { appAtomRegistry } from "./atom-registry";
 import {
   drainEnvironmentSessions,
+  listEnvironmentSessions,
   notifyEnvironmentConnectionListeners,
   removeEnvironmentSession,
   setEnvironmentSession,
@@ -50,6 +51,10 @@ import { subscribeTerminalMetadata, terminalSessionManager } from "./use-termina
 
 const terminalMetadataUnsubscribers = new Map<EnvironmentId, () => void>();
 const SAVED_CONNECTION_BOOTSTRAP_TIMEOUT_MS = 8_000;
+const APP_RESUME_RECONNECT_COOLDOWN_MS = 5_000;
+const HEARTBEAT_TIMEOUT_RECONNECT_COOLDOWN_MS = 5_000;
+const HEARTBEAT_STALE_MS = 15_000;
+const SOCKET_CLOSE_RECONNECT_DELAY_MS = 750;
 
 interface RemoteEnvironmentLocalState {
   readonly isLoadingSavedConnection: boolean;
@@ -150,6 +155,54 @@ function setEnvironmentConnectionStatus(
   }));
 }
 
+let lastAppResumeReconnectAt = 0;
+
+function reconnectStaleEnvironmentSessions(reason: string): void {
+  const now = Date.now();
+  if (now - lastAppResumeReconnectAt < APP_RESUME_RECONNECT_COOLDOWN_MS) {
+    return;
+  }
+
+  let didReconnect = false;
+  for (const session of listEnvironmentSessions()) {
+    if (session.client.isHeartbeatFresh(HEARTBEAT_STALE_MS)) {
+      continue;
+    }
+
+    didReconnect = true;
+    setEnvironmentConnectionStatus(session.connection.environmentId, "reconnecting", null);
+    void session.connection.reconnect().catch((error) => {
+      setEnvironmentConnectionStatus(
+        session.connection.environmentId,
+        "disconnected",
+        error instanceof Error
+          ? error.message
+          : `Failed to reconnect remote environment after ${reason}.`,
+      );
+    });
+  }
+
+  if (didReconnect) {
+    lastAppResumeReconnectAt = now;
+  }
+}
+
+function subscribeAppResumeReconnects(): () => void {
+  let previousState: AppStateStatus = AppState.currentState;
+  const subscription = AppState.addEventListener("change", (nextState) => {
+    const wasBackgrounded = previousState === "background" || previousState === "inactive";
+    previousState = nextState;
+
+    if (nextState === "active" && wasBackgrounded) {
+      reconnectStaleEnvironmentSessions("app resume");
+    }
+  });
+
+  return () => {
+    subscription.remove();
+  };
+}
+
 function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -210,6 +263,60 @@ export async function connectSavedEnvironment(
   upsertSavedConnection(connection);
   setEnvironmentConnectionStatus(connection.environmentId, "connecting", null);
   shellSnapshotManager.markPending({ environmentId: connection.environmentId });
+  let lastHeartbeatTimeoutReconnectAt = 0;
+  let environmentConnection: ReturnType<typeof createEnvironmentConnection> | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectInFlight = false;
+
+  const isCurrentEnvironmentConnection = () =>
+    listEnvironmentSessions().some((session) => session.connection === environmentConnection);
+
+  const reconnectEnvironment = (reason: string, failureMessage: string) => {
+    if (reconnectInFlight || !isCurrentEnvironmentConnection()) {
+      return;
+    }
+
+    reconnectInFlight = true;
+    terminalDebugLog("registry:auto-reconnect", {
+      environmentId: connection.environmentId,
+      reason,
+    });
+    setEnvironmentConnectionStatus(connection.environmentId, "reconnecting", null);
+    void environmentConnection
+      ?.reconnect()
+      .catch((error) => {
+        setEnvironmentConnectionStatus(
+          connection.environmentId,
+          "disconnected",
+          error instanceof Error ? error.message : failureMessage,
+        );
+      })
+      .finally(() => {
+        reconnectInFlight = false;
+      });
+  };
+
+  const scheduleReconnect = (reason: string, failureMessage: string) => {
+    if (reconnectTimer !== null || reconnectInFlight || !isCurrentEnvironmentConnection()) {
+      return;
+    }
+
+    setEnvironmentConnectionStatus(connection.environmentId, "reconnecting", null);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      reconnectEnvironment(reason, failureMessage);
+    }, SOCKET_CLOSE_RECONNECT_DELAY_MS);
+  };
+
+  const reconnectAfterHeartbeatTimeout = () => {
+    const now = Date.now();
+    if (now - lastHeartbeatTimeoutReconnectAt < HEARTBEAT_TIMEOUT_RECONNECT_COOLDOWN_MS) {
+      return;
+    }
+
+    lastHeartbeatTimeoutReconnectAt = now;
+    reconnectEnvironment("heartbeat timeout", "Remote connection heartbeat timed out.");
+  };
 
   const transport = new WsTransport(
     () =>
@@ -237,20 +344,25 @@ export async function connectSavedEnvironment(
       onError: (message) => {
         setEnvironmentConnectionStatus(connection.environmentId, "disconnected", message);
       },
-      onClose: (details) => {
+      onClose: (details, context) => {
+        if (context.intentional) {
+          return;
+        }
+
         const reason =
           details.reason.trim().length > 0
             ? details.reason
             : details.code === 1000
               ? null
               : `Remote connection closed (${details.code}).`;
-        setEnvironmentConnectionStatus(connection.environmentId, "disconnected", reason);
+        scheduleReconnect("socket close", reason ?? "Remote connection closed.");
       },
+      onHeartbeatTimeout: reconnectAfterHeartbeatTimeout,
     },
   );
 
   const client = createWsRpcClient(transport);
-  const environmentConnection = createEnvironmentConnection({
+  environmentConnection = createEnvironmentConnection({
     kind: "saved",
     knownEnvironment: {
       ...createKnownEnvironment({
@@ -351,6 +463,7 @@ function deriveConnectedEnvironments(
 export function useRemoteEnvironmentBootstrap() {
   useEffect(() => {
     let cancelled = false;
+    const unsubscribeAppResumeReconnects = subscribeAppResumeReconnects();
 
     void loadSavedConnections()
       .then((connections) => {
@@ -397,6 +510,7 @@ export function useRemoteEnvironmentBootstrap() {
 
     return () => {
       cancelled = true;
+      unsubscribeAppResumeReconnects();
       for (const session of drainEnvironmentSessions()) {
         void session.connection.dispose();
       }

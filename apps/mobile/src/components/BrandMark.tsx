@@ -4,10 +4,9 @@ import { AppText as Text } from "./AppText";
 
 const BRAND_MARK_SOURCE = require("../../../../assets/dev/blueprint-ios-1024.png");
 
-export function BrandMark(props: { readonly compact?: boolean; readonly stageLabel?: string }) {
+export function BrandMark(props: { readonly compact?: boolean }) {
   const compact = props.compact ?? false;
   const iconSize = compact ? 32 : 44;
-  const stageLabel = props.stageLabel ?? "Alpha";
 
   return (
     <View className="flex-row items-center gap-3">
@@ -28,14 +27,6 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
           >
             T3 Code
           </Text>
-          <View className="rounded-full bg-subtle px-2 py-1">
-            <Text
-              className="text-[10px] font-t3-bold uppercase text-foreground-muted"
-              style={{ letterSpacing: 1.1 }}
-            >
-              {stageLabel}
-            </Text>
-          </View>
         </View>
         {!compact ? (
           <Text className="text-[12px] font-medium text-foreground-muted">

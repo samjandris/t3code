@@ -2,6 +2,12 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { KeyboardAvoidingLegendList } from "@legendapp/list/keyboard";
 import { type LegendListRef } from "@legendapp/list/react-native";
+import {
+  buildCollapsedProposedPlanPreviewMarkdown,
+  normalizePlanMarkdownForExport,
+  proposedPlanTitle,
+  stripDisplayedPlanMarkdown,
+} from "@t3tools/shared/proposedPlan";
 import type { ThreadId } from "@t3tools/contracts";
 import { SymbolView } from "expo-symbols";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -45,6 +51,7 @@ import { buildReviewParsedDiff } from "../review/reviewModel";
 import { cn } from "../../lib/cn";
 import type { MobileLayoutVariant } from "../../lib/mobileLayout";
 import type { ThreadFeedEntry } from "../../lib/threadActivity";
+import type { ActivePlanState } from "../../lib/threadActivity";
 import { relativeTime } from "../../lib/time";
 import { messageImageUrl } from "./threadPresentation";
 
@@ -226,7 +233,7 @@ function useMarkdownStyles(): MarkdownStyleSets {
     };
 
     const baseStyles: NodeStyleOverrides = {
-      document: { flexShrink: 1 },
+      document: { alignSelf: "flex-start", flexGrow: 0, flexShrink: 1 },
       paragraph: { marginTop: 0, marginBottom: 8 },
       list: { marginTop: 4, marginBottom: 4 },
       list_item: { marginTop: 0, marginBottom: 4 },
@@ -422,9 +429,9 @@ function renderFeedEntry(
 
     if (isUser) {
       return (
-        <View className="mb-5 items-end">
+        <View className="mb-8 items-end">
           <View
-            className="max-w-[85%] gap-2 rounded-[22px] rounded-br-[6px] px-3.5 py-2.5"
+            className="max-w-[85%] gap-2 rounded-[22px] rounded-br-[6px] px-3.5 py-2"
             style={{
               backgroundColor: userBubbleColor,
               ...(hasReviewCommentContext ? { width: props.reviewCommentBubbleWidth } : null),
@@ -541,6 +548,20 @@ function renderFeedEntry(
     );
   }
 
+  if (entry.type === "active-plan") {
+    return <ActivePlanCard activePlan={entry.activePlan} />;
+  }
+
+  if (entry.type === "proposed-plan") {
+    return (
+      <ProposedPlanFeedCard
+        planMarkdown={entry.proposedPlan.planMarkdown}
+        markdownStyles={markdownStyles.assistant}
+        implemented={entry.proposedPlan.implementedAt !== null}
+      />
+    );
+  }
+
   const rows = buildActivityRows(entry.activities);
   const isExpanded = props.expandedWorkGroups[entry.id] ?? false;
   const hasOverflow = rows.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
@@ -606,6 +627,163 @@ function renderFeedEntry(
     </View>
   );
 }
+
+const ActivePlanCard = memo(function ActivePlanCard(props: {
+  readonly activePlan: ActivePlanState;
+}) {
+  const completedCount = props.activePlan.steps.filter(
+    (step) => step.status === "completed",
+  ).length;
+  return (
+    <View className="mb-4 rounded-[18px] border border-blue-500/20 bg-blue-500/[0.06] px-3.5 py-3 dark:border-blue-400/20 dark:bg-blue-400/[0.07]">
+      <View className="mb-2 flex-row items-center justify-between gap-3">
+        <View className="flex-row items-center gap-2">
+          <View className="size-6 items-center justify-center rounded-full bg-blue-500/15">
+            <SymbolView name="checklist" size={14} tintColor="#60a5fa" type="monochrome" />
+          </View>
+          <Text className="font-t3-bold text-[12px] uppercase tracking-[0.8px] text-blue-700 dark:text-blue-300">
+            Plan
+          </Text>
+        </View>
+        <Text className="font-t3-medium text-[11px] text-blue-700/70 dark:text-blue-300/70">
+          {completedCount}/{props.activePlan.steps.length}
+        </Text>
+      </View>
+      {props.activePlan.explanation ? (
+        <Text className="mb-2 text-[13px] leading-[18px] text-neutral-600 dark:text-neutral-300">
+          {props.activePlan.explanation}
+        </Text>
+      ) : null}
+      <View className="gap-1.5">
+        {props.activePlan.steps.map((step) => (
+          <View
+            key={`${step.status}:${step.step}`}
+            className={cn(
+              "flex-row items-start gap-2 rounded-xl px-2.5 py-2",
+              step.status === "inProgress" && "bg-blue-500/10",
+              step.status === "completed" && "bg-emerald-500/10",
+            )}
+          >
+            <PlanStepIcon status={step.status} />
+            <Text
+              className={cn(
+                "min-w-0 flex-1 text-[13px] leading-[18px]",
+                step.status === "completed"
+                  ? "text-neutral-500 line-through dark:text-neutral-500"
+                  : step.status === "inProgress"
+                    ? "text-neutral-900 dark:text-neutral-100"
+                    : "text-neutral-600 dark:text-neutral-400",
+              )}
+            >
+              {step.step}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+});
+
+function PlanStepIcon(props: { readonly status: "pending" | "inProgress" | "completed" }) {
+  if (props.status === "completed") {
+    return (
+      <View className="mt-0.5 size-5 items-center justify-center rounded-full bg-emerald-500/15">
+        <SymbolView name="checkmark" size={11} tintColor="#10b981" type="monochrome" />
+      </View>
+    );
+  }
+  if (props.status === "inProgress") {
+    return (
+      <View className="mt-0.5 size-5 items-center justify-center rounded-full bg-blue-500/15">
+        <SymbolView
+          name="arrow.triangle.2.circlepath"
+          size={11}
+          tintColor="#60a5fa"
+          type="monochrome"
+        />
+      </View>
+    );
+  }
+  return (
+    <View className="mt-0.5 size-5 items-center justify-center rounded-full border border-neutral-300/70 dark:border-white/15">
+      <View className="size-1.5 rounded-full bg-neutral-400/60" />
+    </View>
+  );
+}
+
+const ProposedPlanFeedCard = memo(function ProposedPlanFeedCard(props: {
+  readonly planMarkdown: string;
+  readonly markdownStyles: MarkdownStyleSet;
+  readonly implemented: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const title = proposedPlanTitle(props.planMarkdown) ?? "Proposed plan";
+  const lineCount = props.planMarkdown.split("\n").length;
+  const canCollapse = props.planMarkdown.length > 900 || lineCount > 20;
+  const displayedPlanMarkdown = stripDisplayedPlanMarkdown(props.planMarkdown);
+  const collapsedPreview = canCollapse
+    ? buildCollapsedProposedPlanPreviewMarkdown(props.planMarkdown, { maxLines: 10 })
+    : null;
+
+  const handleCopy = useCallback(() => {
+    void Clipboard.setStringAsync(normalizePlanMarkdownForExport(props.planMarkdown));
+    void Haptics.selectionAsync();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }, [props.planMarkdown]);
+
+  return (
+    <View className="mb-5 rounded-[20px] border border-neutral-200/90 bg-neutral-50/90 px-3.5 py-3.5 dark:border-white/[0.08] dark:bg-white/[0.035]">
+      <View className="mb-3 flex-row items-center gap-2">
+        <View className="rounded-full bg-blue-500/12 px-2 py-1">
+          <Text className="font-t3-bold text-[10px] uppercase tracking-[0.8px] text-blue-700 dark:text-blue-300">
+            Plan
+          </Text>
+        </View>
+        <Text
+          className="min-w-0 flex-1 font-t3-bold text-[14px] text-neutral-900 dark:text-neutral-100"
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+        {props.implemented ? (
+          <Text className="font-t3-medium text-[11px] text-emerald-600 dark:text-emerald-400">
+            Implemented
+          </Text>
+        ) : null}
+      </View>
+      <Markdown
+        options={{ gfm: true }}
+        renderers={props.markdownStyles.renderers}
+        styles={props.markdownStyles.styles}
+        theme={props.markdownStyles.theme}
+      >
+        {canCollapse && !expanded ? (collapsedPreview ?? "") : displayedPlanMarkdown}
+      </Markdown>
+      <View className="mt-2 flex-row justify-end gap-2">
+        <Pressable
+          className="rounded-full border border-neutral-200 px-3 py-1.5 dark:border-white/10"
+          onPress={handleCopy}
+        >
+          <Text className="font-t3-medium text-[12px] text-neutral-700 dark:text-neutral-300">
+            {copied ? "Copied" : "Copy"}
+          </Text>
+        </Pressable>
+        {canCollapse ? (
+          <Pressable
+            className="rounded-full border border-neutral-200 px-3 py-1.5 dark:border-white/10"
+            onPress={() => setExpanded((value) => !value)}
+          >
+            <Text className="font-t3-medium text-[12px] text-neutral-700 dark:text-neutral-300">
+              {expanded ? "Collapse" : "Expand"}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+});
 
 function UserMessageContent(props: {
   readonly text: string;

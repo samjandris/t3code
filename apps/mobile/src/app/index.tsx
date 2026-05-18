@@ -1,6 +1,6 @@
 import { Stack, useRouter } from "expo-router";
 import { type ComponentProps, useState } from "react";
-import { Pressable, Text as RNText, View, useColorScheme } from "react-native";
+import { Pressable, Text as RNText, View } from "react-native";
 import { SymbolView } from "expo-symbols";
 import { useThemeColor } from "../lib/useThemeColor";
 
@@ -42,7 +42,6 @@ export default function HomeRouteScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const isDark = useColorScheme() === "dark";
   const iconColor = String(useThemeColor("--color-icon"));
   const status = resolveHeaderStatus(catalogState);
 
@@ -80,26 +79,6 @@ export default function HomeRouteScreen() {
             >
               T3 Code
             </RNText>
-            <View
-              style={{
-                backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
-                borderRadius: 99,
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-              }}
-            >
-              <RNText
-                style={{
-                  fontFamily: "DMSans_700Bold",
-                  fontSize: 10,
-                  color: "#737373",
-                  letterSpacing: 1.1,
-                  textTransform: "uppercase",
-                }}
-              >
-                Alpha
-              </RNText>
-            </View>
           </View>
         </Stack.Toolbar.View>
       </Stack.Toolbar>

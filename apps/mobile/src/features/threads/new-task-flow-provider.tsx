@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type {
   EnvironmentId,
   ModelSelection,
+  ProviderOptionSelection,
   ProviderInteractionMode,
   RuntimeMode,
 } from "@t3tools/contracts";
@@ -86,6 +87,7 @@ type NewTaskFlowContextValue = {
   readonly selectedProject: EnvironmentScopedProjectShell | null;
   readonly modelOptions: ReadonlyArray<ModelOption>;
   readonly selectedModel: ModelSelection | null;
+  readonly selectedModelOptions: ReadonlyArray<ProviderOptionSelection>;
   readonly selectedModelOption: ModelOption | null;
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
   readonly filteredBranches: ReadonlyArray<VcsRef>;
@@ -93,6 +95,7 @@ type NewTaskFlowContextValue = {
   readonly setProject: (project: EnvironmentScopedProjectShell) => void;
   readonly selectEnvironment: (environmentId: EnvironmentId) => void;
   readonly setSelectedModelKey: (key: string | null) => void;
+  readonly setSelectedModelOptions: (options: ReadonlyArray<ProviderOptionSelection>) => void;
   readonly setWorkspaceMode: (mode: WorkspaceMode) => void;
   readonly selectBranch: (branch: VcsRef) => void;
   readonly setPrompt: (value: string) => void;
@@ -149,6 +152,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   );
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
   const [selectedModelKey, setSelectedModelKey] = useState<string | null>(null);
+  const [selectedModelOptions, setSelectedModelOptions] = useState<
+    ReadonlyArray<ProviderOptionSelection>
+  >([]);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("local");
   const [selectedBranchName, setSelectedBranchName] = useState<string | null>(null);
   const [selectedWorktreePath, setSelectedWorktreePath] = useState<string | null>(null);
@@ -196,6 +202,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     setSelectedEnvironmentId(projects[0]?.environmentId ?? null);
     setSelectedProjectKey(null);
     setSelectedModelKey(null);
+    setSelectedModelOptions([]);
     setWorkspaceMode("local");
     setSelectedBranchName(null);
     setSelectedWorktreePath(null);
@@ -334,6 +341,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     branchLoadVersionRef.current += 1;
     setSelectedEnvironmentId(project.environmentId);
     setSelectedProjectKey(nextProjectKey);
+    setSelectedModelOptions([]);
     setSelectedBranchName(null);
     setSelectedWorktreePath(null);
   }, []);
@@ -342,8 +350,14 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     branchLoadVersionRef.current += 1;
     setSelectedEnvironmentId(environmentId);
     setSelectedProjectKey(null);
+    setSelectedModelOptions([]);
     setSelectedBranchName(null);
     setSelectedWorktreePath(null);
+  }, []);
+
+  const selectModelKey = useCallback((key: string | null) => {
+    setSelectedModelKey(key);
+    setSelectedModelOptions([]);
   }, []);
 
   const selectBranch = useCallback(
@@ -420,13 +434,15 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedProject,
       modelOptions,
       selectedModel,
+      selectedModelOptions,
       selectedModelOption,
       providerGroups,
       filteredBranches,
       reset,
       setProject,
       selectEnvironment,
-      setSelectedModelKey,
+      setSelectedModelKey: selectModelKey,
+      setSelectedModelOptions,
       setWorkspaceMode,
       selectBranch,
       setPrompt,
@@ -467,6 +483,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedBranchName,
       selectedEnvironmentId,
       selectedModel,
+      selectedModelOptions,
       selectedModelKey,
       selectedModelOption,
       selectedProject,
@@ -475,6 +492,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       setProject,
       selectBranch,
       selectEnvironment,
+      selectModelKey,
       submitting,
       workspaceMode,
       appendAttachments,

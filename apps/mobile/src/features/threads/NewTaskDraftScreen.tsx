@@ -2,7 +2,7 @@ import { MenuView } from "@react-native-menu/menu";
 import { useRouter } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { TextInputWrapper } from "expo-paste-input";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, View, useColorScheme } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,12 +16,19 @@ import { ControlPill } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 
 import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/composerImages";
+import { modelOptionKey } from "../../lib/modelOptions";
+import {
+  buildModelTraitMenuActions,
+  getModelTraitDescriptors,
+  updateModelSelectionTrait,
+} from "../../lib/modelTraits";
 import { buildThreadRoutePath } from "../../lib/routes";
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
 import { useNativePaste } from "../../lib/useNativePaste";
-import { CLAUDE_AGENT_EFFORT_OPTIONS } from "./claudeEffortOptions";
+import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
 import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
 import { useProjectActions } from "./use-project-actions";
+import { useMobileModelFavorites } from "./useMobileModelFavorites";
 
 export function NewTaskDraftScreen(props: {
   readonly initialProjectRef?: {
@@ -37,6 +44,9 @@ export function NewTaskDraftScreen(props: {
   const isDarkMode = useColorScheme() === "dark";
   const controlsBottomPadding = Math.max(insets.bottom, 10);
   const { logicalProjects, selectedProject, setProject } = flow;
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const { favorites: modelFavorites, updateFavorites: updateModelFavorites } =
+    useMobileModelFavorites();
 
   const iconColor = useThemeColor("--color-icon");
   const borderColor = useThemeColor("--color-border");
@@ -94,63 +104,25 @@ export function NewTaskDraftScreen(props: {
     [flow.environments, flow.selectedEnvironmentId],
   );
 
-  const modelMenuActions = useMemo(
+  const modelTraitDescriptors = useMemo(
     () =>
-      flow.providerGroups.map((group) => ({
-        id: `provider:${group.providerKey}`,
-        title: group.providerLabel,
-        subtitle: group.models.find(
-          (model) =>
-            flow.selectedModel &&
-            model.selection.instanceId === flow.selectedModel.instanceId &&
-            model.selection.model === flow.selectedModel.model,
-        )?.label,
-        subactions: group.models.map((option) => ({
-          id: `model:${option.key}`,
-          title: option.label,
-          state:
-            flow.selectedModel &&
-            option.selection.instanceId === flow.selectedModel.instanceId &&
-            option.selection.model === flow.selectedModel.model
-              ? ("on" as const)
-              : undefined,
-        })),
-      })),
-    [flow.providerGroups, flow.selectedModel],
+      getModelTraitDescriptors({
+        option: flow.selectedModelOption,
+        selections:
+          flow.selectedModelOptions.length > 0
+            ? flow.selectedModelOptions
+            : flow.selectedModel?.options,
+      }),
+    [flow.selectedModel?.options, flow.selectedModelOption, flow.selectedModelOptions],
+  );
+  const modelTraitActions = useMemo(
+    () => buildModelTraitMenuActions(modelTraitDescriptors),
+    [modelTraitDescriptors],
   );
 
   const optionsMenuActions = useMemo(
     () => [
-      {
-        id: "options-effort",
-        title: "Effort",
-        subtitle: `${flow.effort.charAt(0).toUpperCase()}${flow.effort.slice(1)}`,
-        subactions: CLAUDE_AGENT_EFFORT_OPTIONS.map((level) => ({
-          id: `options:effort:${level}`,
-          title: `${level}${level === "high" ? " (default)" : ""}`,
-          state: flow.effort === level ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-fast-mode",
-        title: "Fast Mode",
-        subtitle: flow.fastMode ? "On" : "Off",
-        subactions: ([false, true] as const).map((value) => ({
-          id: `options:fast-mode:${value ? "on" : "off"}`,
-          title: value ? "On" : "Off",
-          state: flow.fastMode === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-context-window",
-        title: "Context Window",
-        subtitle: flow.contextWindow,
-        subactions: (["200k", "1M"] as const).map((value) => ({
-          id: `options:context-window:${value}`,
-          title: `${value}${value === "1M" ? " (default)" : ""}`,
-          state: flow.contextWindow === value ? ("on" as const) : undefined,
-        })),
-      },
+      ...modelTraitActions,
       {
         id: "options-runtime",
         title: "Runtime",
@@ -190,7 +162,7 @@ export function NewTaskDraftScreen(props: {
         }),
       },
     ],
-    [flow.contextWindow, flow.effort, flow.fastMode, flow.interactionMode, flow.runtimeMode],
+    [modelTraitActions, flow.interactionMode, flow.runtimeMode],
   );
 
   const workspaceMenuActions = useMemo(() => {
@@ -243,17 +215,6 @@ export function NewTaskDraftScreen(props: {
     flow.workspaceMode,
   ]);
 
-  function handleModelMenuAction(event: string) {
-    if (!event.startsWith("model:")) {
-      return;
-    }
-    // Defer state update so the native menu dismiss animation completes
-    // before re-rendering the menu actions (prevents submenu jump).
-    setTimeout(() => {
-      flow.setSelectedModelKey(event.slice("model:".length));
-    }, 150);
-  }
-
   function handleEnvironmentMenuAction(event: string) {
     if (!event.startsWith("environment:")) {
       return;
@@ -262,16 +223,18 @@ export function NewTaskDraftScreen(props: {
   }
 
   function handleOptionsMenuAction(event: string) {
-    if (event.startsWith("options:effort:")) {
-      flow.setEffort(event.slice("options:effort:".length) as typeof flow.effort);
-      return;
-    }
-    if (event.startsWith("options:fast-mode:")) {
-      flow.setFastMode(event.endsWith(":on"));
-      return;
-    }
-    if (event.startsWith("options:context-window:")) {
-      flow.setContextWindow(event.slice("options:context-window:".length));
+    if (event.startsWith("options:trait:") && flow.selectedModel) {
+      const updated = updateModelSelectionTrait({
+        selection: {
+          ...flow.selectedModel,
+          ...(flow.selectedModelOptions.length > 0 ? { options: flow.selectedModelOptions } : {}),
+        },
+        descriptors: modelTraitDescriptors,
+        event,
+      });
+      if (updated) {
+        flow.setSelectedModelOptions(updated.options ?? []);
+      }
       return;
     }
     if (event.startsWith("options:runtime:")) {
@@ -345,21 +308,9 @@ export function NewTaskDraftScreen(props: {
     flow.setSubmitting(true);
     try {
       const modelWithOptions: ModelSelection =
-        flow.selectedModelOption?.providerDriver === "claudeAgent"
-          ? {
-              ...flow.selectedModel,
-              options: [
-                { id: "effort", value: flow.effort },
-                ...(flow.fastMode ? [{ id: "fastMode", value: true }] : []),
-                { id: "contextWindow", value: flow.contextWindow },
-              ],
-            }
-          : flow.selectedModelOption?.providerDriver === "codex"
-            ? {
-                ...flow.selectedModel,
-                ...(flow.fastMode ? { options: [{ id: "fastMode", value: true }] } : {}),
-              }
-            : flow.selectedModel;
+        flow.selectedModelOptions.length > 0
+          ? { ...flow.selectedModel, options: flow.selectedModelOptions }
+          : flow.selectedModel;
 
       const createdThread = await onCreateThreadWithOptions({
         project: flow.selectedProject,
@@ -460,17 +411,12 @@ export function NewTaskDraftScreen(props: {
           ) : null}
           <View className="flex-row items-center justify-between gap-2 px-4 pb-1 pt-4">
             <ControlPill icon="plus" onPress={() => void handlePickImages()} />
-            <MenuView
-              actions={modelMenuActions}
-              onPressAction={({ nativeEvent }) => handleModelMenuAction(nativeEvent.event)}
-              themeVariant={isDarkMode ? "dark" : "light"}
-            >
-              <ControlPill
-                iconNode={
-                  <ProviderIcon provider={flow.selectedModelOption?.providerDriver} size={16} />
-                }
-              />
-            </MenuView>
+            <ControlPill
+              iconNode={
+                <ProviderIcon provider={flow.selectedModelOption?.providerDriver} size={16} />
+              }
+              onPress={() => setModelPickerVisible(true)}
+            />
             <MenuView
               actions={optionsMenuActions}
               onPressAction={({ nativeEvent }) => handleOptionsMenuAction(nativeEvent.event)}
@@ -508,6 +454,15 @@ export function NewTaskDraftScreen(props: {
           </View>
         </View>
       </KeyboardStickyView>
+      <MobileModelPickerSheet
+        visible={modelPickerVisible}
+        modelOptions={flow.modelOptions}
+        selectedModel={flow.selectedModel}
+        favorites={modelFavorites}
+        onClose={() => setModelPickerVisible(false)}
+        onSelectModel={(selection) => flow.setSelectedModelKey(modelOptionKey(selection))}
+        onFavoritesChange={updateModelFavorites}
+      />
     </View>
   );
 }

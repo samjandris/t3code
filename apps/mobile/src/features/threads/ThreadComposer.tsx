@@ -3,6 +3,7 @@ import { MenuView } from "@react-native-menu/menu";
 import type {
   EnvironmentId,
   ModelSelection,
+  OrchestrationProposedPlan,
   OrchestrationThread,
   ProviderInteractionMode,
   RuntimeMode,
@@ -13,10 +14,7 @@ import {
   replaceTextRange,
   type ComposerTrigger,
 } from "@t3tools/shared/composerTrigger";
-import {
-  getModelSelectionBooleanOptionValue,
-  getModelSelectionStringOptionValue,
-} from "@t3tools/shared/model";
+import { proposedPlanTitle } from "@t3tools/shared/proposedPlan";
 import { TextInputWrapper } from "expo-paste-input";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -38,7 +36,12 @@ import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStri
 import { ControlPill } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import { buildModelOptions } from "../../lib/modelOptions";
+import {
+  buildModelTraitMenuActions,
+  getModelTraitDescriptors,
+  updateModelSelectionTrait,
+} from "../../lib/modelTraits";
 import type { RemoteClientConnectionState } from "../../lib/connection";
 import { useNativePaste } from "../../lib/useNativePaste";
 import {
@@ -47,8 +50,9 @@ import {
   scoreQueryMatch,
 } from "@t3tools/shared/searchRanking";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
-import { CLAUDE_AGENT_EFFORT_OPTIONS, type ClaudeAgentEffort } from "./claudeEffortOptions";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
+import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
+import { useMobileModelFavorites } from "./useMobileModelFavorites";
 
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
@@ -69,22 +73,6 @@ export const COMPOSER_EXPANDED_CHROME = 174;
  */
 export const COMPOSER_EXPANDED_TOOLBAR_CHROME = 54;
 
-function withModelSelectionOption(
-  selection: ModelSelection,
-  id: string,
-  value: string | boolean | undefined,
-): ModelSelection {
-  const options = (selection.options ?? []).filter((option) => option.id !== id);
-  if (value !== undefined) {
-    options.push({ id, value });
-  }
-  if (options.length === 0) {
-    const { options: _options, ...rest } = selection;
-    return rest as ModelSelection;
-  }
-  return { ...selection, options } as ModelSelection;
-}
-
 export interface ThreadComposerProps {
   readonly draftMessage: string;
   readonly draftAttachments: ReadonlyArray<DraftComposerImageAttachment>;
@@ -92,6 +80,7 @@ export interface ThreadComposerProps {
   readonly bottomInset?: number;
   readonly connectionState: RemoteClientConnectionState;
   readonly selectedThread: OrchestrationThread;
+  readonly activeProposedPlan: OrchestrationProposedPlan | null;
   readonly serverConfig: T3ServerConfig | null;
   readonly queueCount: number;
   readonly activeThreadBusy: boolean;
@@ -104,6 +93,7 @@ export interface ThreadComposerProps {
   readonly onRefresh: () => Promise<void>;
   readonly onStopThread: () => Promise<void>;
   readonly onSendMessage: () => void;
+  readonly onImplementActivePlan: () => void;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => Promise<void>;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => Promise<void>;
   readonly onUpdateInteractionMode: (interactionMode: ProviderInteractionMode) => Promise<void>;
@@ -160,9 +150,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const { onExpandedChange } = props;
 
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const { favorites: modelFavorites, updateFavorites: updateModelFavorites } =
+    useMobileModelFavorites();
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
+  const showPlanFollowUp = props.activeProposedPlan !== null;
   const isExpanded = isFocused;
-  const canSend = props.connectionState === "ready" && hasContent;
+  const canSend = props.connectionState === "ready" && (hasContent || showPlanFollowUp);
 
   const onPressImage = useCallback(
     (uri: string) => {
@@ -187,7 +181,14 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.selectedThread.session?.status === "starting" ||
     props.queueCount > 0;
 
-  const sendLabel = props.activeThreadBusy || props.queueCount > 0 ? "Queue" : "Send";
+  const sendLabel =
+    props.activeThreadBusy || props.queueCount > 0
+      ? "Queue"
+      : showPlanFollowUp && hasContent
+        ? "Refine"
+        : showPlanFollowUp
+          ? "Implement"
+          : "Send";
   const currentModelSelection = props.selectedThread.modelSelection;
   const currentModelDriver =
     props.serverConfig?.providers.find(
@@ -196,19 +197,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const modelProvider = currentModelDriver;
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const currentInteractionMode = props.selectedThread.interactionMode ?? "default";
-
-  // Extract current model options (effort, fastMode, contextWindow)
-  const currentEffort =
-    currentModelDriver === "claudeAgent"
-      ? ((getModelSelectionStringOptionValue(currentModelSelection, "effort") ??
-          "high") as ClaudeAgentEffort)
-      : "high";
-  const currentFastMode =
-    getModelSelectionBooleanOptionValue(currentModelSelection, "fastMode") ?? false;
-  const currentContextWindow =
-    currentModelDriver === "claudeAgent"
-      ? (getModelSelectionStringOptionValue(currentModelSelection, "contextWindow") ?? "1M")
-      : "1M";
 
   const handleNativePaste = useNativePaste((uris) => {
     void props.onNativePasteImages(uris);
@@ -441,67 +429,39 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   );
 
   // ── Model menu ───────────────────────────────────────────
-  const providerGroups = useMemo(() => {
-    const options = buildModelOptions(props.serverConfig, currentModelSelection);
-    return groupByProvider(options);
-  }, [props.serverConfig, currentModelSelection]);
-
-  const modelMenuActions = useMemo(
+  const modelOptions = useMemo(
     () =>
-      providerGroups.map((group) => ({
-        id: `provider:${group.providerKey}`,
-        title: group.providerLabel,
-        subtitle: group.models.find(
-          (model) =>
-            model.selection.instanceId === currentModelSelection.instanceId &&
-            model.selection.model === currentModelSelection.model,
-        )?.label,
-        subactions: group.models.map((option) => ({
-          id: `model:${option.key}`,
-          title: option.label,
-          state:
-            option.selection.instanceId === currentModelSelection.instanceId &&
-            option.selection.model === currentModelSelection.model
-              ? ("on" as const)
-              : undefined,
-        })),
-      })),
-    [providerGroups, currentModelSelection],
+      buildModelOptions(props.serverConfig, currentModelSelection).filter(
+        (option) => option.providerDriver === currentModelDriver,
+      ),
+    [props.serverConfig, currentModelSelection, currentModelDriver],
+  );
+  const currentModelOption = useMemo(
+    () =>
+      modelOptions.find(
+        (option) =>
+          option.selection.instanceId === currentModelSelection.instanceId &&
+          option.selection.model === currentModelSelection.model,
+      ) ?? null,
+    [currentModelSelection.instanceId, currentModelSelection.model, modelOptions],
+  );
+  const modelTraitDescriptors = useMemo(
+    () =>
+      getModelTraitDescriptors({
+        option: currentModelOption,
+        selections: currentModelSelection.options,
+      }),
+    [currentModelOption, currentModelSelection.options],
+  );
+  const modelTraitActions = useMemo(
+    () => buildModelTraitMenuActions(modelTraitDescriptors),
+    [modelTraitDescriptors],
   );
 
   // ── Options menu ─────────────────────────────────────────
   const optionsMenuActions = useMemo(
     () => [
-      {
-        id: "options-effort",
-        title: "Effort",
-        subtitle: `${currentEffort.charAt(0).toUpperCase()}${currentEffort.slice(1)}`,
-        subactions: CLAUDE_AGENT_EFFORT_OPTIONS.map((level) => ({
-          id: `options:effort:${level}`,
-          title: `${level}${level === "high" ? " (default)" : ""}`,
-          state: currentEffort === level ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-fast-mode",
-        title: "Fast Mode",
-        subtitle: currentFastMode ? "On" : "Off",
-        subactions: ([false, true] as const).map((value) => ({
-          id: `options:fast-mode:${value ? "on" : "off"}`,
-          title: value ? "On" : "Off",
-          state: currentFastMode === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-context-window",
-        title: "Context Window",
-        subtitle: currentContextWindow,
-        subactions: (["200k", "1M"] as const).map((value) => ({
-          id: `options:context-window:${value}`,
-          title: `${value}${value === "1M" ? " (default)" : ""}`,
-          state: currentContextWindow === value ? ("on" as const) : undefined,
-        })),
-      },
+      ...modelTraitActions,
       {
         id: "options-runtime",
         title: "Runtime",
@@ -541,55 +501,20 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         }),
       },
     ],
-    [
-      currentEffort,
-      currentFastMode,
-      currentContextWindow,
-      currentRuntimeMode,
-      currentInteractionMode,
-    ],
+    [modelTraitActions, currentRuntimeMode, currentInteractionMode],
   );
 
   // ── Menu handlers ────────────────────────────────────────
-  function handleModelMenuAction(event: string) {
-    if (!event.startsWith("model:")) {
-      return;
-    }
-    const modelKey = event.slice("model:".length);
-    const options = buildModelOptions(props.serverConfig, currentModelSelection);
-    const option = options.find((o) => o.key === modelKey);
-    if (option) {
-      void props.onUpdateModelSelection(option.selection);
-    }
-  }
-
   function handleOptionsMenuAction(event: string) {
-    if (event.startsWith("options:effort:")) {
-      const effort = event.slice("options:effort:".length);
-      const updated: ModelSelection =
-        currentModelDriver === "claudeAgent"
-          ? withModelSelectionOption(currentModelSelection, "effort", effort)
-          : currentModelSelection;
-      void props.onUpdateModelSelection(updated);
-      return;
-    }
-    if (event.startsWith("options:fast-mode:")) {
-      const fastMode = event.endsWith(":on");
-      const nextFast = fastMode || undefined;
-      if (currentModelDriver === "opencode") {
-        return;
+    if (event.startsWith("options:trait:")) {
+      const updated = updateModelSelectionTrait({
+        selection: currentModelSelection,
+        descriptors: modelTraitDescriptors,
+        event,
+      });
+      if (updated) {
+        void props.onUpdateModelSelection(updated);
       }
-      const updated = withModelSelectionOption(currentModelSelection, "fastMode", nextFast);
-      void props.onUpdateModelSelection(updated);
-      return;
-    }
-    if (event.startsWith("options:context-window:")) {
-      const contextWindow = event.slice("options:context-window:".length);
-      const updated: ModelSelection =
-        currentModelDriver === "claudeAgent"
-          ? withModelSelectionOption(currentModelSelection, "contextWindow", contextWindow)
-          : currentModelSelection;
-      void props.onUpdateModelSelection(updated);
       return;
     }
     if (event.startsWith("options:runtime:")) {
@@ -632,6 +557,46 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
               isLoading={pathSearch.isPending}
               onSelect={handleCommandSelect}
             />
+          </View>
+        ) : null}
+
+        {showPlanFollowUp ? (
+          <View className="mb-2 rounded-[18px] border border-blue-500/20 bg-blue-500/[0.08] px-3 py-2.5 dark:border-blue-400/20 dark:bg-blue-400/[0.08]">
+            <View className="flex-row items-center gap-2">
+              <View className="rounded-full bg-blue-500/15 px-2 py-1">
+                <Text className="font-t3-bold text-[10px] uppercase tracking-[0.8px] text-blue-700 dark:text-blue-300">
+                  Plan ready
+                </Text>
+              </View>
+              <Text
+                className="min-w-0 flex-1 font-t3-medium text-[13px] text-neutral-800 dark:text-neutral-200"
+                numberOfLines={1}
+              >
+                {proposedPlanTitle(props.activeProposedPlan?.planMarkdown ?? "") ??
+                  "Review the plan"}
+              </Text>
+            </View>
+            <View className="mt-2 flex-row gap-2">
+              <Pressable
+                className="flex-1 items-center rounded-full bg-blue-600 px-3 py-2"
+                disabled={props.connectionState !== "ready"}
+                onPress={props.onImplementActivePlan}
+              >
+                <Text className="font-t3-bold text-[13px] text-white">Implement</Text>
+              </Pressable>
+              <Pressable
+                className="flex-1 items-center rounded-full border border-blue-500/25 px-3 py-2"
+                disabled={props.connectionState !== "ready" || !hasContent}
+                onPress={handleSend}
+                style={{
+                  opacity: props.connectionState === "ready" && hasContent ? 1 : 0.45,
+                }}
+              >
+                <Text className="font-t3-bold text-[13px] text-blue-700 dark:text-blue-300">
+                  Refine
+                </Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
 
@@ -769,13 +734,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
             }}
           >
             <ControlPill icon="plus" onPress={() => void props.onPickDraftImages()} />
-            <MenuView
-              actions={modelMenuActions}
-              onPressAction={({ nativeEvent }) => handleModelMenuAction(nativeEvent.event)}
-              themeVariant={isDarkMode ? "dark" : "light"}
-            >
-              <ControlPill iconNode={<ProviderIcon provider={modelProvider} size={16} />} />
-            </MenuView>
+            <ControlPill
+              iconNode={<ProviderIcon provider={modelProvider} size={16} />}
+              onPress={() => setModelPickerVisible(true)}
+            />
             <MenuView
               actions={optionsMenuActions}
               onPressAction={({ nativeEvent }) => handleOptionsMenuAction(nativeEvent.event)}
@@ -824,6 +786,15 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         onRequestClose={closePreview}
         swipeToCloseEnabled
         doubleTapToZoomEnabled
+      />
+      <MobileModelPickerSheet
+        visible={modelPickerVisible}
+        modelOptions={modelOptions}
+        selectedModel={currentModelSelection}
+        favorites={modelFavorites}
+        onClose={() => setModelPickerVisible(false)}
+        onSelectModel={(selection) => void props.onUpdateModelSelection(selection)}
+        onFavoritesChange={updateModelFavorites}
       />
     </View>
   );

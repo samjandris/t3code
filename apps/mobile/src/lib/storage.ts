@@ -19,7 +19,16 @@ export interface CachedShellSnapshot {
 
 export interface MobilePreferences {
   readonly terminalFontSize?: number;
+  readonly modelFavorites?: ReadonlyArray<{
+    readonly provider: string;
+    readonly model: string;
+  }>;
 }
+
+type MutableMobilePreferences = {
+  terminalFontSize?: number;
+  modelFavorites?: NonNullable<MobilePreferences["modelFavorites"]>;
+};
 
 async function readStorageItem(key: string): Promise<string | null> {
   return await SecureStore.getItemAsync(key);
@@ -68,6 +77,32 @@ function isCachedShellSnapshot(value: unknown): value is CachedShellSnapshot {
     typeof value.snapshotReceivedAt === "string" &&
     isShellSnapshot(value.snapshot)
   );
+}
+
+function normalizeModelFavorites(value: unknown): NonNullable<MobilePreferences["modelFavorites"]> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const favorites: Array<{ provider: string; model: string }> = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const provider = typeof entry.provider === "string" ? entry.provider.trim() : "";
+    const model = typeof entry.model === "string" ? entry.model.trim() : "";
+    if (!provider || !model) {
+      continue;
+    }
+    const key = `${provider}:${model}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    favorites.push({ provider, model });
+  }
+  return favorites;
 }
 
 function cachedShellSnapshotFileName(environmentId: EnvironmentId): string {
@@ -176,26 +211,42 @@ export async function clearSavedConnection(environmentId: EnvironmentId): Promis
 }
 
 export async function loadPreferences(): Promise<MobilePreferences> {
-  const parsed = await readJsonStorageItem<MobilePreferences>(PREFERENCES_KEY);
+  const parsed = await readJsonStorageItem<Record<string, unknown>>(PREFERENCES_KEY);
   if (!parsed || typeof parsed !== "object") {
     return {};
   }
 
+  const preferences: MutableMobilePreferences = {};
   if (typeof parsed.terminalFontSize === "number") {
-    return { terminalFontSize: parsed.terminalFontSize };
+    preferences.terminalFontSize = parsed.terminalFontSize;
+  }
+  const modelFavorites = normalizeModelFavorites(parsed.modelFavorites);
+  if (modelFavorites.length > 0) {
+    preferences.modelFavorites = modelFavorites;
   }
 
-  return {};
+  return preferences;
+}
+
+function normalizePreferences(preferences: MobilePreferences): MobilePreferences {
+  const next: MutableMobilePreferences = {};
+  if (typeof preferences.terminalFontSize === "number") {
+    next.terminalFontSize = preferences.terminalFontSize;
+  }
+  if (preferences.modelFavorites !== undefined) {
+    next.modelFavorites = normalizeModelFavorites(preferences.modelFavorites);
+  }
+  return next;
 }
 
 export async function savePreferencesPatch(
   patch: Partial<MobilePreferences>,
 ): Promise<MobilePreferences> {
   const current = await loadPreferences();
-  const next: MobilePreferences = {
+  const next = normalizePreferences({
     ...current,
     ...patch,
-  };
+  });
   await writeStorageItem(PREFERENCES_KEY, JSON.stringify(next));
   return next;
 }

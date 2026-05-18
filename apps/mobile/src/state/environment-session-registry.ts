@@ -32,6 +32,10 @@ export function drainEnvironmentSessions(): ReadonlyArray<EnvironmentSession> {
   return sessions;
 }
 
+export function listEnvironmentSessions(): ReadonlyArray<EnvironmentSession> {
+  return [...environmentSessions.values()];
+}
+
 export function notifyEnvironmentConnectionListeners() {
   for (const listener of environmentConnectionListeners) listener();
 }

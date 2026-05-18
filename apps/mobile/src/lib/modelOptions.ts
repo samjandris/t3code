@@ -1,13 +1,25 @@
-import type { ModelSelection, ServerConfig as T3ServerConfig } from "@t3tools/contracts";
+import type {
+  ModelCapabilities,
+  ModelSelection,
+  ServerConfig as T3ServerConfig,
+} from "@t3tools/contracts";
 
 export type ModelOption = {
   readonly key: string;
   readonly label: string;
   readonly subtitle: string;
+  readonly subProvider?: string;
   readonly providerKey: string;
   readonly providerDriver: string;
   readonly providerLabel: string;
+  readonly isFavorite?: boolean;
+  readonly capabilities: ModelCapabilities | null;
   readonly selection: ModelSelection;
+};
+
+export type ModelFavorite = {
+  readonly provider: string;
+  readonly model: string;
 };
 
 export type ProviderGroup = {
@@ -20,7 +32,21 @@ export type ProviderGroup = {
 function providerDisplayLabel(provider: string): string {
   if (provider === "codex") return "Codex";
   if (provider === "claudeAgent") return "Claude";
+  if (provider === "opencode") return "opencode";
+  if (provider === "cursor") return "Cursor";
   return provider;
+}
+
+export function modelOptionKey(selection: ModelSelection): string {
+  return `${selection.instanceId}:${selection.model}`;
+}
+
+export function favoriteKey(favorite: ModelFavorite): string {
+  return `${favorite.provider}:${favorite.model}`;
+}
+
+function favoriteRank(favorites: ReadonlyArray<ModelFavorite>): ReadonlyMap<string, number> {
+  return new Map(favorites.map((favorite, index) => [favoriteKey(favorite), index] as const));
 }
 
 export function buildModelOptions(
@@ -36,24 +62,29 @@ export function buildModelOptions(
 
     const providerLabel = provider.displayName ?? providerDisplayLabel(provider.driver);
     for (const model of provider.models) {
-      const key = `${provider.instanceId}:${model.slug}`;
+      const selection: ModelSelection = {
+        instanceId: provider.instanceId,
+        model: model.slug,
+      };
+      const key = modelOptionKey(selection);
+      const subtitle =
+        provider.driver === "opencode" && model.subProvider ? model.subProvider : providerLabel;
       options.set(key, {
         key,
         label: model.name,
-        subtitle: providerLabel,
+        subtitle,
+        ...(model.subProvider ? { subProvider: model.subProvider } : {}),
         providerKey: provider.instanceId,
         providerDriver: provider.driver,
         providerLabel,
-        selection: {
-          instanceId: provider.instanceId,
-          model: model.slug,
-        },
+        capabilities: model.capabilities,
+        selection,
       });
     }
   }
 
   if (fallbackModelSelection) {
-    const key = `${fallbackModelSelection.instanceId}:${fallbackModelSelection.model}`;
+    const key = modelOptionKey(fallbackModelSelection);
     if (!options.has(key)) {
       const providerLabel = providerDisplayLabel(fallbackModelSelection.instanceId);
       options.set(key, {
@@ -63,12 +94,40 @@ export function buildModelOptions(
         providerKey: fallbackModelSelection.instanceId,
         providerDriver: fallbackModelSelection.instanceId,
         providerLabel,
+        capabilities: null,
         selection: fallbackModelSelection,
       });
     }
   }
 
   return [...options.values()];
+}
+
+export function sortModelOptionsForMobile(
+  options: ReadonlyArray<ModelOption>,
+  favorites: ReadonlyArray<ModelFavorite>,
+): ModelOption[] {
+  const ranks = favoriteRank(favorites);
+  const rankedOptions = options.map((option, index) => ({
+    option: {
+      ...option,
+      isFavorite: ranks.has(option.key),
+    },
+    index,
+    rank: ranks.get(option.key),
+  }));
+  rankedOptions.sort((left, right) => {
+    const leftFavorite = left.rank !== undefined;
+    const rightFavorite = right.rank !== undefined;
+    if (leftFavorite !== rightFavorite) {
+      return leftFavorite ? -1 : 1;
+    }
+    if (left.rank !== undefined && right.rank !== undefined && left.rank !== right.rank) {
+      return left.rank - right.rank;
+    }
+    return left.index - right.index;
+  });
+  return rankedOptions.map((entry) => entry.option);
 }
 
 export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyArray<ProviderGroup> {
@@ -95,4 +154,11 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     providerLabel: group.providerLabel,
     models: group.models,
   }));
+}
+
+export function groupModelOptionsForMobile(
+  options: ReadonlyArray<ModelOption>,
+  favorites: ReadonlyArray<ModelFavorite>,
+): ReadonlyArray<ProviderGroup> {
+  return groupByProvider(sortModelOptionsForMobile(options, favorites));
 }
