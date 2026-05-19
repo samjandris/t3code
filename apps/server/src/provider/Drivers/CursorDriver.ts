@@ -11,11 +11,12 @@
  *
  * @module provider/Drivers/CursorDriver
  */
-import { CursorSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { CursorSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -106,6 +107,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
       const processEnv = mergeProviderInstanceEnvironment(environment);
+      const retainedCapabilitySnapshotRef = yield* Ref.make<ServerProvider | undefined>(undefined);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -156,20 +158,23 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         // Model catalog and capabilities come exclusively from Cursor's
         // list_available_models extension method during provider checks.
         enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
-          resolveMaintenance().pipe(
-            Effect.flatMap((maintenanceCapabilities) =>
-              enrichCursorSnapshot({
-                settings: settings.provider,
-                snapshot: currentSnapshot,
-                maintenanceCapabilities,
-                enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-                publishSnapshot,
-                stampIdentity,
-                httpClient,
-              }),
-            ),
-            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          ),
+          Effect.gen(function* () {
+            const maintenanceCapabilities = yield* resolveMaintenance();
+            const retainedSnapshot = yield* Ref.get(retainedCapabilitySnapshotRef);
+            yield* enrichCursorSnapshot({
+              settings: settings.provider,
+              snapshot: currentSnapshot,
+              retainedSnapshot,
+              maintenanceCapabilities,
+              enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+              publishSnapshot: (nextSnapshot) =>
+                Ref.set(retainedCapabilitySnapshotRef, nextSnapshot).pipe(
+                  Effect.andThen(publishSnapshot(nextSnapshot)),
+                ),
+              stampIdentity,
+              httpClient,
+            });
+          }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)),
       }).pipe(
         Effect.mapError(
           (cause) =>
