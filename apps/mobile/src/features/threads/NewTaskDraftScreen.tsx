@@ -25,8 +25,10 @@ import {
 import { buildThreadRoutePath } from "../../lib/routes";
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
 import { useNativePaste } from "../../lib/useNativePaste";
+import { MobileComposerOptionsSheet } from "./MobileComposerOptionsSheet";
 import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
-import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
+import { MobileWorkspaceSheet } from "./MobileWorkspaceSheet";
+import { useNewTaskFlow } from "./new-task-flow-provider";
 import { useProjectActions } from "./use-project-actions";
 import { useMobileModelFavorites } from "./useMobileModelFavorites";
 
@@ -45,6 +47,8 @@ export function NewTaskDraftScreen(props: {
   const controlsBottomPadding = Math.max(insets.bottom, 10);
   const { logicalProjects, selectedProject, setProject } = flow;
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const [optionsSheetVisible, setOptionsSheetVisible] = useState(false);
+  const [workspaceSheetVisible, setWorkspaceSheetVisible] = useState(false);
   const { favorites: modelFavorites, updateFavorites: updateModelFavorites } =
     useMobileModelFavorites();
 
@@ -165,56 +169,6 @@ export function NewTaskDraftScreen(props: {
     [modelTraitActions, flow.interactionMode, flow.runtimeMode],
   );
 
-  const workspaceMenuActions = useMemo(() => {
-    const branchActions =
-      flow.availableBranches.length === 0
-        ? [
-            {
-              id: "workspace:branch:none",
-              title: flow.branchesLoading ? "Loading branches…" : "No branches available",
-              attributes: { disabled: true },
-            },
-          ]
-        : flow.availableBranches.slice(0, 12).map((branch) => {
-            const badge = branchBadgeLabel({
-              branch,
-              project: flow.selectedProject,
-            });
-
-            return {
-              id: `workspace:branch:${branch.name}`,
-              title: branch.name,
-              subtitle: badge ? badge.toUpperCase() : undefined,
-              state: flow.selectedBranchName === branch.name ? ("on" as const) : undefined,
-            };
-          });
-
-    return [
-      {
-        id: "workspace:mode",
-        title: "Mode",
-        subtitle: flow.workspaceMode === "local" ? "Local" : "Worktree",
-        subactions: (["local", "worktree"] as const).map((value) => ({
-          id: `workspace:mode:${value}`,
-          title: value === "local" ? "Local" : "Worktree",
-          state: flow.workspaceMode === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "workspace:branch",
-        title: "Branch",
-        subtitle: flow.selectedBranchName ?? "Choose branch",
-        subactions: branchActions,
-      },
-    ];
-  }, [
-    flow.availableBranches,
-    flow.branchesLoading,
-    flow.selectedBranchName,
-    flow.selectedProject,
-    flow.workspaceMode,
-  ]);
-
   function handleEnvironmentMenuAction(event: string) {
     if (!event.startsWith("environment:")) {
       return;
@@ -247,22 +201,6 @@ export function NewTaskDraftScreen(props: {
       flow.setInteractionMode(
         event.slice("options:interaction:".length) as Parameters<typeof flow.setInteractionMode>[0],
       );
-    }
-  }
-
-  function handleWorkspaceMenuAction(event: string) {
-    if (event.startsWith("workspace:mode:")) {
-      flow.setWorkspaceMode(
-        event.slice("workspace:mode:".length) as Parameters<typeof flow.setWorkspaceMode>[0],
-      );
-      return;
-    }
-    if (event.startsWith("workspace:branch:")) {
-      const branchName = event.slice("workspace:branch:".length);
-      const branch = flow.availableBranches.find((candidate) => candidate.name === branchName);
-      if (branch) {
-        flow.selectBranch(branch);
-      }
     }
   }
 
@@ -379,7 +317,10 @@ export function NewTaskDraftScreen(props: {
       </View>
 
       <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 8 }}>
-        <TextInputWrapper onPaste={(payload) => void handleNativePaste(payload)}>
+        <TextInputWrapper
+          style={{ flex: 1 }}
+          onPaste={(payload) => void handleNativePaste(payload)}
+        >
           <TextInput
             multiline
             value={flow.prompt}
@@ -387,6 +328,7 @@ export function NewTaskDraftScreen(props: {
             placeholder={`Describe a coding task in ${selectedProject.title}`}
             textAlignVertical="top"
             className="flex-1 border-0 bg-transparent text-[18px] leading-[28px]"
+            style={{ flex: 1 }}
           />
         </TextInputWrapper>
       </View>
@@ -417,13 +359,7 @@ export function NewTaskDraftScreen(props: {
               }
               onPress={() => setModelPickerVisible(true)}
             />
-            <MenuView
-              actions={optionsMenuActions}
-              onPressAction={({ nativeEvent }) => handleOptionsMenuAction(nativeEvent.event)}
-              themeVariant={isDarkMode ? "dark" : "light"}
-            >
-              <ControlPill icon="slider.horizontal.3" />
-            </MenuView>
+            <ControlPill icon="slider.horizontal.3" onPress={() => setOptionsSheetVisible(true)} />
             <MenuView
               actions={environmentMenuActions}
               onPressAction={({ nativeEvent }) => handleEnvironmentMenuAction(nativeEvent.event)}
@@ -431,13 +367,10 @@ export function NewTaskDraftScreen(props: {
             >
               <ControlPill icon="desktopcomputer" />
             </MenuView>
-            <MenuView
-              actions={workspaceMenuActions}
-              onPressAction={({ nativeEvent }) => handleWorkspaceMenuAction(nativeEvent.event)}
-              themeVariant={isDarkMode ? "dark" : "light"}
-            >
-              <ControlPill icon="point.topleft.down.curvedto.point.bottomright.up" />
-            </MenuView>
+            <ControlPill
+              icon="point.topleft.down.curvedto.point.bottomright.up"
+              onPress={() => setWorkspaceSheetVisible(true)}
+            />
             <ControlPill
               icon="arrow.up"
               label={flow.submitting ? "Starting" : "Start"}
@@ -462,6 +395,25 @@ export function NewTaskDraftScreen(props: {
         onClose={() => setModelPickerVisible(false)}
         onSelectModel={(selection) => flow.setSelectedModelKey(modelOptionKey(selection))}
         onFavoritesChange={updateModelFavorites}
+      />
+      <MobileComposerOptionsSheet
+        visible={optionsSheetVisible}
+        actions={optionsMenuActions}
+        onClose={() => setOptionsSheetVisible(false)}
+        onSelectAction={handleOptionsMenuAction}
+      />
+      <MobileWorkspaceSheet
+        visible={workspaceSheetVisible}
+        workspaceMode={flow.workspaceMode}
+        selectedBranchName={flow.selectedBranchName}
+        branchQuery={flow.branchQuery}
+        branchesLoading={flow.branchesLoading}
+        branches={flow.filteredBranches}
+        selectedProject={flow.selectedProject}
+        onClose={() => setWorkspaceSheetVisible(false)}
+        onSelectWorkspaceMode={flow.setWorkspaceMode}
+        onChangeBranchQuery={flow.setBranchQuery}
+        onSelectBranch={flow.selectBranch}
       />
     </View>
   );

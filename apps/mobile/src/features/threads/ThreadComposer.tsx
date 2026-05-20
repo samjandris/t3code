@@ -1,5 +1,4 @@
 import { isLiquidGlassSupported, LiquidGlassView } from "@callstack/liquid-glass";
-import { MenuView } from "@react-native-menu/menu";
 import type {
   EnvironmentId,
   ModelSelection,
@@ -51,6 +50,7 @@ import {
 } from "@t3tools/shared/searchRanking";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
+import { MobileComposerOptionsSheet } from "./MobileComposerOptionsSheet";
 import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
 import { useMobileModelFavorites } from "./useMobileModelFavorites";
 
@@ -151,6 +151,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const [optionsSheetVisible, setOptionsSheetVisible] = useState(false);
   const { favorites: modelFavorites, updateFavorites: updateModelFavorites } =
     useMobileModelFavorites();
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
@@ -738,13 +739,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
               iconNode={<ProviderIcon provider={modelProvider} size={16} />}
               onPress={() => setModelPickerVisible(true)}
             />
-            <MenuView
-              actions={optionsMenuActions}
-              onPressAction={({ nativeEvent }) => handleOptionsMenuAction(nativeEvent.event)}
-              themeVariant={isDarkMode ? "dark" : "light"}
-            >
-              <ControlPill icon="slider.horizontal.3" />
-            </MenuView>
+            <ControlPill icon="slider.horizontal.3" onPress={() => setOptionsSheetVisible(true)} />
             <ControlPill icon="arrow.clockwise" onPress={() => void props.onRefresh()} />
             {showStopAction ? (
               <ControlPill
@@ -795,6 +790,14 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         onClose={() => setModelPickerVisible(false)}
         onSelectModel={(selection) => void props.onUpdateModelSelection(selection)}
         onFavoritesChange={updateModelFavorites}
+      />
+      <MobileComposerOptionsSheet
+        visible={optionsSheetVisible}
+        actions={optionsMenuActions}
+        onClose={() => setOptionsSheetVisible(false)}
+        onSelectAction={(event) => {
+          handleOptionsMenuAction(event);
+        }}
       />
     </View>
   );

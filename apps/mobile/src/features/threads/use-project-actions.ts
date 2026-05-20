@@ -106,6 +106,15 @@ export function useProjectActions() {
       }
 
       const isWorktree = input.envMode === "worktree";
+      let targetBranch = input.branch;
+
+      if (!isWorktree && input.branch && !input.worktreePath) {
+        const switchResult = await client.vcs.switchRef({
+          cwd: input.project.workspaceRoot,
+          refName: input.branch,
+        });
+        targetBranch = switchResult.refName ?? input.branch;
+      }
 
       await client.orchestration.dispatchCommand({
         type: "thread.turn.start",
@@ -128,7 +137,7 @@ export function useProjectActions() {
             modelSelection: input.modelSelection,
             runtimeMode: input.runtimeMode,
             interactionMode: input.interactionMode,
-            branch: input.branch,
+            branch: targetBranch,
             worktreePath: isWorktree ? null : input.worktreePath,
             createdAt,
           },
