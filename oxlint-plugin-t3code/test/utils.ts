@@ -32,6 +32,7 @@ const encodeOxlintConfig = Schema.encodeEffect(Schema.UnknownFromJsonString);
 interface RuleHarness {
   readonly run: (
     source: string,
+    options?: { readonly filePath?: string },
   ) => Effect.Effect<
     string,
     OxlintFixtureFailure | PlatformError.PlatformError | Schema.SchemaError,
@@ -39,13 +40,19 @@ interface RuleHarness {
   >;
   readonly runAndExpectFailure: (
     source: string,
+    options?: { readonly filePath?: string },
   ) => Effect.Effect<
     string,
     OxlintFixtureExpectedFailure | PlatformError.PlatformError | Schema.SchemaError,
     NodeServices.NodeServices
   >;
-  readonly valid: (name: string, source: string) => void;
-  readonly invalid: (name: string, source: string, assertion?: (output: string) => void) => void;
+  readonly valid: (name: string, source: string, options?: { readonly filePath?: string }) => void;
+  readonly invalid: (
+    name: string,
+    source: string,
+    assertion?: (output: string) => void,
+    options?: { readonly filePath?: string },
+  ) => void;
 }
 
 const collectStreamAsString = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.Effect<string, E> =>
@@ -79,15 +86,20 @@ export const createOxlintRuleHarness = (ruleName: string): RuleHarness => {
     pluginName && shortRuleName ? `${pluginName}\\(${shortRuleName}\\)` : ruleName;
   const test = it.layer(NodeServices.layer);
 
-  const run: RuleHarness["run"] = Effect.fnUntraced(function* (source: string) {
+  const run: RuleHarness["run"] = Effect.fnUntraced(function* (
+    source: string,
+    options?: { readonly filePath?: string },
+  ) {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const fixtureDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-oxlint-" });
     const configPath = path.join(fixtureDir, ".oxlintrc.json");
-    const sourcePath = path.join(fixtureDir, "fixture.ts");
+    const sourcePath = path.join(fixtureDir, options?.filePath ?? "fixture.ts");
     const repoRoot = path.join(import.meta.dirname, "..", "..");
     const oxlintBin = path.join(repoRoot, "node_modules", ".bin", "oxlint");
     const pluginPath = path.join(repoRoot, "oxlint-plugin-t3code", "index.ts");
+
+    yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
 
     yield* fs.writeFileString(
       configPath,
@@ -113,8 +125,8 @@ export const createOxlintRuleHarness = (ruleName: string): RuleHarness => {
     return `${output.stdout}${output.stderr}`;
   }, Effect.scoped);
 
-  const runAndExpectFailure: RuleHarness["runAndExpectFailure"] = (source) =>
-    run(source).pipe(
+  const runAndExpectFailure: RuleHarness["runAndExpectFailure"] = (source, options) =>
+    run(source, options).pipe(
       Effect.matchEffect({
         onFailure: (error) =>
           OxlintFixtureFailure.is(error)
@@ -129,15 +141,15 @@ export const createOxlintRuleHarness = (ruleName: string): RuleHarness => {
   return {
     run,
     runAndExpectFailure,
-    valid(name, source) {
+    valid(name, source, options) {
       test(name, (it) => {
-        it.effect("passes", () => run(source));
+        it.effect("passes", () => run(source, options));
       });
     },
-    invalid(name, source, assertion) {
+    invalid(name, source, assertion, options) {
       test(name, (it) => {
         it.effect("reports the rule diagnostic", () =>
-          runAndExpectFailure(source).pipe(
+          runAndExpectFailure(source, options).pipe(
             Effect.tap((output) =>
               Effect.sync(() => {
                 assert.match(output, new RegExp(diagnosticRuleName));
