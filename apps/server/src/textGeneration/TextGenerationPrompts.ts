@@ -216,3 +216,41 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
+
+// ---------------------------------------------------------------------------
+// Tool call summary
+// ---------------------------------------------------------------------------
+
+export interface ToolCallSummaryPromptInput {
+  toolName: string;
+  toolType: string;
+  status?: string | undefined;
+  detail?: string | undefined;
+  payload: string;
+}
+
+export function buildToolCallSummaryPrompt(input: ToolCallSummaryPromptInput) {
+  const prompt = [
+    "You write concise work-log summaries for coding-agent tool calls.",
+    "Return a JSON object with key: summary.",
+    "Rules:",
+    "- summary should describe what the tool call did or attempted",
+    "- keep it short and specific (3-10 words)",
+    "- do not include raw stdout, stderr, stack traces, JSON, or command syntax unless it is the essential action",
+    "- do not mention that this is a summary",
+    "- avoid quotes, prefixes, and trailing punctuation",
+    "",
+    `Tool: ${input.toolName}`,
+    `Type: ${input.toolType}`,
+    ...(input.status ? [`Status: ${input.status}`] : []),
+    ...(input.detail ? ["", "Visible output:", limitSection(input.detail, 8_000)] : []),
+    "",
+    "Raw tool payload:",
+    limitSection(input.payload, 24_000),
+  ].join("\n");
+  const outputSchema = Schema.Struct({
+    summary: Schema.String,
+  });
+
+  return { prompt, outputSchema };
+}
