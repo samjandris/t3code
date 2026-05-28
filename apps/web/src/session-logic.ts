@@ -74,6 +74,7 @@ export interface WorkLogEntry {
   toolData?: unknown;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
+  toolSummaryStatus?: "pending" | "complete";
   /** From runtime item / task payload `status` when present (e.g. tool.updated). */
   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
   /** Originating orchestration activity kind (e.g. `user-input.requested`) for row chrome. */
@@ -719,6 +720,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
+  const toolSummaryStatus = extractToolSummaryStatus(payload);
   if (detail) {
     entry.detail = detail;
   }
@@ -745,6 +747,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (requestKind) {
     entry.requestKind = requestKind;
+  }
+  if (toolSummaryStatus) {
+    entry.toolSummaryStatus = toolSummaryStatus;
   }
   if (toolCallId) {
     entry.toolCallId = toolCallId;
@@ -816,6 +821,7 @@ function mergeDerivedWorkLogEntries(
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
+  const toolSummaryStatus = next.toolSummaryStatus ?? previous.toolSummaryStatus;
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
   return {
@@ -830,6 +836,7 @@ function mergeDerivedWorkLogEntries(
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
     ...(toolCallId ? { toolCallId } : {}),
+    ...(toolSummaryStatus ? { toolSummaryStatus } : {}),
     ...(toolLifecycleStatus !== undefined ? { toolLifecycleStatus } : {}),
     ...(toolData !== undefined ? { toolData } : {}),
   };
@@ -1230,6 +1237,15 @@ function extractWorkLogRequestKind(
     return payload.requestKind;
   }
   return requestKindFromRequestType(payload?.requestType) ?? undefined;
+}
+
+function extractToolSummaryStatus(
+  payload: Record<string, unknown> | null,
+): WorkLogEntry["toolSummaryStatus"] | undefined {
+  if (payload?.summarizationStatus === "pending" || payload?.summarizationStatus === "complete") {
+    return payload.summarizationStatus;
+  }
+  return undefined;
 }
 
 function pushChangedFile(target: string[], seen: Set<string>, value: unknown) {

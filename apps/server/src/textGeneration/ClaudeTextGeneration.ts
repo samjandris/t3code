@@ -24,12 +24,14 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   normalizeCliError,
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
+  sanitizeToolCallSummary,
   toJsonSchemaObject,
 } from "./TextGenerationUtils.ts";
 import {
@@ -355,10 +357,34 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
+  const generateToolCallSummary: TextGeneration.TextGeneration["Service"]["generateToolCallSummary"] =
+    Effect.fn("ClaudeTextGeneration.generateToolCallSummary")(function* (input) {
+      const { prompt, outputSchema } = buildToolCallSummaryPrompt({
+        toolName: input.toolName,
+        toolType: input.toolType,
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.detail ? { detail: input.detail } : {}),
+        payload: input.payload,
+      });
+
+      const generated = yield* runClaudeJson({
+        operation: "generateToolCallSummary",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        summary: sanitizeToolCallSummary(generated.summary),
+      };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateToolCallSummary,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

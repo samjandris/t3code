@@ -197,6 +197,29 @@
       background: var(--card);
     }
   }
+
+  .tool-summary-shimmer {
+    background-image: linear-gradient(
+      110deg,
+      color-mix(in srgb, currentColor 58%, transparent) 0%,
+      currentColor 42%,
+      color-mix(in srgb, currentColor 58%, transparent) 78%
+    );
+    background-size: 220% 100%;
+    background-clip: text;
+    color: transparent;
+    animation: tool-summary-shimmer 1.15s ease-in-out infinite;
+  }
+}
+
+@keyframes tool-summary-shimmer {
+  from {
+    background-position: 140% 0;
+  }
+
+  to {
+    background-position: -80% 0;
+  }
 }
 
 /* Safe-area inset utilities for surfaces that opt into edge-to-edge rendering.

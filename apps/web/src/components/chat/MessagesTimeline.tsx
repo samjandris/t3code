@@ -1915,9 +1915,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       normalizeCompactToolLabel(heading).toLowerCase()
       ? null
       : rawPreview;
+  const rawCommand = workEntryRawCommand(workEntry);
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const expandedBody = buildToolCallExpandedBody(workEntry, workspaceRoot);
   const canExpand = expandedBody !== null;
+  const isToolSummaryPending = workEntry.toolSummaryStatus === "pending";
   const showFailedIndicator = workEntryIndicatesToolFailure(workEntry);
   const showDestructiveRowStyle =
     showFailedIndicator &&
@@ -1975,12 +1977,79 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
-            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5">
-              <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
-              {preview && (
-                <span className="min-w-0 flex-1 truncate text-muted-foreground/55">{preview}</span>
-              )}
-            </p>
+            {rawCommand ? (
+              <div className="max-w-full">
+                <Tooltip>
+                  <TooltipTrigger
+                    closeDelay={0}
+                    delay={75}
+                    onClick={stopRowToggle}
+                    onPointerDown={stopRowToggle}
+                    render={
+                      <p
+                        className="flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5"
+                        aria-label={displayText}
+                      />
+                    }
+                  >
+                    <span
+                      className={cn(
+                        "min-w-0 shrink truncate",
+                        headingClass,
+                        isToolSummaryPending && "tool-summary-shimmer",
+                      )}
+                    >
+                      {heading}
+                    </span>
+                    {preview && (
+                      <span className="min-w-0 flex-1 cursor-default truncate text-muted-foreground/55 transition-colors hover:text-muted-foreground/90 focus-visible:text-muted-foreground/90">
+                        {preview}
+                      </span>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipPopup
+                    align="start"
+                    className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
+                    side="top"
+                  >
+                    <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
+                      {rawCommand}
+                    </div>
+                  </TooltipPopup>
+                </Tooltip>
+              </div>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  className="block min-w-0 w-full text-left"
+                  aria-label={displayText}
+                  onClick={stopRowToggle}
+                  onPointerDown={stopRowToggle}
+                >
+                  <p className="flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5">
+                    <span
+                      className={cn(
+                        "min-w-0 shrink truncate",
+                        headingClass,
+                        isToolSummaryPending && "tool-summary-shimmer",
+                      )}
+                    >
+                      {heading}
+                    </span>
+                    {preview && (
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground/55">
+                        {preview}
+                      </span>
+                    )}
+                  </p>
+                </TooltipTrigger>
+                <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
+                  <p className="whitespace-pre-wrap wrap-break-word text-xs leading-5">
+                    {displayText}
+                  </p>
+                </TooltipPopup>
+              </Tooltip>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-px text-muted-foreground/55">
             <span
