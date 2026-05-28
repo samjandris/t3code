@@ -1191,6 +1191,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
+  const isToolSummaryPending = workEntry.toolSummaryStatus === "pending";
 
   return (
     <div className="rounded-lg px-1 py-1">
@@ -1211,7 +1212,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                 )}
                 title={displayText}
               >
-                <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                <span
+                  className={cn(
+                    "text-foreground/80",
+                    workToneClass(workEntry.tone),
+                    isToolSummaryPending && "tool-summary-shimmer",
+                  )}
+                >
                   {heading}
                 </span>
                 {preview && (
@@ -1253,7 +1260,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                     preview ? "text-muted-foreground/70" : "",
                   )}
                 >
-                  <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                  <span
+                    className={cn(
+                      "text-foreground/80",
+                      workToneClass(workEntry.tone),
+                      isToolSummaryPending && "tool-summary-shimmer",
+                    )}
+                  >
                     {heading}
                   </span>
                   {preview && <span className="text-muted-foreground/55"> - {preview}</span>}

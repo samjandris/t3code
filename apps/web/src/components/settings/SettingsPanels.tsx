@@ -410,6 +410,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
         ? ["Assistant output"]
         : []),
+      ...(settings.summarizeToolCalls !== DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls
+        ? ["Tool call summaries"]
+        : []),
       ...(Duration.toMillis(settings.automaticGitFetchInterval) !==
       Duration.toMillis(DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval)
         ? ["Automatic Git fetch interval"]
@@ -439,6 +442,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.diffWordWrap,
       settings.automaticGitFetchInterval,
       settings.enableAssistantStreaming,
+      settings.summarizeToolCalls,
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
       theme,
@@ -463,6 +467,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       autoOpenPlanSidebar: DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar,
       enableAssistantStreaming: DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming,
+      summarizeToolCalls: DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
@@ -667,6 +672,32 @@ export function GeneralSettingsPanel() {
                 updateSettings({ enableAssistantStreaming: Boolean(checked) })
               }
               aria-label="Stream assistant messages"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Tool call summaries"
+          description="Use the text generation model to replace OpenCode tool output with concise work-log summaries."
+          resetAction={
+            settings.summarizeToolCalls !== DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls ? (
+              <SettingResetButton
+                label="tool call summaries"
+                onClick={() =>
+                  updateSettings({
+                    summarizeToolCalls: DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.summarizeToolCalls}
+              onCheckedChange={(checked) =>
+                updateSettings({ summarizeToolCalls: Boolean(checked) })
+              }
+              aria-label="Summarize OpenCode tool calls"
             />
           }
         />
