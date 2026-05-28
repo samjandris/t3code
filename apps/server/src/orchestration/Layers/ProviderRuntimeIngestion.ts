@@ -2,6 +2,7 @@ import {
   ApprovalRequestId,
   type AssistantDeliveryMode,
   CommandId,
+  EventId,
   MessageId,
   type OrchestrationEvent,
   type OrchestrationMessage,
@@ -14,8 +15,10 @@ import {
   type OrchestrationCheckpointSummary,
   type OrchestrationProposedPlan,
   type OrchestrationThread,
+  type OrchestrationThreadShell,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
+  ProviderDriverKind,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
@@ -37,6 +40,7 @@ import {
   type ProviderRuntimeIngestionShape,
 } from "../Services/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerCommandId = (event: ProviderRuntimeEvent, tag: string): CommandId =>
@@ -263,8 +267,81 @@ function requestKindFromCanonicalRequestType(
   }
 }
 
+interface RuntimeEventToActivitiesOptions {
+  readonly summarizeToolCalls?: boolean;
+}
+
+const OPENCODE_PROVIDER = ProviderDriverKind.make("opencode");
+
+function dataWithToolCallId(event: ProviderRuntimeEvent): Record<string, unknown> | undefined {
+  const base =
+    event.payload &&
+    "data" in event.payload &&
+    event.payload.data &&
+    typeof event.payload.data === "object"
+      ? (event.payload.data as Record<string, unknown>)
+      : undefined;
+  if (!event.itemId || event.provider !== OPENCODE_PROVIDER) {
+    return base;
+  }
+  return {
+    ...base,
+    toolCallId: event.itemId,
+  };
+}
+
+function buildToolActivityPayload(
+  event: Extract<
+    ProviderRuntimeEvent,
+    { type: "item.started" | "item.updated" | "item.completed" }
+  >,
+  options: RuntimeEventToActivitiesOptions,
+): Record<string, unknown> {
+  const shouldSummarize =
+    options.summarizeToolCalls === true && event.provider === OPENCODE_PROVIDER;
+  const data = dataWithToolCallId(event);
+  return {
+    itemType: event.payload.itemType,
+    ...(event.payload.status ? { status: event.payload.status } : {}),
+    ...(event.payload.title ? { title: event.payload.title } : {}),
+    ...(shouldSummarize ? { summarizationStatus: "pending" } : {}),
+    ...(!shouldSummarize && event.payload.detail
+      ? { detail: truncateDetail(event.payload.detail) }
+      : {}),
+    ...(shouldSummarize && event.itemId ? { data: { toolCallId: event.itemId } } : {}),
+    ...(!shouldSummarize && data !== undefined ? { data } : {}),
+  };
+}
+
+function stringifyToolPayloadForSummary(event: ProviderRuntimeEvent): string {
+  try {
+    return JSON.stringify(event.payload, null, 2);
+  } catch {
+    return String(event.payload);
+  }
+}
+
+function toolNameForSummary(event: ProviderRuntimeEvent): string {
+  if (event.payload && "title" in event.payload && typeof event.payload.title === "string") {
+    return event.payload.title;
+  }
+  if (
+    event.payload &&
+    "data" in event.payload &&
+    event.payload.data &&
+    typeof event.payload.data === "object"
+  ) {
+    const data = event.payload.data as Record<string, unknown>;
+    if (typeof data.tool === "string" && data.tool.trim().length > 0) {
+      return data.tool;
+    }
+  }
+  return "Tool";
+}
+
 function runtimeEventToActivities(
   event: ProviderRuntimeEvent,
+  options: RuntimeEventToActivitiesOptions = {},
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const maybeSequence = (() => {
     const eventWithSequence = event as ProviderRuntimeEvent & { sessionSequence?: number };
@@ -544,12 +621,7 @@ function runtimeEventToActivities(
           tone: "tool",
           kind: "tool.updated",
           summary: event.payload.title ?? "Tool updated",
-          payload: {
-            itemType: event.payload.itemType,
-            ...(event.payload.status ? { status: event.payload.status } : {}),
-            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
-            ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
-          },
+          payload: buildToolActivityPayload(event, options),
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
         },
@@ -567,11 +639,7 @@ function runtimeEventToActivities(
           tone: "tool",
           kind: "tool.completed",
           summary: event.payload.title ?? "Tool",
-          payload: {
-            itemType: event.payload.itemType,
-            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
-            ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
-          },
+          payload: buildToolActivityPayload(event, options),
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
         },
@@ -589,10 +657,7 @@ function runtimeEventToActivities(
           tone: "tool",
           kind: "tool.started",
           summary: `${event.payload.title ?? "Tool"} started`,
-          payload: {
-            itemType: event.payload.itemType,
-            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
-          },
+          payload: buildToolActivityPayload(event, options),
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
         },
@@ -650,6 +715,86 @@ const make = Effect.gen(function* () {
     return yield* projectionSnapshotQuery
       .getThreadShellById(threadId)
       .pipe(Effect.map(Option.getOrUndefined));
+  });
+
+  const resolveProjectWorkspaceRoot = Effect.fn("resolveProjectWorkspaceRoot")(function* (
+    projectId: OrchestrationThread["projectId"],
+  ) {
+    return yield* projectionSnapshotQuery
+      .getProjectShellById(projectId)
+      .pipe(Effect.map((project) => Option.getOrUndefined(project)?.workspaceRoot));
+  });
+
+  const summarizeOpenCodeToolCall = Effect.fn("summarizeOpenCodeToolCall")(function* (input: {
+    readonly event: ProviderRuntimeEvent;
+    readonly thread: OrchestrationThreadShell;
+  }) {
+    const { event, thread } = input;
+    if (event.type !== "item.completed" || event.provider !== OPENCODE_PROVIDER || !event.itemId) {
+      return;
+    }
+    if (!isToolLifecycleItemType(event.payload.itemType)) {
+      return;
+    }
+
+    const settings = yield* serverSettingsService.getSettings;
+    if (!settings.summarizeToolCalls) {
+      return;
+    }
+
+    const workspaceRoot = yield* resolveProjectWorkspaceRoot(thread.projectId);
+    const cwd = thread.worktreePath ?? workspaceRoot;
+    if (!cwd) {
+      return;
+    }
+
+    const textGeneration = Option.getOrUndefined(yield* Effect.serviceOption(TextGeneration));
+    const generateToolCallSummary = textGeneration?.generateToolCallSummary;
+    if (!generateToolCallSummary) {
+      return;
+    }
+
+    const summary = yield* generateToolCallSummary({
+      cwd,
+      toolName: toolNameForSummary(event),
+      toolType: event.payload.itemType,
+      ...(event.payload.status ? { status: event.payload.status } : {}),
+      ...(event.payload.detail ? { detail: event.payload.detail } : {}),
+      payload: stringifyToolPayloadForSummary(event),
+      modelSelection: settings.textGenerationModelSelection,
+    }).pipe(
+      Effect.map((generated) => generated.summary),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("provider runtime ingestion failed to generate tool call summary", {
+          eventId: event.eventId,
+          eventType: event.type,
+          cause: Cause.pretty(cause),
+        }).pipe(Effect.as("Summary unavailable")),
+      ),
+    );
+
+    yield* orchestrationEngine.dispatch({
+      type: "thread.activity.append",
+      commandId: providerCommandId(event, "tool-call-summary"),
+      threadId: thread.id,
+      activity: {
+        id: EventId.make(`${event.eventId}:summary`),
+        createdAt: event.createdAt,
+        tone: "tool",
+        kind: "tool.completed",
+        summary: event.payload.title ?? "Tool",
+        payload: {
+          itemType: event.payload.itemType,
+          ...(event.payload.status ? { status: event.payload.status } : {}),
+          ...(event.payload.title ? { title: event.payload.title } : {}),
+          detail: truncateDetail(summary),
+          summarizationStatus: "complete",
+          data: { toolCallId: event.itemId },
+        },
+        turnId: toTurnId(event.turnId) ?? null,
+      },
+      createdAt: event.createdAt,
+    });
   });
 
   const rememberAssistantMessageId = (threadId: ThreadId, turnId: TurnId, messageId: MessageId) =>
@@ -1611,7 +1756,10 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const activities = runtimeEventToActivities(event);
+      const settings = yield* serverSettingsService.getSettings;
+      const hasTextGeneration = Option.isSome(yield* Effect.serviceOption(TextGeneration));
+      const summarizeToolCalls = settings.summarizeToolCalls && hasTextGeneration;
+      const activities = runtimeEventToActivities(event, { summarizeToolCalls });
       yield* Effect.forEach(activities, (activity) =>
         orchestrationEngine.dispatch({
           type: "thread.activity.append",
@@ -1621,6 +1769,22 @@ const make = Effect.gen(function* () {
           createdAt: activity.createdAt,
         }),
       ).pipe(Effect.asVoid);
+      if (
+        summarizeToolCalls &&
+        event.type === "item.completed" &&
+        event.provider === OPENCODE_PROVIDER
+      ) {
+        yield* summarizeOpenCodeToolCall({ event, thread }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("provider runtime ingestion failed to summarize tool call", {
+              eventId: event.eventId,
+              eventType: event.type,
+              cause: Cause.pretty(cause),
+            }),
+          ),
+          Effect.forkScoped,
+        );
+      }
     });
 
   const processDomainEvent = (_event: TurnStartRequestedDomainEvent) => Effect.void;
