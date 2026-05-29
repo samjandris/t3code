@@ -676,7 +676,7 @@ export function GeneralSettingsPanel() {
 
         <SettingsRow
           title="Tool call summaries"
-          description="Use the text generation model to replace OpenCode tool output with concise work-log summaries."
+          description="Use the text generation model to replace raw provider tool output with concise work-log summaries."
           resetAction={
             settings.summarizeToolCalls !== DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls ? (
               <SettingResetButton
@@ -695,7 +695,7 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ summarizeToolCalls: Boolean(checked) })
               }
-              aria-label="Summarize OpenCode tool calls"
+              aria-label="Summarize provider tool calls"
             />
           }
         />

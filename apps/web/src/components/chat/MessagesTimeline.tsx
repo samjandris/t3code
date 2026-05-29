@@ -1035,9 +1035,10 @@ function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles" | "toolSummaryStatus">,
   workspaceRoot: string | undefined,
 ) {
+  if (workEntry.toolSummaryStatus === "complete" && workEntry.detail) return workEntry.detail;
   if (workEntry.command) return workEntry.command;
   if (workEntry.detail) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
@@ -1134,21 +1135,16 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             <div className="max-w-full">
               <p
                 className={cn(
+                  "tool-summary-line",
                   "truncate text-xs leading-5",
                   workToneClass(workEntry.tone),
                   preview ? "text-muted-foreground/70" : "",
+                  isToolSummaryPending && "tool-summary-shimmer",
+                  isToolSummaryComplete && "tool-summary-reveal",
                 )}
                 title={displayText}
               >
-                <span
-                  className={cn(
-                    "tool-summary-text",
-                    "text-foreground/80",
-                    workToneClass(workEntry.tone),
-                    isToolSummaryPending && "tool-summary-shimmer",
-                    isToolSummaryComplete && "tool-summary-reveal",
-                  )}
-                >
+                <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
                   {heading}
                 </span>
                 {preview && (
@@ -1157,13 +1153,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                       closeDelay={0}
                       delay={75}
                       render={
-                        <span
-                          className={cn(
-                            "tool-summary-text max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75",
-                            isToolSummaryPending && "tool-summary-shimmer",
-                            isToolSummaryComplete && "tool-summary-reveal",
-                          )}
-                        >
+                        <span className="max-w-full cursor-default text-muted-foreground/55 transition-colors hover:text-muted-foreground/75 focus-visible:text-muted-foreground/75">
                           {" "}
                           - {preview}
                         </span>
@@ -1191,34 +1181,18 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
               >
                 <p
                   className={cn(
+                    "tool-summary-line",
                     "truncate text-[11px] leading-5",
                     workToneClass(workEntry.tone),
                     preview ? "text-muted-foreground/70" : "",
+                    isToolSummaryPending && "tool-summary-shimmer",
+                    isToolSummaryComplete && "tool-summary-reveal",
                   )}
                 >
-                  <span
-                    className={cn(
-                      "tool-summary-text",
-                      "text-foreground/80",
-                      workToneClass(workEntry.tone),
-                      isToolSummaryPending && "tool-summary-shimmer",
-                      isToolSummaryComplete && "tool-summary-reveal",
-                    )}
-                  >
+                  <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
                     {heading}
                   </span>
-                  {preview && (
-                    <span
-                      className={cn(
-                        "tool-summary-text text-muted-foreground/55",
-                        isToolSummaryPending && "tool-summary-shimmer",
-                        isToolSummaryComplete && "tool-summary-reveal",
-                      )}
-                    >
-                      {" "}
-                      - {preview}
-                    </span>
-                  )}
+                  {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
                 </p>
               </TooltipTrigger>
               <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
