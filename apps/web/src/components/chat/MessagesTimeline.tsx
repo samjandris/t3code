@@ -1108,12 +1108,20 @@ function workToneClass(tone: "thinking" | "tool" | "info" | "error"): string {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles" | "toolSummaryStatus">,
+  workEntry: Pick<
+    TimelineWorkEntry,
+    "detail" | "command" | "changedFiles" | "toolSummaryStatus" | "itemType" | "requestKind"
+  >,
   workspaceRoot: string | undefined,
 ) {
   if (workEntry.toolSummaryStatus === "complete" && workEntry.detail) return workEntry.detail;
   if (workEntry.command) return workEntry.command;
-  if (workEntry.detail) return workEntry.detail;
+  const hasStructuredChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
+  const isStructuredFileChange =
+    hasStructuredChangedFiles &&
+    (workEntry.itemType === "file_change" || workEntry.requestKind === "file-change");
+  if (workEntry.detail && !isStructuredFileChange) return workEntry.detail;
+  if (isStructuredFileChange) return null;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
@@ -1193,7 +1201,27 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
   const isToolSummaryPending = workEntry.toolSummaryStatus === "pending";
-  const isToolSummaryComplete = workEntry.toolSummaryStatus === "complete";
+  const previousToolSummaryStatusRef = useRef(workEntry.toolSummaryStatus);
+  const [shouldRevealToolSummary, setShouldRevealToolSummary] = useState(false);
+
+  useEffect(() => {
+    const previousStatus = previousToolSummaryStatusRef.current;
+    const currentStatus = workEntry.toolSummaryStatus;
+    previousToolSummaryStatusRef.current = currentStatus;
+
+    if (previousStatus === "pending" && currentStatus === "complete") {
+      setShouldRevealToolSummary(true);
+      const timeoutId = window.setTimeout(() => {
+        setShouldRevealToolSummary(false);
+      }, 700);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    if (currentStatus !== "complete") {
+      setShouldRevealToolSummary(false);
+    }
+    return undefined;
+  }, [workEntry.toolSummaryStatus]);
 
   return (
     <div className="rounded-lg px-1 py-1">
@@ -1213,7 +1241,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   workToneClass(workEntry.tone),
                   preview ? "text-muted-foreground/70" : "",
                   isToolSummaryPending && "tool-summary-shimmer",
-                  isToolSummaryComplete && "tool-summary-reveal",
+                  shouldRevealToolSummary && "tool-summary-reveal",
                 )}
                 title={displayText}
               >
@@ -1262,7 +1290,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                     workToneClass(workEntry.tone),
                     preview ? "text-muted-foreground/70" : "",
                     isToolSummaryPending && "tool-summary-shimmer",
-                    isToolSummaryComplete && "tool-summary-reveal",
+                    shouldRevealToolSummary && "tool-summary-reveal",
                   )}
                 >
                   <span aria-hidden="true" className="tool-summary-glint-text">
