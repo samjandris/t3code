@@ -1920,6 +1920,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const expandedBody = buildToolCallExpandedBody(workEntry, workspaceRoot);
   const canExpand = expandedBody !== null;
   const isToolSummaryPending = workEntry.toolSummaryStatus === "pending";
+  const isToolSummaryComplete = workEntry.toolSummaryStatus === "complete";
   const showFailedIndicator = workEntryIndicatesToolFailure(workEntry);
   const showDestructiveRowStyle =
     showFailedIndicator &&
@@ -1994,15 +1995,23 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   >
                     <span
                       className={cn(
+                        "tool-summary-text",
                         "min-w-0 shrink truncate",
                         headingClass,
                         isToolSummaryPending && "tool-summary-shimmer",
+                        isToolSummaryComplete && "tool-summary-reveal",
                       )}
                     >
                       {heading}
                     </span>
                     {preview && (
-                      <span className="min-w-0 flex-1 cursor-default truncate text-muted-foreground/55 transition-colors hover:text-muted-foreground/90 focus-visible:text-muted-foreground/90">
+                      <span
+                        className={cn(
+                          "tool-summary-text min-w-0 flex-1 cursor-default truncate text-muted-foreground/55 transition-colors hover:text-muted-foreground/90 focus-visible:text-muted-foreground/90",
+                          isToolSummaryPending && "tool-summary-shimmer",
+                          isToolSummaryComplete && "tool-summary-reveal",
+                        )}
+                      >
                         {preview}
                       </span>
                     )}
@@ -2029,15 +2038,23 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   <p className="flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5">
                     <span
                       className={cn(
+                        "tool-summary-text",
                         "min-w-0 shrink truncate",
                         headingClass,
                         isToolSummaryPending && "tool-summary-shimmer",
+                        isToolSummaryComplete && "tool-summary-reveal",
                       )}
                     >
                       {heading}
                     </span>
                     {preview && (
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground/55">
+                      <span
+                        className={cn(
+                          "tool-summary-text min-w-0 flex-1 truncate text-muted-foreground/55",
+                          isToolSummaryPending && "tool-summary-shimmer",
+                          isToolSummaryComplete && "tool-summary-reveal",
+                        )}
+                      >
                         {preview}
                       </span>
                     )}

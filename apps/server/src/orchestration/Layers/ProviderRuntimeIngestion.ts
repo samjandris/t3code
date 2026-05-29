@@ -18,7 +18,6 @@ import {
   type OrchestrationThreadShell,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
-  ProviderDriverKind,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
@@ -270,8 +269,6 @@ interface RuntimeEventToActivitiesOptions {
   readonly summarizeToolCalls?: boolean;
 }
 
-const OPENCODE_PROVIDER = ProviderDriverKind.make("opencode");
-
 function dataWithToolCallId(event: ProviderRuntimeEvent): Record<string, unknown> | undefined {
   const base =
     event.payload &&
@@ -280,12 +277,12 @@ function dataWithToolCallId(event: ProviderRuntimeEvent): Record<string, unknown
     typeof event.payload.data === "object"
       ? (event.payload.data as Record<string, unknown>)
       : undefined;
-  if (!event.itemId || event.provider !== OPENCODE_PROVIDER) {
+  if (!event.itemId) {
     return base;
   }
   return {
-    ...base,
     toolCallId: event.itemId,
+    ...base,
   };
 }
 
@@ -296,19 +293,15 @@ function buildToolActivityPayload(
   >,
   options: RuntimeEventToActivitiesOptions,
 ): Record<string, unknown> {
-  const shouldSummarize =
-    options.summarizeToolCalls === true && event.provider === OPENCODE_PROVIDER;
+  const shouldSummarize = options.summarizeToolCalls === true && Boolean(event.itemId);
   const data = dataWithToolCallId(event);
   return {
     itemType: event.payload.itemType,
     ...(event.payload.status ? { status: event.payload.status } : {}),
     ...(event.payload.title ? { title: event.payload.title } : {}),
     ...(shouldSummarize ? { summarizationStatus: "pending" } : {}),
-    ...(!shouldSummarize && event.payload.detail
-      ? { detail: truncateDetail(event.payload.detail) }
-      : {}),
-    ...(shouldSummarize && event.itemId ? { data: { toolCallId: event.itemId } } : {}),
-    ...(!shouldSummarize && data !== undefined ? { data } : {}),
+    ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
+    ...(data !== undefined ? { data } : {}),
   };
 }
 
@@ -751,12 +744,12 @@ const make = Effect.gen(function* () {
       .pipe(Effect.map((project) => Option.getOrUndefined(project)?.workspaceRoot));
   });
 
-  const summarizeOpenCodeToolCall = Effect.fn("summarizeOpenCodeToolCall")(function* (input: {
+  const summarizeProviderToolCall = Effect.fn("summarizeProviderToolCall")(function* (input: {
     readonly event: ProviderRuntimeEvent;
     readonly thread: OrchestrationThreadShell;
   }) {
     const { event, thread } = input;
-    if (event.type !== "item.completed" || event.provider !== OPENCODE_PROVIDER || !event.itemId) {
+    if (event.type !== "item.completed" || !event.itemId) {
       return;
     }
     if (!isToolLifecycleItemType(event.payload.itemType)) {
@@ -1816,12 +1809,8 @@ const make = Effect.gen(function* () {
           ),
         ),
       ).pipe(Effect.asVoid);
-      if (
-        summarizeToolCalls &&
-        event.type === "item.completed" &&
-        event.provider === OPENCODE_PROVIDER
-      ) {
-        yield* summarizeOpenCodeToolCall({ event, thread }).pipe(
+      if (summarizeToolCalls && event.type === "item.completed") {
+        yield* summarizeProviderToolCall({ event, thread }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("provider runtime ingestion failed to summarize tool call", {
               eventId: event.eventId,
