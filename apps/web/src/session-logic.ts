@@ -685,10 +685,10 @@ function shouldCollapseToolLifecycleEntries(
 }
 
 function isToolSummaryReplacementCandidate(entry: DerivedWorkLogEntry): boolean {
-  return (
-    entry.activityKind === "tool.completed" &&
-    (entry.toolSummaryStatus === "pending" || entry.toolSummaryStatus === "complete")
-  );
+  if (entry.toolSummaryStatus === "pending") {
+    return entry.activityKind === "tool.updated" || entry.activityKind === "tool.completed";
+  }
+  return entry.activityKind === "tool.completed" && entry.toolSummaryStatus === "complete";
 }
 
 function isToolSummaryReplacementPair(
