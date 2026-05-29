@@ -601,18 +601,18 @@ function collapseDerivedWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
   for (const entry of entries) {
-    const matchingSummaryIndex = findToolSummaryReplacementIndex(collapsed, entry);
-    if (matchingSummaryIndex !== -1) {
-      collapsed[matchingSummaryIndex] = mergeToolSummaryReplacement(
-        collapsed[matchingSummaryIndex]!,
-        entry,
-      );
+    const matchingToolIndex = findCollapsibleToolEntryIndex(collapsed, entry);
+    if (matchingToolIndex !== -1) {
+      const previous = collapsed[matchingToolIndex]!;
+      collapsed[matchingToolIndex] = shouldMergeAsToolSummaryReplacement(previous, entry)
+        ? mergeToolSummaryReplacement(previous, entry)
+        : mergeDerivedWorkLogEntries(previous, entry);
       continue;
     }
 
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
-      collapsed[collapsed.length - 1] = isToolSummaryReplacementPair(previous, entry)
+      collapsed[collapsed.length - 1] = shouldMergeAsToolSummaryReplacement(previous, entry)
         ? mergeToolSummaryReplacement(previous, entry)
         : mergeDerivedWorkLogEntries(previous, entry);
       continue;
@@ -622,22 +622,42 @@ function collapseDerivedWorkLogEntries(
   return collapsed;
 }
 
-function findToolSummaryReplacementIndex(
+function findCollapsibleToolEntryIndex(
   entries: ReadonlyArray<DerivedWorkLogEntry>,
   next: DerivedWorkLogEntry,
 ): number {
-  if (!isToolSummaryReplacementCandidate(next) || !next.toolCallId) {
+  if (!isToolLifecycleWorkLogEntry(next)) {
     return -1;
   }
 
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (entry && isToolSummaryReplacementPair(entry, next)) {
+    if (entry && shouldCollapseNonAdjacentToolLifecycleEntries(entry, next)) {
       return index;
     }
   }
 
   return -1;
+}
+
+function shouldCollapseNonAdjacentToolLifecycleEntries(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  if (!isToolLifecycleWorkLogEntry(previous) || !isToolLifecycleWorkLogEntry(next)) {
+    return false;
+  }
+  if (isToolSummaryReplacementPair(previous, next)) {
+    return true;
+  }
+  if (hasMatchingToolCallId(previous, next)) {
+    return true;
+  }
+  return (
+    previous.activityKind === "tool.updated" &&
+    next.activityKind === "tool.completed" &&
+    hasMatchingCommandWorkLogKey(previous, next)
+  );
 }
 
 function shouldCollapseToolLifecycleEntries(
@@ -651,6 +671,9 @@ function shouldCollapseToolLifecycleEntries(
     return false;
   }
   if (isToolSummaryReplacementPair(previous, next)) {
+    return true;
+  }
+  if (hasMatchingToolCallId(previous, next)) {
     return true;
   }
   if (previous.activityKind === "tool.completed") {
@@ -675,9 +698,17 @@ function shouldCollapseToolLifecycleEntries(
   );
 }
 
+function isToolLifecycleWorkLogEntry(entry: DerivedWorkLogEntry): boolean {
+  return entry.activityKind === "tool.updated" || entry.activityKind === "tool.completed";
+}
+
+function isCompleteToolSummaryEntry(entry: DerivedWorkLogEntry): boolean {
+  return entry.activityKind === "tool.completed" && entry.toolSummaryStatus === "complete";
+}
+
 function isToolSummaryReplacementCandidate(entry: DerivedWorkLogEntry): boolean {
   return (
-    entry.activityKind === "tool.completed" &&
+    isToolLifecycleWorkLogEntry(entry) &&
     (entry.toolSummaryStatus === "pending" || entry.toolSummaryStatus === "complete")
   );
 }
@@ -693,10 +724,27 @@ function isToolSummaryReplacementPair(
   ) {
     return false;
   }
-  if (previous.toolCallId !== undefined && previous.toolCallId === next.toolCallId) {
+  if (hasMatchingToolCallId(previous, next)) {
     return true;
   }
   return hasMatchingCommandWorkLogKey(previous, next);
+}
+
+function shouldMergeAsToolSummaryReplacement(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  if (!isCompleteToolSummaryEntry(previous) && !isCompleteToolSummaryEntry(next)) {
+    return isToolSummaryReplacementPair(previous, next);
+  }
+  if (!isToolLifecycleWorkLogEntry(previous) || !isToolLifecycleWorkLogEntry(next)) {
+    return false;
+  }
+  return hasMatchingToolCallId(previous, next) || hasMatchingCommandWorkLogKey(previous, next);
+}
+
+function hasMatchingToolCallId(previous: DerivedWorkLogEntry, next: DerivedWorkLogEntry): boolean {
+  return previous.toolCallId !== undefined && previous.toolCallId === next.toolCallId;
 }
 
 function hasMatchingCommandWorkLogKey(
