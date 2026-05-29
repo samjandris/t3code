@@ -793,6 +793,12 @@ const make = Effect.gen(function* () {
     );
 
     const data = dataWithToolCallId(event);
+    const maybeSequence = (() => {
+      const eventWithSequence = event as ProviderRuntimeEvent & { sessionSequence?: number };
+      return eventWithSequence.sessionSequence !== undefined
+        ? { sequence: eventWithSequence.sessionSequence }
+        : {};
+    })();
     yield* orchestrationEngine.dispatch({
       type: "thread.activity.append",
       commandId: providerCommandId(event, "tool-call-summary"),
@@ -812,6 +818,7 @@ const make = Effect.gen(function* () {
           ...(data !== undefined ? { data } : {}),
         },
         turnId: toTurnId(event.turnId) ?? null,
+        ...maybeSequence,
       },
       createdAt: event.createdAt,
     });
