@@ -1144,6 +1144,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                 )}
                 title={displayText}
               >
+                <span aria-hidden="true" className="tool-summary-glint-text">
+                  {displayText}
+                </span>
                 <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
                   {heading}
                 </span>
@@ -1189,6 +1192,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                     isToolSummaryComplete && "tool-summary-reveal",
                   )}
                 >
+                  <span aria-hidden="true" className="tool-summary-glint-text">
+                    {displayText}
+                  </span>
                   <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
                     {heading}
                   </span>
