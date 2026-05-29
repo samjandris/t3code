@@ -286,6 +286,28 @@ function dataWithToolCallId(event: ProviderRuntimeEvent): Record<string, unknown
   };
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function requestDataWithToolCallId(
+  event: Extract<ProviderRuntimeEvent, { type: "request.opened" | "request.resolved" }>,
+): Record<string, unknown> | undefined {
+  const args = event.type === "request.opened" ? asRecord(event.payload.args) : undefined;
+  const toolCallId =
+    event.providerRefs?.providerItemId ??
+    (typeof args?.toolUseId === "string" && args.toolUseId.length > 0 ? args.toolUseId : undefined);
+
+  if (!toolCallId && !args) {
+    return undefined;
+  }
+
+  return {
+    ...(toolCallId ? { toolCallId } : {}),
+    ...(args ? { args } : {}),
+  };
+}
+
 function buildToolActivityPayload(
   event: Extract<
     ProviderRuntimeEvent,
@@ -347,6 +369,7 @@ function runtimeEventToActivities(
         return [];
       }
       const requestKind = requestKindFromCanonicalRequestType(event.payload.requestType);
+      const data = requestDataWithToolCallId(event);
       return [
         {
           id: event.eventId,
@@ -366,6 +389,7 @@ function runtimeEventToActivities(
             ...(requestKind ? { requestKind } : {}),
             requestType: event.payload.requestType,
             ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
+            ...(data !== undefined ? { data } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -378,6 +402,7 @@ function runtimeEventToActivities(
         return [];
       }
       const requestKind = requestKindFromCanonicalRequestType(event.payload.requestType);
+      const data = requestDataWithToolCallId(event);
       return [
         {
           id: event.eventId,
@@ -390,6 +415,7 @@ function runtimeEventToActivities(
             ...(requestKind ? { requestKind } : {}),
             requestType: event.payload.requestType,
             ...(event.payload.decision ? { decision: event.payload.decision } : {}),
+            ...(data !== undefined ? { data } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
