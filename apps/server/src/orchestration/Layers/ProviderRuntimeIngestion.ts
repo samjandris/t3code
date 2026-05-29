@@ -766,6 +766,7 @@ const make = Effect.gen(function* () {
       ),
     );
 
+    const data = dataWithToolCallId(event);
     yield* orchestrationEngine.dispatch({
       type: "thread.activity.append",
       commandId: providerCommandId(event, "tool-call-summary"),
@@ -782,7 +783,7 @@ const make = Effect.gen(function* () {
           ...(event.payload.title ? { title: event.payload.title } : {}),
           detail: truncateDetail(summary),
           summarizationStatus: "complete",
-          data: { toolCallId: event.itemId },
+          ...(data !== undefined ? { data } : {}),
         },
         turnId: toTurnId(event.turnId) ?? null,
       },
