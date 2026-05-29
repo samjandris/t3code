@@ -1797,9 +1797,10 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles" | "toolSummaryStatus">,
   workspaceRoot: string | undefined,
 ) {
+  if (workEntry.toolSummaryStatus === "complete" && workEntry.detail) return workEntry.detail;
   if (workEntry.command) return workEntry.command;
   if (workEntry.detail) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
@@ -1988,30 +1989,18 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                     onPointerDown={stopRowToggle}
                     render={
                       <p
-                        className="flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5"
+                        className={cn(
+                          "tool-summary-line flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5",
+                          isToolSummaryPending && "tool-summary-shimmer",
+                          isToolSummaryComplete && "tool-summary-reveal",
+                        )}
                         aria-label={displayText}
                       />
                     }
                   >
-                    <span
-                      className={cn(
-                        "tool-summary-text",
-                        "min-w-0 shrink truncate",
-                        headingClass,
-                        isToolSummaryPending && "tool-summary-shimmer",
-                        isToolSummaryComplete && "tool-summary-reveal",
-                      )}
-                    >
-                      {heading}
-                    </span>
+                    <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
                     {preview && (
-                      <span
-                        className={cn(
-                          "tool-summary-text min-w-0 flex-1 cursor-default truncate text-muted-foreground/55 transition-colors hover:text-muted-foreground/90 focus-visible:text-muted-foreground/90",
-                          isToolSummaryPending && "tool-summary-shimmer",
-                          isToolSummaryComplete && "tool-summary-reveal",
-                        )}
-                      >
+                      <span className="min-w-0 flex-1 cursor-default truncate text-muted-foreground/55 transition-colors hover:text-muted-foreground/90 focus-visible:text-muted-foreground/90">
                         {preview}
                       </span>
                     )}
@@ -2035,26 +2024,16 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   onClick={stopRowToggle}
                   onPointerDown={stopRowToggle}
                 >
-                  <p className="flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5">
-                    <span
-                      className={cn(
-                        "tool-summary-text",
-                        "min-w-0 shrink truncate",
-                        headingClass,
-                        isToolSummaryPending && "tool-summary-shimmer",
-                        isToolSummaryComplete && "tool-summary-reveal",
-                      )}
-                    >
-                      {heading}
-                    </span>
+                  <p
+                    className={cn(
+                      "tool-summary-line flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5",
+                      isToolSummaryPending && "tool-summary-shimmer",
+                      isToolSummaryComplete && "tool-summary-reveal",
+                    )}
+                  >
+                    <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
                     {preview && (
-                      <span
-                        className={cn(
-                          "tool-summary-text min-w-0 flex-1 truncate text-muted-foreground/55",
-                          isToolSummaryPending && "tool-summary-shimmer",
-                          isToolSummaryComplete && "tool-summary-reveal",
-                        )}
-                      >
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground/55">
                         {preview}
                       </span>
                     )}
