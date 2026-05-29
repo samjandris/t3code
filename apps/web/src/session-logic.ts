@@ -489,14 +489,18 @@ export function deriveWorkLogEntries(
     if (activity.kind === "tool.started") continue;
     if (activity.kind === "task.started") continue;
     if (activity.kind === "context-window.updated") continue;
-    if (activity.kind === "approval.resolved") continue;
+    if (isApprovalActivity(activity)) continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
     entries.push(toDerivedWorkLogEntry(activity));
   }
-  return suppressSupersededApprovalEntries(collapseDerivedWorkLogEntries(entries)).map(
+  return collapseDerivedWorkLogEntries(entries).map(
     ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
   );
+}
+
+function isApprovalActivity(activity: OrchestrationThreadActivity): boolean {
+  return activity.kind === "approval.requested" || activity.kind === "approval.resolved";
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {
@@ -634,28 +638,6 @@ function findToolSummaryReplacementIndex(
   return -1;
 }
 
-function suppressSupersededApprovalEntries(
-  entries: ReadonlyArray<DerivedWorkLogEntry>,
-): DerivedWorkLogEntry[] {
-  const toolCallIdsWithLifecycleEntries = new Set(
-    entries
-      .filter((entry) => entry.activityKind !== "approval.requested")
-      .map((entry) => entry.toolCallId)
-      .filter((toolCallId): toolCallId is string => toolCallId !== undefined),
-  );
-
-  if (toolCallIdsWithLifecycleEntries.size === 0) {
-    return [...entries];
-  }
-
-  return entries.filter(
-    (entry) =>
-      entry.activityKind !== "approval.requested" ||
-      entry.toolCallId === undefined ||
-      !toolCallIdsWithLifecycleEntries.has(entry.toolCallId),
-  );
-}
-
 function shouldCollapseToolLifecycleEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
@@ -695,13 +677,29 @@ function isToolSummaryReplacementPair(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): boolean {
-  return (
-    isToolSummaryReplacementCandidate(previous) &&
-    isToolSummaryReplacementCandidate(next) &&
-    previous.toolSummaryStatus !== next.toolSummaryStatus &&
-    previous.toolCallId !== undefined &&
-    previous.toolCallId === next.toolCallId
-  );
+  if (
+    !isToolSummaryReplacementCandidate(previous) ||
+    !isToolSummaryReplacementCandidate(next) ||
+    previous.toolSummaryStatus === next.toolSummaryStatus
+  ) {
+    return false;
+  }
+  if (previous.toolCallId !== undefined && previous.toolCallId === next.toolCallId) {
+    return true;
+  }
+  return hasMatchingCommandSummaryReplacementKey(previous, next);
+}
+
+function hasMatchingCommandSummaryReplacementKey(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  if (previous.itemType !== "command_execution" || next.itemType !== "command_execution") {
+    return false;
+  }
+  const previousCommand = normalizePreviewForComparison(previous.command);
+  const nextCommand = normalizePreviewForComparison(next.command);
+  return previousCommand !== null && previousCommand === nextCommand;
 }
 
 function mergeToolSummaryReplacement(
