@@ -491,17 +491,13 @@ export function deriveWorkLogEntries(
     .filter((activity) => activity.kind !== "tool.started")
     .filter((activity) => activity.kind !== "task.started")
     .filter((activity) => activity.kind !== "context-window.updated")
-    .filter((activity) => !isApprovalActivity(activity))
+    .filter((activity) => activity.kind !== "approval.resolved")
     .filter((activity) => activity.summary !== "Checkpoint captured")
     .filter((activity) => !isPlanBoundaryToolActivity(activity))
     .map(toDerivedWorkLogEntry);
-  return collapseDerivedWorkLogEntries(entries).map(
+  return suppressSupersededApprovalEntries(collapseDerivedWorkLogEntries(entries)).map(
     ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
   );
-}
-
-function isApprovalActivity(activity: OrchestrationThreadActivity): boolean {
-  return activity.kind === "approval.requested" || activity.kind === "approval.resolved";
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {
@@ -600,15 +596,6 @@ function collapseDerivedWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
   for (const entry of entries) {
-    const matchingSummaryIndex = findCollapsibleToolSummaryEntryIndex(collapsed, entry);
-    if (matchingSummaryIndex !== -1) {
-      collapsed[matchingSummaryIndex] = mergeDerivedWorkLogEntries(
-        collapsed[matchingSummaryIndex]!,
-        entry,
-      );
-      continue;
-    }
-
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
       collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
@@ -619,22 +606,26 @@ function collapseDerivedWorkLogEntries(
   return collapsed;
 }
 
-function findCollapsibleToolSummaryEntryIndex(
+function suppressSupersededApprovalEntries(
   entries: ReadonlyArray<DerivedWorkLogEntry>,
-  next: DerivedWorkLogEntry,
-): number {
-  if (!next.toolCallId || !isPendingCompleteSummaryPairCandidate(next)) {
-    return -1;
+): DerivedWorkLogEntry[] {
+  const toolCallIdsWithLifecycleEntries = new Set(
+    entries
+      .filter((entry) => entry.activityKind !== "approval.requested")
+      .map((entry) => entry.toolCallId)
+      .filter((toolCallId): toolCallId is string => toolCallId !== undefined),
+  );
+
+  if (toolCallIdsWithLifecycleEntries.size === 0) {
+    return [...entries];
   }
 
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry?.toolCallId === next.toolCallId && isPendingCompleteSummaryPair(entry, next)) {
-      return index;
-    }
-  }
-
-  return -1;
+  return entries.filter(
+    (entry) =>
+      entry.activityKind !== "approval.requested" ||
+      entry.toolCallId === undefined ||
+      !toolCallIdsWithLifecycleEntries.has(entry.toolCallId),
+  );
 }
 
 function shouldCollapseToolLifecycleEntries(
@@ -647,7 +638,10 @@ function shouldCollapseToolLifecycleEntries(
   if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
     return false;
   }
-  if (previous.activityKind === "tool.completed" && !isPendingCompleteSummaryPair(previous, next)) {
+  if (
+    previous.activityKind === "tool.completed" &&
+    (previous.toolSummaryStatus !== "pending" || next.toolSummaryStatus !== "complete")
+  ) {
     return false;
   }
   if (previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey) {
@@ -662,53 +656,23 @@ function shouldCollapseToolLifecycleEntries(
   );
 }
 
-function isPendingCompleteSummaryPair(
-  previous: DerivedWorkLogEntry,
-  next: DerivedWorkLogEntry,
-): boolean {
-  return (
-    isPendingCompleteSummaryPairCandidate(previous) &&
-    isPendingCompleteSummaryPairCandidate(next) &&
-    previous.toolSummaryStatus !== next.toolSummaryStatus
-  );
-}
-
-function isPendingCompleteSummaryPairCandidate(entry: DerivedWorkLogEntry): boolean {
-  return (
-    entry.activityKind === "tool.completed" &&
-    (entry.toolSummaryStatus === "pending" || entry.toolSummaryStatus === "complete")
-  );
-}
-
 function mergeDerivedWorkLogEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): DerivedWorkLogEntry {
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
-  const completeSummaryEntry =
-    previous.toolSummaryStatus === "complete"
-      ? previous
-      : next.toolSummaryStatus === "complete"
-        ? next
-        : null;
-  const detail = completeSummaryEntry?.detail ?? next.detail ?? previous.detail;
+  const detail = next.detail ?? previous.detail;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
-  const toolSummaryStatus =
-    completeSummaryEntry?.toolSummaryStatus ?? next.toolSummaryStatus ?? previous.toolSummaryStatus;
+  const toolSummaryStatus = next.toolSummaryStatus ?? previous.toolSummaryStatus;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
-  const id =
-    previous.toolSummaryStatus === "pending" && next.toolSummaryStatus === "complete"
-      ? previous.id
-      : next.id;
   return {
     ...previous,
     ...next,
-    id,
     ...(detail ? { detail } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
@@ -930,15 +894,22 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   rawCommand: string | null;
 } {
   const data = asRecord(payload?.data);
+  const state = asRecord(data?.state);
   const item = asRecord(data?.item);
   const itemResult = asRecord(item?.result);
   const itemInput = asRecord(item?.input);
+  const dataInput = asRecord(data?.input);
+  const stateInput = asRecord(state?.input);
   const itemType = asTrimmedString(payload?.itemType);
   const detail = asTrimmedString(payload?.detail);
   const candidates: unknown[] = [
     item?.command,
     itemInput?.command,
     itemResult?.command,
+    dataInput?.command,
+    dataInput?.cmd,
+    stateInput?.command,
+    stateInput?.cmd,
     data?.command,
     itemType === "command_execution" && detail ? stripTrailingExitCode(detail).output : null,
   ];
@@ -966,7 +937,7 @@ function extractToolTitle(payload: Record<string, unknown> | null): string | nul
 
 function extractToolCallId(payload: Record<string, unknown> | null): string | null {
   const data = asRecord(payload?.data);
-  return asTrimmedString(data?.toolCallId);
+  return asTrimmedString(data?.toolCallId) ?? asTrimmedString(data?.toolUseId);
 }
 
 function normalizeInlinePreview(value: string): string {
@@ -1029,6 +1000,106 @@ function summarizeToolRawOutput(payload: Record<string, unknown> | null): string
   return null;
 }
 
+const TOOL_INPUT_PATH_KEYS = [
+  "file_path",
+  "filePath",
+  "filepath",
+  "path",
+  "filename",
+  "file",
+] as const;
+const TOOL_INPUT_QUERY_KEYS = ["pattern", "query", "search", "regex", "glob", "include"] as const;
+const TOOL_INPUT_FALLBACK_KEYS = [
+  ...TOOL_INPUT_QUERY_KEYS,
+  ...TOOL_INPUT_PATH_KEYS,
+  "url",
+  "command",
+  "cmd",
+  "description",
+] as const;
+
+function collectToolInputRecords(
+  payload: Record<string, unknown> | null,
+): Record<string, unknown>[] {
+  const data = asRecord(payload?.data);
+  const state = asRecord(data?.state);
+  const item = asRecord(data?.item);
+  const args = asRecord(data?.args);
+  const records = [
+    asRecord(state?.input),
+    asRecord(data?.input),
+    asRecord(item?.input),
+    asRecord(args?.input),
+  ].filter((record): record is Record<string, unknown> => record !== null);
+  return records;
+}
+
+function inputPreviewValue(value: unknown): string | null {
+  const direct = asTrimmedString(value);
+  if (direct) {
+    return truncateInlinePreview(normalizeInlinePreview(direct));
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const parts = value
+    .map((entry) => inputPreviewValue(entry))
+    .filter((entry): entry is string => entry !== null);
+  return parts.length > 0 ? truncateInlinePreview(parts.join(", ")) : null;
+}
+
+function firstInputValue(
+  input: Record<string, unknown>,
+  keys: ReadonlyArray<string>,
+): string | null {
+  for (const key of keys) {
+    const preview = inputPreviewValue(input[key]);
+    if (preview) {
+      return preview;
+    }
+  }
+  return null;
+}
+
+function firstInputKeyValue(
+  input: Record<string, unknown>,
+  keys: ReadonlyArray<string>,
+): { key: string; value: string } | null {
+  for (const key of keys) {
+    const value = inputPreviewValue(input[key]);
+    if (value) {
+      return { key, value };
+    }
+  }
+  return null;
+}
+
+function summarizeToolInput(payload: Record<string, unknown> | null): string | null {
+  for (const input of collectToolInputRecords(payload)) {
+    const query = firstInputValue(input, TOOL_INPUT_QUERY_KEYS);
+    const path = firstInputValue(input, TOOL_INPUT_PATH_KEYS);
+    if (query && path && query !== path) {
+      return truncateInlinePreview(`${query} in ${path}`);
+    }
+    if (query) {
+      return query;
+    }
+    if (path) {
+      return path;
+    }
+
+    const fallback = firstInputKeyValue(input, TOOL_INPUT_FALLBACK_KEYS);
+    if (fallback) {
+      return fallback.value;
+    }
+  }
+
+  return null;
+}
+
 function isCommandToolDetail(payload: Record<string, unknown> | null, heading: string): boolean {
   const data = asRecord(payload?.data);
   const kind = asTrimmedString(data?.kind)?.toLowerCase();
@@ -1056,6 +1127,14 @@ function extractToolDetail(
 
   if (isCommandToolDetail(payload, heading)) {
     return null;
+  }
+
+  const inputSummary = summarizeToolInput(payload);
+  if (inputSummary) {
+    const normalizedInputSummary = normalizePreviewForComparison(inputSummary);
+    if (normalizedInputSummary !== normalizedHeading) {
+      return inputSummary;
+    }
   }
 
   const rawOutputSummary = summarizeToolRawOutput(payload);
