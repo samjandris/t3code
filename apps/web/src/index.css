@@ -206,26 +206,32 @@
       filter 220ms ease;
   }
 
-  .tool-summary-line::after {
-    content: "";
+  .tool-summary-glint-text {
     position: absolute;
-    inset: -1px 0;
+    inset: 0;
     z-index: 1;
     pointer-events: none;
     opacity: 0;
-    transform: translateX(-110%);
-    background: linear-gradient(
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: currentColor;
+    background-image: linear-gradient(
       100deg,
-      transparent 0%,
-      transparent 35%,
-      color-mix(in srgb, currentColor 18%, white 82%) 48%,
-      transparent 62%,
-      transparent 100%
+      color-mix(in srgb, currentColor 18%, transparent) 0%,
+      color-mix(in srgb, currentColor 54%, white 46%) 44%,
+      color-mix(in srgb, currentColor 92%, white 8%) 52%,
+      color-mix(in srgb, currentColor 54%, white 46%) 60%,
+      color-mix(in srgb, currentColor 18%, transparent) 100%
     );
-    mix-blend-mode: screen;
+    background-size: 240% 100%;
+    background-position: 140% 0;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 
-  .tool-summary-shimmer::after {
+  .tool-summary-shimmer .tool-summary-glint-text {
     animation: tool-summary-shimmer 1.55s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   }
 
@@ -233,7 +239,7 @@
     animation: tool-summary-final-pulse 640ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 
-  .tool-summary-reveal::after {
+  .tool-summary-reveal .tool-summary-glint-text {
     animation: tool-summary-final-glint 640ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 }
@@ -241,18 +247,18 @@
 @keyframes tool-summary-shimmer {
   0% {
     opacity: 0;
-    transform: translateX(-115%);
+    background-position: 140% 0;
   }
 
   12% {
-    opacity: 0.42;
+    opacity: 0.72;
   }
   84% {
-    opacity: 0.42;
+    opacity: 0.72;
   }
   100% {
     opacity: 0;
-    transform: translateX(115%);
+    background-position: -90% 0;
   }
 }
 
@@ -274,17 +280,17 @@
 @keyframes tool-summary-final-glint {
   0% {
     opacity: 0;
-    transform: translateX(-80%);
+    background-position: 120% 0;
   }
   28% {
-    opacity: 0.5;
+    opacity: 0.78;
   }
   72% {
-    opacity: 0.28;
+    opacity: 0.32;
   }
   100% {
     opacity: 0;
-    transform: translateX(80%);
+    background-position: -30% 0;
   }
 }
 
