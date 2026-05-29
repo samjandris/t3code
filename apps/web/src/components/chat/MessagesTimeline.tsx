@@ -1121,7 +1121,6 @@ function workEntryPreview(
     hasStructuredChangedFiles &&
     (workEntry.itemType === "file_change" || workEntry.requestKind === "file-change");
   if (workEntry.detail && !isStructuredFileChange) return workEntry.detail;
-  if (isStructuredFileChange) return null;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
@@ -1198,8 +1197,6 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       : rawPreview;
   const rawCommand = workEntryRawCommand(workEntry);
   const displayText = preview ? `${heading} - ${preview}` : heading;
-  const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
-  const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
   const isToolSummaryPending = workEntry.toolSummaryStatus === "pending";
   const previousToolSummaryStatusRef = useRef(workEntry.toolSummaryStatus);
   const [shouldRevealToolSummary, setShouldRevealToolSummary] = useState(false);
@@ -1311,27 +1308,6 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           )}
         </div>
       </div>
-      {hasChangedFiles && !previewIsChangedFiles && (
-        <div className="mt-1 flex flex-wrap gap-1 pl-6">
-          {workEntry.changedFiles?.slice(0, 4).map((filePath) => {
-            const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
-            return (
-              <span
-                key={`${workEntry.id}:${filePath}`}
-                className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75"
-                title={displayPath}
-              >
-                {displayPath}
-              </span>
-            );
-          })}
-          {(workEntry.changedFiles?.length ?? 0) > 4 && (
-            <span className="px-1 text-[10px] text-muted-foreground/55">
-              +{(workEntry.changedFiles?.length ?? 0) - 4}
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 });
