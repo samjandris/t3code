@@ -614,7 +614,10 @@ function shouldCollapseToolLifecycleEntries(
   if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
     return false;
   }
-  if (previous.activityKind === "tool.completed") {
+  if (
+    previous.activityKind === "tool.completed" &&
+    (previous.toolSummaryStatus !== "pending" || next.toolSummaryStatus !== "complete")
+  ) {
     return false;
   }
   if (previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey) {
