@@ -595,14 +595,43 @@ function collapseDerivedWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
   for (const entry of entries) {
+    const matchingSummaryIndex = findToolSummaryReplacementIndex(collapsed, entry);
+    if (matchingSummaryIndex !== -1) {
+      collapsed[matchingSummaryIndex] = mergeToolSummaryReplacement(
+        collapsed[matchingSummaryIndex]!,
+        entry,
+      );
+      continue;
+    }
+
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
-      collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
+      collapsed[collapsed.length - 1] = isToolSummaryReplacementPair(previous, entry)
+        ? mergeToolSummaryReplacement(previous, entry)
+        : mergeDerivedWorkLogEntries(previous, entry);
       continue;
     }
     collapsed.push(entry);
   }
   return collapsed;
+}
+
+function findToolSummaryReplacementIndex(
+  entries: ReadonlyArray<DerivedWorkLogEntry>,
+  next: DerivedWorkLogEntry,
+): number {
+  if (!isToolSummaryReplacementCandidate(next) || !next.toolCallId) {
+    return -1;
+  }
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry && isToolSummaryReplacementPair(entry, next)) {
+      return index;
+    }
+  }
+
+  return -1;
 }
 
 function suppressSupersededApprovalEntries(
@@ -637,10 +666,10 @@ function shouldCollapseToolLifecycleEntries(
   if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
     return false;
   }
-  if (
-    previous.activityKind === "tool.completed" &&
-    (previous.toolSummaryStatus !== "pending" || next.toolSummaryStatus !== "complete")
-  ) {
+  if (isToolSummaryReplacementPair(previous, next)) {
+    return true;
+  }
+  if (previous.activityKind === "tool.completed") {
     return false;
   }
   if (previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey) {
@@ -653,6 +682,39 @@ function shouldCollapseToolLifecycleEntries(
     normalizeCompactToolLabel(previous.toolTitle ?? previous.label) ===
       normalizeCompactToolLabel(next.toolTitle ?? next.label)
   );
+}
+
+function isToolSummaryReplacementCandidate(entry: DerivedWorkLogEntry): boolean {
+  return (
+    entry.activityKind === "tool.completed" &&
+    (entry.toolSummaryStatus === "pending" || entry.toolSummaryStatus === "complete")
+  );
+}
+
+function isToolSummaryReplacementPair(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  return (
+    isToolSummaryReplacementCandidate(previous) &&
+    isToolSummaryReplacementCandidate(next) &&
+    previous.toolSummaryStatus !== next.toolSummaryStatus &&
+    previous.toolCallId !== undefined &&
+    previous.toolCallId === next.toolCallId
+  );
+}
+
+function mergeToolSummaryReplacement(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): DerivedWorkLogEntry {
+  const completeEntry = previous.toolSummaryStatus === "complete" ? previous : next;
+  return {
+    ...mergeDerivedWorkLogEntries(previous, next),
+    id: previous.id,
+    ...(completeEntry.detail ? { detail: completeEntry.detail } : {}),
+    toolSummaryStatus: "complete",
+  };
 }
 
 function mergeDerivedWorkLogEntries(
