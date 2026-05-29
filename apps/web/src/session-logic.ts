@@ -489,6 +489,7 @@ export function deriveWorkLogEntries(
     if (activity.kind === "tool.started") continue;
     if (activity.kind === "task.started") continue;
     if (activity.kind === "context-window.updated") continue;
+    if (isApprovalActivity(activity)) continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
     entries.push(toDerivedWorkLogEntry(activity));
@@ -496,6 +497,10 @@ export function deriveWorkLogEntries(
   return collapseDerivedWorkLogEntries(entries).map(
     ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
   );
+}
+
+function isApprovalActivity(activity: OrchestrationThreadActivity): boolean {
+  return activity.kind === "approval.requested" || activity.kind === "approval.resolved";
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {
@@ -594,6 +599,15 @@ function collapseDerivedWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
   for (const entry of entries) {
+    const matchingSummaryIndex = findCollapsibleToolSummaryEntryIndex(collapsed, entry);
+    if (matchingSummaryIndex !== -1) {
+      collapsed[matchingSummaryIndex] = mergeDerivedWorkLogEntries(
+        collapsed[matchingSummaryIndex]!,
+        entry,
+      );
+      continue;
+    }
+
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
       collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
@@ -602,6 +616,24 @@ function collapseDerivedWorkLogEntries(
     collapsed.push(entry);
   }
   return collapsed;
+}
+
+function findCollapsibleToolSummaryEntryIndex(
+  entries: ReadonlyArray<DerivedWorkLogEntry>,
+  next: DerivedWorkLogEntry,
+): number {
+  if (!next.toolCallId || !isPendingCompleteSummaryPairCandidate(next)) {
+    return -1;
+  }
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.toolCallId === next.toolCallId && isPendingCompleteSummaryPair(entry, next)) {
+      return index;
+    }
+  }
+
+  return -1;
 }
 
 function shouldCollapseToolLifecycleEntries(
@@ -614,10 +646,7 @@ function shouldCollapseToolLifecycleEntries(
   if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
     return false;
   }
-  if (
-    previous.activityKind === "tool.completed" &&
-    (previous.toolSummaryStatus !== "pending" || next.toolSummaryStatus !== "complete")
-  ) {
+  if (previous.activityKind === "tool.completed" && !isPendingCompleteSummaryPair(previous, next)) {
     return false;
   }
   if (previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey) {
@@ -632,23 +661,53 @@ function shouldCollapseToolLifecycleEntries(
   );
 }
 
+function isPendingCompleteSummaryPair(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  return (
+    isPendingCompleteSummaryPairCandidate(previous) &&
+    isPendingCompleteSummaryPairCandidate(next) &&
+    previous.toolSummaryStatus !== next.toolSummaryStatus
+  );
+}
+
+function isPendingCompleteSummaryPairCandidate(entry: DerivedWorkLogEntry): boolean {
+  return (
+    entry.activityKind === "tool.completed" &&
+    (entry.toolSummaryStatus === "pending" || entry.toolSummaryStatus === "complete")
+  );
+}
+
 function mergeDerivedWorkLogEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): DerivedWorkLogEntry {
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
-  const detail = next.detail ?? previous.detail;
+  const completeSummaryEntry =
+    previous.toolSummaryStatus === "complete"
+      ? previous
+      : next.toolSummaryStatus === "complete"
+        ? next
+        : null;
+  const detail = completeSummaryEntry?.detail ?? next.detail ?? previous.detail;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
-  const toolSummaryStatus = next.toolSummaryStatus ?? previous.toolSummaryStatus;
+  const toolSummaryStatus =
+    completeSummaryEntry?.toolSummaryStatus ?? next.toolSummaryStatus ?? previous.toolSummaryStatus;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
+  const id =
+    previous.toolSummaryStatus === "pending" && next.toolSummaryStatus === "complete"
+      ? previous.id
+      : next.id;
   return {
     ...previous,
     ...next,
+    id,
     ...(detail ? { detail } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
