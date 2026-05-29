@@ -298,13 +298,12 @@ function requestDataWithToolCallId(
     event.providerRefs?.providerItemId ??
     (typeof args?.toolUseId === "string" && args.toolUseId.length > 0 ? args.toolUseId : undefined);
 
-  if (!toolCallId && !args) {
+  if (!toolCallId) {
     return undefined;
   }
 
   return {
-    ...(toolCallId ? { toolCallId } : {}),
-    ...(args ? { args } : {}),
+    toolCallId,
   };
 }
 
