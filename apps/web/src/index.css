@@ -206,69 +206,69 @@
   }
 
   .tool-summary-shimmer {
-    --tool-summary-ink: color-mix(in srgb, var(--foreground) 78%, transparent);
-    --tool-summary-glint: color-mix(in srgb, var(--foreground) 96%, white 14%);
-
     background-image: linear-gradient(
       110deg,
-      color-mix(in srgb, var(--tool-summary-ink) 54%, transparent) 0%,
-      var(--tool-summary-glint) 34%,
-      var(--tool-summary-ink) 48%,
-      var(--tool-summary-glint) 58%,
-      color-mix(in srgb, var(--tool-summary-ink) 54%, transparent) 100%
+      currentColor 0%,
+      color-mix(in srgb, currentColor 74%, transparent) 30%,
+      color-mix(in srgb, currentColor 86%, white 24%) 45%,
+      currentColor 54%,
+      color-mix(in srgb, currentColor 86%, white 24%) 61%,
+      color-mix(in srgb, currentColor 74%, transparent) 74%,
+      currentColor 100%
     );
-    background-size: 260% 100%;
+    background-size: 220% 100%;
+    background-repeat: repeat-x;
     background-clip: text;
     -webkit-background-clip: text;
-    color: transparent;
     -webkit-text-fill-color: transparent;
     filter: saturate(1.15);
-    animation: tool-summary-shimmer 0.95s ease-in-out infinite;
+    animation: tool-summary-shimmer 1.45s linear infinite;
   }
 
   .tool-summary-reveal {
-    --tool-summary-ink: color-mix(in srgb, var(--foreground) 78%, transparent);
-    --tool-summary-glint: color-mix(in srgb, var(--foreground) 98%, white 22%);
-
     background-image: linear-gradient(
       105deg,
-      var(--tool-summary-ink) 0%,
-      color-mix(in srgb, var(--tool-summary-ink) 96%, white 4%) 28%,
-      var(--tool-summary-glint) 48%,
-      var(--tool-summary-ink) 68%,
-      var(--tool-summary-ink) 100%
+      currentColor 0%,
+      currentColor 30%,
+      color-mix(in srgb, currentColor 72%, white 30%) 48%,
+      currentColor 66%,
+      currentColor 100%
     );
     background-size: 240% 100%;
     background-clip: text;
     -webkit-background-clip: text;
-    color: transparent;
-    -webkit-text-fill-color: transparent;
     animation: tool-summary-reveal 0.78s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 }
 
 @keyframes tool-summary-shimmer {
   from {
-    background-position: 145% 0;
+    background-position: 220% 0;
   }
 
   to {
-    background-position: -95% 0;
+    background-position: 0% 0;
   }
 }
 
 @keyframes tool-summary-reveal {
   0% {
     background-position: 120% 0;
+    -webkit-text-fill-color: transparent;
     opacity: 0.64;
     filter: blur(0.4px) saturate(1.2);
   }
   52% {
+    -webkit-text-fill-color: transparent;
     opacity: 1;
     filter: blur(0) saturate(1.25);
   }
+  99% {
+    -webkit-text-fill-color: transparent;
+  }
   100% {
     background-position: -30% 0;
+    -webkit-text-fill-color: currentColor;
     opacity: 1;
     filter: blur(0) saturate(1);
   }
