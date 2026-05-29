@@ -725,7 +725,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
-  const toolSummaryStatus = extractToolSummaryStatus(payload);
+  const toolSummaryStatus =
+    activity.kind === "tool.updated" ? undefined : extractToolSummaryStatus(payload);
   if (detail) {
     entry.detail = detail;
   }
@@ -836,6 +837,13 @@ function shouldCollapseToolLifecycleEntries(
   if (previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey) {
     return true;
   }
+  if (
+    previous.activityKind === "tool.updated" &&
+    next.activityKind === "tool.completed" &&
+    hasMatchingCommandWorkLogKey(previous, next)
+  ) {
+    return true;
+  }
   return (
     previous.toolCallId !== undefined &&
     next.toolCallId === undefined &&
@@ -846,10 +854,10 @@ function shouldCollapseToolLifecycleEntries(
 }
 
 function isToolSummaryReplacementCandidate(entry: DerivedWorkLogEntry): boolean {
-  if (entry.toolSummaryStatus === "pending") {
-    return entry.activityKind === "tool.updated" || entry.activityKind === "tool.completed";
-  }
-  return entry.activityKind === "tool.completed" && entry.toolSummaryStatus === "complete";
+  return (
+    entry.activityKind === "tool.completed" &&
+    (entry.toolSummaryStatus === "pending" || entry.toolSummaryStatus === "complete")
+  );
 }
 
 function isToolSummaryReplacementPair(
@@ -866,10 +874,10 @@ function isToolSummaryReplacementPair(
   if (previous.toolCallId !== undefined && previous.toolCallId === next.toolCallId) {
     return true;
   }
-  return hasMatchingCommandSummaryReplacementKey(previous, next);
+  return hasMatchingCommandWorkLogKey(previous, next);
 }
 
-function hasMatchingCommandSummaryReplacementKey(
+function hasMatchingCommandWorkLogKey(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): boolean {

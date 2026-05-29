@@ -315,7 +315,8 @@ function buildToolActivityPayload(
   >,
   options: RuntimeEventToActivitiesOptions,
 ): Record<string, unknown> {
-  const shouldSummarize = options.summarizeToolCalls === true && Boolean(event.itemId);
+  const shouldSummarize =
+    event.type === "item.completed" && options.summarizeToolCalls === true && Boolean(event.itemId);
   const data = dataWithToolCallId(event);
   return {
     itemType: event.payload.itemType,
