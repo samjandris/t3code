@@ -1,6 +1,6 @@
-import * as Config from "effect/Config";
-import * as ConfigProvider from "effect/ConfigProvider";
-import * as Option from "effect/Option";
+import { Config } from "effect";
+import { ConfigProvider } from "effect";
+import { Option } from "effect";
 
 const trimNonEmptyOption = (value: string): Option.Option<string> => {
   const trimmed = value.trim();

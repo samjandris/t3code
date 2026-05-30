@@ -13,11 +13,11 @@ import {
   type LaunchEditorInput,
 } from "@t3tools/contracts";
 import { isCommandAvailable, type CommandAvailabilityOptions } from "@t3tools/shared/shell";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Encoding } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 // ==============================

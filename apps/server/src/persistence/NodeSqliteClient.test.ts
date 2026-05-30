@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as SqliteClient from "./NodeSqliteClient.ts";

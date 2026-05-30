@@ -1,9 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
+import { Layer } from "effect";
 import { TestClock } from "effect/testing";
 
 import { VcsProcessExitError, VcsProcessTimeoutError } from "@t3tools/contracts";

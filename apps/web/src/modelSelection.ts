@@ -14,8 +14,8 @@ import {
 } from "@t3tools/shared/model";
 import { getComposerProviderState } from "./components/chat/composerProviderState";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
-import * as Arr from "effect/Array";
-import * as Result from "effect/Result";
+import { Array as Arr } from "effect";
+import { Result } from "effect";
 import {
   getDefaultServerModel,
   getProviderModels,

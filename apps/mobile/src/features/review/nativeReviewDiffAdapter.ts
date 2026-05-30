@@ -3,8 +3,8 @@ import type {
   NativeReviewDiffFile,
   NativeReviewDiffLanguage,
 } from "../diffs/nativeReviewDiffTypes";
-import * as Arr from "effect/Array";
-import { pipe } from "effect/Function";
+import { Array as Arr } from "effect";
+import { pipe } from "effect";
 import { getPierreTerminalTheme, type TerminalAppearanceScheme } from "../terminal/terminalTheme";
 import { computeWordAltDiffRanges } from "./reviewWordDiffs";
 import {

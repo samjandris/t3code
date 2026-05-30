@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import * as Order from "effect/Order";
-import * as Arr from "effect/Array";
+import { Order } from "effect";
+import { Array as Arr } from "effect";
 
 import {
   EnvironmentConnectionState,

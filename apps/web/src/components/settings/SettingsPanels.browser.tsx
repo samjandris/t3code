@@ -17,8 +17,8 @@ import {
   type ServerProvider,
   type SourceControlDiscoveryResult,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
-import * as Option from "effect/Option";
+import { DateTime } from "effect";
+import { Option } from "effect";
 import { page } from "vitest/browser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";

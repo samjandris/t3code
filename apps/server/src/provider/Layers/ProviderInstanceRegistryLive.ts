@@ -40,16 +40,16 @@ import {
   type ProviderDriverKind,
   type ServerProvider,
 } from "@t3tools/contracts";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Equal from "effect/Equal";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as PubSub from "effect/PubSub";
-import * as Ref from "effect/Ref";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Equal } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { PubSub } from "effect";
+import { Ref } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 
 import { buildUnavailableProviderSnapshot } from "../unavailableProviderSnapshot.ts";
 import {

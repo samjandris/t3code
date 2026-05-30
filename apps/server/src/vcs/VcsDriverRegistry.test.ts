@@ -1,7 +1,7 @@
 import { assert, it, describe } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
+import { Effect } from "effect";
+import { Layer } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import * as VcsProcess from "./VcsProcess.ts";

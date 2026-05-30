@@ -4,12 +4,12 @@ import * as Net from "node:net";
 import * as readline from "node:readline";
 import type { Readable } from "node:stream";
 
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Predicate from "effect/Predicate";
-import * as Result from "effect/Result";
-import * as Schema from "effect/Schema";
+import { Data } from "effect";
+import { Effect } from "effect";
+import { Option } from "effect";
+import { Predicate } from "effect";
+import { Result } from "effect";
+import { Schema } from "effect";
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 
 class BootstrapError extends Data.TaggedError("BootstrapError")<{

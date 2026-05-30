@@ -1,11 +1,11 @@
 import { EnvironmentId, type OrchestrationShellSnapshot } from "@t3tools/contracts";
-import * as Arr from "effect/Array";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import { pipe } from "effect/Function";
-import * as Order from "effect/Order";
-import * as Option from "effect/Option";
-import * as Result from "effect/Result";
+import { Array as Arr } from "effect";
+import { Cause } from "effect";
+import { Effect } from "effect";
+import { pipe } from "effect";
+import { Order } from "effect";
+import { Option } from "effect";
+import { Result } from "effect";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 export type ArchivedSnapshotEntry = {

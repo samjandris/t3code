@@ -4,7 +4,7 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 import {
   defaultInstanceIdForDriver,
   EnvironmentId,

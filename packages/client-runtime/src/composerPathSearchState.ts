@@ -1,8 +1,8 @@
 import type { EnvironmentId, ProjectSearchEntriesResult } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
+import { Clock } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 export interface ComposerPathSearchEntry {

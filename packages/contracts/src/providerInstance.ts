@@ -33,8 +33,8 @@
  *
  * @module providerInstance
  */
-import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
+import { Effect } from "effect";
+import { Schema } from "effect";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 const PROVIDER_SLUG_MAX_CHARS = 64;

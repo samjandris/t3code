@@ -1,12 +1,12 @@
 import { assert, it, describe } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
-import type * as PlatformError from "effect/PlatformError";
-import type * as Scope from "effect/Scope";
-import * as DateTime from "effect/DateTime";
-import * as Option from "effect/Option";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Path } from "effect";
+import type { PlatformError } from "effect";
+import type { Scope } from "effect";
+import { DateTime } from "effect";
+import { Option } from "effect";
 
 import type { VcsDriverKind } from "@t3tools/contracts";
 import * as VcsDriver from "../VcsDriver.ts";

@@ -1,15 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Arr from "effect/Array";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Logger from "effect/Logger";
-import * as Order from "effect/Order";
-import * as Path from "effect/Path";
-import * as References from "effect/References";
-import * as Schema from "effect/Schema";
-import * as Tracer from "effect/Tracer";
+import { Array as Arr } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Logger } from "effect";
+import { Order } from "effect";
+import { Path } from "effect";
+import { References } from "effect";
+import { Schema } from "effect";
+import { Tracer } from "effect";
 
 import {
   compactTraceAttributes,

@@ -1,13 +1,13 @@
 import type { AuthPairingLink } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as PubSub from "effect/PubSub";
-import * as Ref from "effect/Ref";
-import * as Stream from "effect/Stream";
-import * as Option from "effect/Option";
+import { Crypto } from "effect";
+import { DateTime } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { PubSub } from "effect";
+import { Ref } from "effect";
+import { Stream } from "effect";
+import { Option } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { AuthPairingLinkRepositoryLive } from "../../persistence/Layers/AuthPairingLinks.ts";

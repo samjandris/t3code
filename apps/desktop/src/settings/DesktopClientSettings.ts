@@ -1,16 +1,16 @@
 import { ClientSettingsSchema, type ClientSettings } from "@t3tools/contracts";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
-import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as PlatformError from "effect/PlatformError";
-import * as Schema from "effect/Schema";
-import * as Ref from "effect/Ref";
+import { Context } from "effect";
+import { Crypto } from "effect";
+import { Data } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { PlatformError } from "effect";
+import { Schema } from "effect";
+import { Ref } from "effect";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 

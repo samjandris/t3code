@@ -6,13 +6,13 @@ import { fileURLToPath } from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import * as Context from "effect/Context";
-import * as Deferred from "effect/Deferred";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Context } from "effect";
+import { Deferred } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
+import { Layer } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 import { createModelSelection } from "@t3tools/shared/model";
 
 import {

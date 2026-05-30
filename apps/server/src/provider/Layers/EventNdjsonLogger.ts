@@ -11,12 +11,12 @@ import path from "node:path";
 
 import type { ThreadId } from "@t3tools/contracts";
 import { RotatingFileSink } from "@t3tools/shared/logging";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Logger from "effect/Logger";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as SynchronizedRef from "effect/SynchronizedRef";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Logger } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { SynchronizedRef } from "effect";
 
 import { toSafeThreadAttachmentSegment } from "../../attachmentStore.ts";
 

@@ -5,21 +5,21 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { OrchestrationCommand } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
-import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as Metric from "effect/Metric";
-import * as Option from "effect/Option";
-import * as PubSub from "effect/PubSub";
-import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Cause } from "effect";
+import { Clock } from "effect";
+import { Crypto } from "effect";
+import { DateTime } from "effect";
+import { Deferred } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { Metric } from "effect";
+import { Option } from "effect";
+import { PubSub } from "effect";
+import { Queue } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {

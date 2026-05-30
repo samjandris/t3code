@@ -7,9 +7,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ProviderDriverKind, ThreadId } from "@t3tools/contracts";
 import { it, assert } from "@effect/vitest";
 import { assertSome } from "@effect/vitest/utils";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {

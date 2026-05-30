@@ -1,6 +1,6 @@
-import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
-import * as SchemaTransformation from "effect/SchemaTransformation";
+import { Effect } from "effect";
+import { Schema } from "effect";
+import { SchemaTransformation } from "effect";
 
 export const TrimmedString = Schema.String.pipe(
   Schema.decodeTo(

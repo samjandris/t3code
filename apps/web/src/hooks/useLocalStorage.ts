@@ -1,5 +1,5 @@
-import * as Schema from "effect/Schema";
-import * as Record from "effect/Record";
+import { Schema } from "effect";
+import { Record } from "effect";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const isomorphicLocalStorage: Storage =

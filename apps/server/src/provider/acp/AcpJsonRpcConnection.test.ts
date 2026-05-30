@@ -6,8 +6,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Stream } from "effect";
 import { describe, expect } from "vitest";
 
 import { AcpSessionRuntime, type AcpSessionRequestLogEvent } from "./AcpSessionRuntime.ts";

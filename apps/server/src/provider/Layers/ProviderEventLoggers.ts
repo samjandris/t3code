@@ -27,9 +27,9 @@
  *
  * @module provider/Layers/ProviderEventLoggers
  */
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";

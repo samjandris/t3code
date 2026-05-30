@@ -1,9 +1,9 @@
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
-import * as SchemaIssue from "effect/SchemaIssue";
-import * as SchemaTransformation from "effect/SchemaTransformation";
-import * as Struct from "effect/Struct";
+import { Effect } from "effect";
+import { Option } from "effect";
+import { Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { SchemaTransformation } from "effect";
+import { Struct } from "effect";
 import { ProviderOptionSelections } from "./model.ts";
 import { RepositoryIdentity } from "./environment.ts";
 import {

@@ -12,9 +12,9 @@ import type {
   ServerProvider,
   ServerProviderUpdateState,
 } from "@t3tools/contracts";
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
-import type * as Stream from "effect/Stream";
+import { Context } from "effect";
+import type { Effect } from "effect";
+import type { Stream } from "effect";
 import type { ProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
 
 export type ProviderMaintenanceActionKind = "update";

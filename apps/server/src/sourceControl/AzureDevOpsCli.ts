@@ -1,9 +1,9 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Result from "effect/Result";
-import * as Schema from "effect/Schema";
-import * as SchemaIssue from "effect/SchemaIssue";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Result } from "effect";
+import { Schema } from "effect";
+import { SchemaIssue } from "effect";
 import {
   TrimmedNonEmptyString,
   type SourceControlRepositoryVisibility,

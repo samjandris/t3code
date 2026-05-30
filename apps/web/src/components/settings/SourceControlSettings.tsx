@@ -1,6 +1,6 @@
 import { ChevronDownIcon, GitPullRequestIcon, RefreshCwIcon } from "lucide-react";
-import * as Duration from "effect/Duration";
-import * as Option from "effect/Option";
+import { Duration } from "effect";
+import { Option } from "effect";
 import { useState, type ReactNode } from "react";
 import type {
   SourceControlProviderKind,

@@ -4,11 +4,11 @@ import * as path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import * as FileSystem from "effect/FileSystem";
-import * as Schema from "effect/Schema";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
+import { FileSystem } from "effect";
+import { Schema } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { vi } from "vitest";
 

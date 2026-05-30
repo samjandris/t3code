@@ -1,9 +1,9 @@
-import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
+import { Cause } from "effect";
+import { Crypto } from "effect";
+import { Data } from "effect";
+import { Effect } from "effect";
+import { Option } from "effect";
+import { Ref } from "effect";
 
 import * as NetService from "@t3tools/shared/Net";
 import * as ElectronApp from "../electron/ElectronApp.ts";

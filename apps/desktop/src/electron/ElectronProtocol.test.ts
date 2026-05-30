@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
 import type * as Electron from "electron";
 import { beforeEach, vi } from "vitest";
 

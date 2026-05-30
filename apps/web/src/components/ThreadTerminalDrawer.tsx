@@ -4,7 +4,6 @@ import {
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type TerminalAttachStreamEvent,
-  type TerminalEvent,
   type TerminalSessionSnapshot,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -99,13 +98,6 @@ function terminalCanScroll(terminal: Terminal, lineDelta: number): boolean {
   if (lineDelta < 0) return terminal.buffer.active.viewportY > 0;
   if (lineDelta > 0) return terminal.buffer.active.viewportY < terminal.buffer.active.baseY;
   return false;
-}
-
-export function selectTerminalEventEntriesAfterSnapshot(
-  entries: ReadonlyArray<{ id: number; event: TerminalEvent }>,
-  snapshotUpdatedAt: string,
-): ReadonlyArray<{ id: number; event: TerminalEvent }> {
-  return entries.filter((entry) => entry.event.createdAt > snapshotUpdatedAt);
 }
 
 function runtimeEnvSignature(runtimeEnv: Record<string, string> | undefined): string {

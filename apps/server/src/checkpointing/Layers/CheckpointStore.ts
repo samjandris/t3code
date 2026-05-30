@@ -6,8 +6,8 @@
  *
  * @module CheckpointStoreLive
  */
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
+import { Effect } from "effect";
+import { Layer } from "effect";
 
 import { CheckpointStore, type CheckpointStoreShape } from "../Services/CheckpointStore.ts";
 import { VcsUnsupportedOperationError } from "@t3tools/contracts";

@@ -12,8 +12,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import * as Console from "effect/Console";
-import * as Effect from "effect/Effect";
+import { Console } from "effect";
+import { Effect } from "effect";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

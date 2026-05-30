@@ -6,8 +6,8 @@ import type {
   VcsStatusResult,
   VcsStatusStreamEvent,
 } from "@t3tools/contracts";
-import * as Arr from "effect/Array";
-import * as Result from "effect/Result";
+import { Array as Arr } from "effect";
+import { Result } from "effect";
 import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 
 export const WORKTREE_BRANCH_PREFIX = "t3code";

@@ -1,12 +1,12 @@
-import * as Data from "effect/Data";
-import * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Data } from "effect";
+import { Context } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { PlatformError } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
   collectUint8StreamText,

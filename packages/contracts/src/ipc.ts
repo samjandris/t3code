@@ -53,7 +53,7 @@ import type {
   TerminalWriteInput,
 } from "./terminal.ts";
 import type { ServerRemoveKeybindingInput, ServerUpsertKeybindingInput } from "./server.ts";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 import type {
   ClientOrchestrationCommand,
   OrchestrationGetFullThreadDiffInput,

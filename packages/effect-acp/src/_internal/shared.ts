@@ -1,6 +1,6 @@
-import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
-import * as SchemaIssue from "effect/SchemaIssue";
+import { Effect } from "effect";
+import { Schema } from "effect";
+import { SchemaIssue } from "effect";
 import { RpcClientError } from "effect/unstable/rpc";
 
 import * as AcpSchema from "../_generated/schema.gen.ts";

@@ -19,7 +19,7 @@ import {
   UnifiedSettings,
 } from "@t3tools/contracts/settings";
 import { ensureLocalApi } from "~/localApi";
-import * as Struct from "effect/Struct";
+import { Struct } from "effect";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import { applySettingsUpdated, getServerConfig, useServerSettings } from "~/rpc/serverState";
 

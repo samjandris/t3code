@@ -2,13 +2,13 @@
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Config from "effect/Config";
-import * as Console from "effect/Console";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
+import { Config } from "effect";
+import { Console } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { Schema } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 

@@ -4,7 +4,7 @@ import {
   type KeybindingCommand,
   type ProjectScript,
 } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
 
 function normalizeScriptId(value: string): string {

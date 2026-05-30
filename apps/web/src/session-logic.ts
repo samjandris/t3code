@@ -1,5 +1,5 @@
-import * as Option from "effect/Option";
-import * as Arr from "effect/Array";
+import { Option } from "effect";
+import { Array as Arr } from "effect";
 import {
   ApprovalRequestId,
   isToolLifecycleItemType,

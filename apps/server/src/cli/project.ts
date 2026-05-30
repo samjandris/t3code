@@ -4,19 +4,19 @@ import {
   ProjectId,
   type ClientOrchestrationCommand,
 } from "@t3tools/contracts";
-import * as Console from "effect/Console";
-import * as Crypto from "effect/Crypto";
-import * as Data from "effect/Data";
-import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as References from "effect/References";
-import * as Schema from "effect/Schema";
+import { Console } from "effect";
+import { Crypto } from "effect";
+import { Data } from "effect";
+import { DateTime } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { References } from "effect";
+import { Schema } from "effect";
 import { Argument, Command, Flag, GlobalFlag } from "effect/unstable/cli";
 import {
   FetchHttpClient,

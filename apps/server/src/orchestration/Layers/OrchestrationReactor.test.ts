@@ -1,8 +1,8 @@
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Scope from "effect/Scope";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { ManagedRuntime } from "effect";
+import { Scope } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CheckpointReactor } from "../Services/CheckpointReactor.ts";

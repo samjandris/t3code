@@ -1,11 +1,11 @@
 import * as Crypto from "node:crypto";
 
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
-import * as Predicate from "effect/Predicate";
-import * as PlatformError from "effect/PlatformError";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Path } from "effect";
+import { Predicate } from "effect";
+import { PlatformError } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import {

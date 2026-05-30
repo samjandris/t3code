@@ -6,9 +6,9 @@ import {
   AuthRevokePairingLinkInput,
   type AuthWebSocketTokenResult,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Schema } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
 import { AuthError, ServerAuth } from "./Services/ServerAuth.ts";

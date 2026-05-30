@@ -10,8 +10,8 @@
  *
  * @module CheckpointStore
  */
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import { Context } from "effect";
+import type { Effect } from "effect";
 
 import type { CheckpointStoreError } from "../Errors.ts";
 import { CheckpointRef } from "@t3tools/contracts";

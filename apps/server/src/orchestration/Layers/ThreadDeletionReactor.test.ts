@@ -1,7 +1,7 @@
 import { ThreadId } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import { Cause } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { logCleanupCauseUnlessInterrupted } from "./ThreadDeletionReactor.ts";

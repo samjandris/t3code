@@ -15,8 +15,8 @@ import {
   type ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
+import { DateTime } from "effect";
+import { Effect } from "effect";
 
 import { buildServerProvider } from "./providerSnapshot.ts";
 

@@ -1,9 +1,9 @@
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Queue from "effect/Queue";
-import * as Sink from "effect/Sink";
-import * as Stdio from "effect/Stdio";
-import * as Stream from "effect/Stream";
+import { Cause } from "effect";
+import { Effect } from "effect";
+import { Queue } from "effect";
+import { Sink } from "effect";
+import { Stdio } from "effect";
+import { Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import * as CodexError from "../errors.ts";

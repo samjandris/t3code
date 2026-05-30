@@ -1,7 +1,7 @@
 import { ClientSettingsSchema } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
+import { Effect } from "effect";
+import { Option } from "effect";
+import { Schema } from "effect";
 
 import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
 import * as IpcChannels from "../channels.ts";

@@ -14,7 +14,7 @@ import type {
   VcsSwitchRefInput,
   VcsSwitchRefResult,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
+import { DateTime } from "effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import { buildGitActionProgressStages } from "./gitActions.ts";

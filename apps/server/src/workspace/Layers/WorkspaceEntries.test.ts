@@ -2,12 +2,12 @@
 import fsPromises from "node:fs/promises";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, afterEach, describe, expect, vi } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
-import * as PlatformError from "effect/PlatformError";
+import { Effect } from "effect";
+import { Fiber } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Path } from "effect";
+import { PlatformError } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";

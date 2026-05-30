@@ -14,10 +14,10 @@ import {
   TurnId,
   IsoDateTime,
 } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
-import * as Context from "effect/Context";
-import type * as Option from "effect/Option";
-import type * as Effect from "effect/Effect";
+import { Schema } from "effect";
+import { Context } from "effect";
+import type { Option } from "effect";
+import type { Effect } from "effect";
 
 import type { ProjectionRepositoryError } from "../Errors.ts";
 

@@ -6,10 +6,10 @@ import {
   type OrchestrationGetTurnDiffResult,
   type ThreadId,
 } from "@t3tools/contracts";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
+import { Option } from "effect";
+import { Schema } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 export type CheckpointDiffResult =

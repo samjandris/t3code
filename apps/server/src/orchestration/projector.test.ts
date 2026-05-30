@@ -6,7 +6,7 @@ import {
   ThreadId,
   type OrchestrationEvent,
 } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { createEmptyReadModel, projectEvent } from "./projector.ts";

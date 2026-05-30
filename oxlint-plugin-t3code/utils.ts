@@ -1,5 +1,5 @@
 import type { ESTree } from "@oxlint/plugins";
-import * as Option from "effect/Option";
+import { Option } from "effect";
 
 type ExpressionWrapper =
   | ESTree.ChainExpression

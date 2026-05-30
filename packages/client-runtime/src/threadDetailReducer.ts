@@ -1,6 +1,6 @@
-import { pipe } from "effect/Function";
-import * as Arr from "effect/Array";
-import * as O from "effect/Order";
+import { pipe } from "effect";
+import { Array as Arr } from "effect";
+import { Order as O } from "effect";
 import type {
   MessageId,
   OrchestrationCheckpointSummary,

@@ -1,11 +1,11 @@
 import Mime from "@effect/platform-node/Mime";
 import { decodeOtlpTraceRecords } from "@t3tools/shared/observability";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import { cast } from "effect/Function";
+import { Data } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { cast } from "effect";
 import {
   HttpBody,
   HttpClient,
