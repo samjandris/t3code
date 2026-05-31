@@ -15,11 +15,13 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
+  sanitizeToolCallSummary,
 } from "./TextGenerationUtils.ts";
 import {
   applyCursorAcpModelSelection,
@@ -33,7 +35,8 @@ function mapCursorAcpError(
     | "generateCommitMessage"
     | "generatePrContent"
     | "generateBranchName"
-    | "generateThreadTitle",
+    | "generateThreadTitle"
+    | "generateToolCallSummary",
   detail: string,
   cause: unknown,
 ): TextGenerationError {
@@ -74,7 +77,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateToolCallSummary";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -269,10 +273,35 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
     } satisfies ThreadTitleGenerationResult;
   });
 
+  const generateToolCallSummary: TextGenerationShape["generateToolCallSummary"] = Effect.fn(
+    "CursorTextGeneration.generateToolCallSummary",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildToolCallSummaryPrompt({
+      toolName: input.toolName,
+      toolType: input.toolType,
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.detail ? { detail: input.detail } : {}),
+      payload: input.payload,
+    });
+
+    const generated = yield* runCursorJson({
+      operation: "generateToolCallSummary",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return {
+      summary: sanitizeToolCallSummary(generated.summary),
+    };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateToolCallSummary,
   } satisfies TextGenerationShape;
 });
