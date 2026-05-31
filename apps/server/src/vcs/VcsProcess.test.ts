@@ -4,7 +4,7 @@ import { Duration } from "effect";
 import { Effect } from "effect";
 import { Fiber } from "effect";
 import { Layer } from "effect";
-import { TestClock } from "effect/testing";
+import * as TestClock from "effect/testing/TestClock";
 
 import { VcsProcessExitError, VcsProcessTimeoutError } from "@t3tools/contracts";
 import * as VcsProcess from "./VcsProcess.ts";

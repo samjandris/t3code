@@ -22,7 +22,7 @@ import { Path } from "effect";
 import { Ref } from "effect";
 import { Schedule } from "effect";
 import { Scope } from "effect";
-import { TestClock } from "effect/testing";
+import * as TestClock from "effect/testing/TestClock";
 import { expect } from "vitest";
 
 import * as ProcessRunner from "../../processRunner.ts";
