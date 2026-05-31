@@ -6,7 +6,7 @@ import { Fiber } from "effect";
 import { Layer } from "effect";
 import { Sink } from "effect";
 import { Stream } from "effect";
-import { TestClock } from "effect/testing";
+import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {

@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { FileSystem } from "effect";
 import { Layer } from "effect";
 import { Path } from "effect";
-import { TestClock } from "effect/testing";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ProcessRunner from "../../processRunner.ts";
 import { RepositoryIdentityResolver } from "../Services/RepositoryIdentityResolver.ts";
