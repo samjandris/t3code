@@ -13,7 +13,7 @@ import {
 } from "@t3tools/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import * as Option from "effect/Option";
+import { Option } from "effect";
 import {
   ArrowDownIcon,
   ArrowLeftIcon,

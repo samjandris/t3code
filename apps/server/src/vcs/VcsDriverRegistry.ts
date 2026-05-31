@@ -1,9 +1,9 @@
-import * as Cache from "effect/Cache";
-import * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
+import { Cache } from "effect";
+import { Context } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
 
 import type { VcsDriverKind, VcsError, VcsRepositoryIdentity } from "@t3tools/contracts";
 import { VcsUnsupportedOperationError } from "@t3tools/contracts";

@@ -4,8 +4,8 @@
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import * as Console from "effect/Console";
-import * as Effect from "effect/Effect";
+import { Console } from "effect";
+import { Effect } from "effect";
 import { describe, expect } from "vitest";
 import type * as EffectAcpSchema from "effect-acp/schema";
 

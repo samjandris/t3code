@@ -4,8 +4,8 @@ import type {
   VcsListRefsResult,
   VcsRef as ContractVcsRef,
 } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
-import * as Effect from "effect/Effect";
+import { Clock } from "effect";
+import { Effect } from "effect";
 import { Atom, type AtomRegistry, type AsyncResult } from "effect/unstable/reactivity";
 
 import type { WsRpcClient } from "./wsRpcClient.ts";

@@ -1,14 +1,14 @@
-import * as Path from "effect/Path";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import * as Queue from "effect/Queue";
-import * as Ref from "effect/Ref";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Path } from "effect";
+import { Cause } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { Layer } from "effect";
+import { Queue } from "effect";
+import { Ref } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";

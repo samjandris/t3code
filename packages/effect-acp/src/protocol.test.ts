@@ -1,12 +1,12 @@
-import * as Path from "effect/Path";
+import { Path } from "effect";
 import * as AcpError from "./errors.ts";
-import * as Effect from "effect/Effect";
-import * as Deferred from "effect/Deferred";
-import * as Fiber from "effect/Fiber";
-import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
-import * as Ref from "effect/Ref";
+import { Effect } from "effect";
+import { Deferred } from "effect";
+import { Fiber } from "effect";
+import { Queue } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
+import { Ref } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { it, assert } from "@effect/vitest";

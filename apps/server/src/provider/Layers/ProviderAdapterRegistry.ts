@@ -20,8 +20,8 @@ import {
   ProviderInstanceId,
   type ProviderDriverKind,
 } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
+import { Effect } from "effect";
+import { Layer } from "effect";
 
 import { ProviderUnsupportedError } from "../Errors.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";

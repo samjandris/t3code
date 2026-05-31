@@ -1,9 +1,9 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Stdio from "effect/Stdio";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Stdio } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import * as CodexRpc from "./_generated/meta.gen.ts";

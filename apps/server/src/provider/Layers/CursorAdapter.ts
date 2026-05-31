@@ -21,21 +21,21 @@ import {
   type ThreadId,
   TurnId,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
-import * as Crypto from "effect/Crypto";
-import * as Deferred from "effect/Deferred";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as PubSub from "effect/PubSub";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
-import * as Stream from "effect/Stream";
-import * as SynchronizedRef from "effect/SynchronizedRef";
+import { DateTime } from "effect";
+import { Crypto } from "effect";
+import { Deferred } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { FileSystem } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { PubSub } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Semaphore } from "effect";
+import { Stream } from "effect";
+import { SynchronizedRef } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";

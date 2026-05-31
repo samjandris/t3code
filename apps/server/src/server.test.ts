@@ -27,17 +27,17 @@ import {
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { assertFailure, assertInclude, assertTrue } from "@effect/vitest/utils";
-import * as Clock from "effect/Clock";
-import * as Deferred from "effect/Deferred";
-import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Stream from "effect/Stream";
+import { Clock } from "effect";
+import { Deferred } from "effect";
+import { DateTime } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { ManagedRuntime } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   Cookies,
@@ -119,7 +119,7 @@ import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
-import * as Data from "effect/Data";
+import { Data } from "effect";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");

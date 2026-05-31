@@ -13,10 +13,10 @@ import {
   resolveRemoteWebSocketConnectionUrl,
 } from "@t3tools/client-runtime";
 import type { EnvironmentId } from "@t3tools/contracts";
-import * as Arr from "effect/Array";
-import * as Order from "effect/Order";
-import * as Option from "effect/Option";
-import { pipe } from "effect/Function";
+import { Array as Arr } from "effect";
+import { Order } from "effect";
+import { Option } from "effect";
+import { pipe } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import { type SavedRemoteConnection, bootstrapRemoteConnection } from "../lib/connection";
 import { terminalDebugLog } from "../features/terminal/terminalDebugLog";

@@ -7,8 +7,8 @@ import {
   probeTailscaleHttpsEndpoint,
   readTailscaleStatus,
 } from "@t3tools/tailscale";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
+import { Effect } from "effect";
+import { Option } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
 

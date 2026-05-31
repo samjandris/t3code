@@ -4,11 +4,11 @@ import {
   type ServerProvider,
   ServerProvider as ServerProviderSchema,
 } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
+import { Cause } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Path } from "effect";
+import { Schema } from "effect";
 
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 

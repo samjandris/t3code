@@ -1,5 +1,5 @@
-import * as Schema from "effect/Schema";
-import * as SchemaIssue from "effect/SchemaIssue";
+import { Schema } from "effect";
+import { SchemaIssue } from "effect";
 
 // ===============================
 // Core Persistence Errors

@@ -1,11 +1,11 @@
-import * as Cause from "effect/Cause";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Cause } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { ManagedRuntime } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 
 import { isTransportConnectionErrorMessage } from "./transportError.ts";

@@ -5,7 +5,7 @@ import {
   CommandId,
   SourceControlDiscoveryResult,
 } from "@t3tools/contracts";
-import * as Option from "effect/Option";
+import { Option } from "effect";
 
 import {
   buildAddProjectRemoteSourceReadiness,

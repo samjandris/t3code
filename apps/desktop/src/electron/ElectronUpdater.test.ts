@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
+import { Cause } from "effect";
+import { Effect } from "effect";
 import { beforeEach, vi } from "vitest";
 
 const { autoUpdaterMock } = vi.hoisted(() => ({

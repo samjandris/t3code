@@ -8,9 +8,9 @@ import type {
   SourceControlRepositoryInfo,
 } from "@t3tools/contracts";
 import { DEFAULT_MODEL, ProviderInstanceId } from "@t3tools/contracts";
-import * as Arr from "effect/Array";
-import * as Option from "effect/Option";
-import * as Order from "effect/Order";
+import { Array as Arr } from "effect";
+import { Option } from "effect";
+import { Order } from "effect";
 
 import {
   ensureBrowseDirectoryPath,

@@ -1,10 +1,10 @@
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { type CodexSettings, type ModelSelection } from "@t3tools/contracts";

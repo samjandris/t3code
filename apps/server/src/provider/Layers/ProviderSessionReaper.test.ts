@@ -6,15 +6,15 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
 } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Option from "effect/Option";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Clock } from "effect";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { ManagedRuntime } from "effect";
+import { Option } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";

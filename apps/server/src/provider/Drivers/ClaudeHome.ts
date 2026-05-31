@@ -1,8 +1,8 @@
 import * as NodeOS from "node:os";
 
 import type { ClaudeSettings } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Path from "effect/Path";
+import { Effect } from "effect";
+import { Path } from "effect";
 
 import { expandHomePath } from "../../pathExpansion.ts";
 

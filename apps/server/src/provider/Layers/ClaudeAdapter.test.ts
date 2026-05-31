@@ -23,13 +23,13 @@ import {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { assert, describe, it } from "@effect/vitest";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import * as Random from "effect/Random";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
+import { Layer } from "effect";
+import { Random } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 
 import { attachmentRelativePath } from "../../attachmentStore.ts";

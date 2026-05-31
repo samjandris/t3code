@@ -9,7 +9,7 @@ import {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { expect, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import { decideOrchestrationCommand } from "./decider.ts";

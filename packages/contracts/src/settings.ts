@@ -1,7 +1,7 @@
-import * as Effect from "effect/Effect";
-import * as Duration from "effect/Duration";
-import * as Schema from "effect/Schema";
-import * as SchemaTransformation from "effect/SchemaTransformation";
+import { Effect } from "effect";
+import { Duration } from "effect";
+import { Schema } from "effect";
+import { SchemaTransformation } from "effect";
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";

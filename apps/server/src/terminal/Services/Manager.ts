@@ -26,8 +26,8 @@ import {
   TerminalWriteInput,
 } from "@t3tools/contracts";
 import type { PtyProcess } from "./PTY.ts";
-import * as Effect from "effect/Effect";
-import * as Context from "effect/Context";
+import { Effect } from "effect";
+import { Context } from "effect";
 
 export {
   TerminalCwdError,

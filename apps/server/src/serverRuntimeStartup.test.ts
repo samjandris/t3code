@@ -1,14 +1,14 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { DEFAULT_MODEL, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
-import * as Deferred from "effect/Deferred";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
-import * as Ref from "effect/Ref";
-import * as Stream from "effect/Stream";
+import { Crypto } from "effect";
+import { Deferred } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
+import { Option } from "effect";
+import { PlatformError } from "effect";
+import { Ref } from "effect";
+import { Stream } from "effect";
 
 import { ServerConfig } from "./config.ts";
 import {

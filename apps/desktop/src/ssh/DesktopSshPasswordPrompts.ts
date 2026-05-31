@@ -1,16 +1,16 @@
 import type { DesktopSshPasswordPromptRequest } from "@t3tools/contracts";
 import { DesktopSshPasswordPromptResolutionInputSchema } from "@t3tools/contracts";
 import type { SshPasswordRequest } from "@t3tools/ssh/auth";
-import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
-import * as Data from "effect/Data";
-import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
+import { Context } from "effect";
+import { Crypto } from "effect";
+import { Data } from "effect";
+import { DateTime } from "effect";
+import { Deferred } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Ref } from "effect";
 
 import * as IpcChannels from "../ipc/channels.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";

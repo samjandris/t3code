@@ -1,7 +1,7 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
 
 export interface DesktopIpcInvokeEvent {}
 

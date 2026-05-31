@@ -1,13 +1,13 @@
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
-import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
-import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
-import * as Ref from "effect/Ref";
+import { Context } from "effect";
+import { Crypto } from "effect";
+import { Effect } from "effect";
+import { Encoding } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { PlatformError } from "effect";
+import { Ref } from "effect";
 
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";

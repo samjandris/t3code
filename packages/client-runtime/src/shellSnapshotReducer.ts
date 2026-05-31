@@ -1,4 +1,4 @@
-import * as Arr from "effect/Array";
+import { Array as Arr } from "effect";
 import type { OrchestrationShellSnapshot, OrchestrationShellStreamEvent } from "@t3tools/contracts";
 
 /**

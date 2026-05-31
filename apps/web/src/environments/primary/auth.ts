@@ -16,8 +16,8 @@ import {
 } from "../../pairingUrl";
 
 import { resolvePrimaryEnvironmentHttpUrl } from "./target";
-import * as Data from "effect/Data";
-import * as Predicate from "effect/Predicate";
+import { Data } from "effect";
+import { Predicate } from "effect";
 
 export class BootstrapHttpError extends Data.TaggedError("BootstrapHttpError")<{
   readonly message: string;

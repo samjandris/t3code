@@ -5,11 +5,11 @@ import {
 } from "@t3tools/contracts";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import { resolveCommandPath } from "@t3tools/shared/shell";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Option } from "effect";
+import { Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 const LATEST_VERSION_CACHE_TTL_MS = 60 * 60 * 1_000;

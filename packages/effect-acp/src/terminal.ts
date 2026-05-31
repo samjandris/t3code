@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 
 import type * as AcpSchema from "./_generated/schema.gen.ts";
 import type * as AcpError from "./errors.ts";

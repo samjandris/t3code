@@ -1,17 +1,17 @@
-import * as Arr from "effect/Array";
-import * as Cache from "effect/Cache";
-import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Order from "effect/Order";
-import * as Path from "effect/Path";
-import * as Ref from "effect/Ref";
+import { Array as Arr } from "effect";
+import { Cache } from "effect";
+import { Context } from "effect";
+import { Crypto } from "effect";
+import { DateTime } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Order } from "effect";
+import { Path } from "effect";
+import { Ref } from "effect";
 import {
   GitActionProgressEvent,
   GitActionProgressPhase,

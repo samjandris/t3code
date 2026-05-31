@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
 import { vi } from "vitest";
 
 import { ProcessRunner, ProcessSpawnError, type ProcessRunnerShape } from "../../processRunner.ts";

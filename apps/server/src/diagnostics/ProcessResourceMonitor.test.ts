@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Option } from "effect";
 
 import {
   aggregateProcessResourceHistory,

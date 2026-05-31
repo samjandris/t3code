@@ -1,6 +1,6 @@
 import type { TraceRecord } from "@t3tools/shared/observability";
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import { Context } from "effect";
+import type { Effect } from "effect";
 
 export interface BrowserTraceCollectorShape {
   readonly record: (records: ReadonlyArray<TraceRecord>) => Effect.Effect<void>;

@@ -1,10 +1,10 @@
-import * as Cause from "effect/Cause";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Deferred from "effect/Deferred";
-import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
-import * as Scope from "effect/Scope";
+import { Cause } from "effect";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Deferred } from "effect";
+import { Layer } from "effect";
+import { Ref } from "effect";
+import { Scope } from "effect";
 
 import type * as Electron from "electron";
 

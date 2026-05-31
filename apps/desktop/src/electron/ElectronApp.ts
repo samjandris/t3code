@@ -1,7 +1,7 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Scope from "effect/Scope";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Scope } from "effect";
 
 import * as Electron from "electron";
 

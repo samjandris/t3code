@@ -4,10 +4,10 @@ import {
   type OpenCodeSettings,
   type ServerProviderModel,
 } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
-import * as Data from "effect/Data";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
+import { Cause } from "effect";
+import { Data } from "effect";
+import { DateTime } from "effect";
+import { Effect } from "effect";
 
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { compareSemverVersions } from "@t3tools/shared/semver";

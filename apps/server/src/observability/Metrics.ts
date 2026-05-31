@@ -1,8 +1,8 @@
-import * as Clock from "effect/Clock";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Metric from "effect/Metric";
+import { Clock } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Metric } from "effect";
 import { dual } from "effect/Function";
 
 import {

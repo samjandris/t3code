@@ -20,11 +20,11 @@
  * @module ProviderAdapterRegistry
  */
 import type { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
-import type * as PubSub from "effect/PubSub";
-import type * as Scope from "effect/Scope";
-import type * as Stream from "effect/Stream";
+import { Context } from "effect";
+import type { Effect } from "effect";
+import type { PubSub } from "effect";
+import type { Scope } from "effect";
+import type { Stream } from "effect";
 
 import type { ProviderAdapterError, ProviderUnsupportedError } from "../Errors.ts";
 import type { ProviderAdapterShape } from "./ProviderAdapter.ts";

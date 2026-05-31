@@ -1,4 +1,4 @@
-import * as Equal from "effect/Equal";
+import { Equal } from "effect";
 import { type TimelineEntry, type WorkLogEntry } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { type MessageId, type TurnId } from "@t3tools/contracts";

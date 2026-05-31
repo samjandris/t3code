@@ -1,6 +1,6 @@
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
-import type * as Scope from "effect/Scope";
+import { Context } from "effect";
+import type { Effect } from "effect";
+import type { Scope } from "effect";
 
 export interface ProviderSessionReaperShape {
   /**

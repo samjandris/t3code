@@ -1,6 +1,6 @@
-import * as Data from "effect/Data";
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import { Data } from "effect";
+import { Context } from "effect";
+import type { Effect } from "effect";
 
 export class SecretStoreError extends Data.TaggedError("SecretStoreError")<{
   readonly message: string;

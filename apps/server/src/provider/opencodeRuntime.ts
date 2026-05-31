@@ -11,21 +11,21 @@ import {
   type QuestionAnswer,
   type QuestionRequest,
 } from "@opencode-ai/sdk/v2";
-import * as Cause from "effect/Cause";
-import * as Context from "effect/Context";
-import * as Data from "effect/Data";
-import * as Deferred from "effect/Deferred";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as P from "effect/Predicate";
-import * as Ref from "effect/Ref";
-import * as Result from "effect/Result";
-import * as Scope from "effect/Scope";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Cause } from "effect";
+import { Context } from "effect";
+import { Data } from "effect";
+import { Deferred } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Predicate as P } from "effect";
+import { Ref } from "effect";
+import { Result } from "effect";
+import { Scope } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { isWindowsCommandNotFound } from "../processRunner.ts";

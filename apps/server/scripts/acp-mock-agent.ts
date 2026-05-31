@@ -2,7 +2,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { appendFileSync } from "node:fs";
 
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";

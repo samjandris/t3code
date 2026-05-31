@@ -10,13 +10,13 @@ import {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Metric from "effect/Metric";
-import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { ManagedRuntime } from "effect";
+import { Metric } from "effect";
+import { Option } from "effect";
+import { Queue } from "effect";
+import { Stream } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { PersistenceSqlError } from "../../persistence/Errors.ts";

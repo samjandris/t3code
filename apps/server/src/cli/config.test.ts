@@ -1,13 +1,13 @@
 import NodeOS from "node:os";
 
 import { assert, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
+import { ConfigProvider } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { Schema } from "effect";
 
 import {
   DesktopBackendBootstrap,

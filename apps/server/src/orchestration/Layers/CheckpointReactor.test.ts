@@ -20,14 +20,14 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Clock from "effect/Clock";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as PubSub from "effect/PubSub";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Clock } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { ManagedRuntime } from "effect";
+import { PubSub } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CheckpointStoreLive } from "../../checkpointing/Layers/CheckpointStore.ts";

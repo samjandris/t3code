@@ -1,7 +1,7 @@
 import { CheckpointRef, ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {

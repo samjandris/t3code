@@ -6,9 +6,9 @@
  *
  * @module AnalyticsService
  */
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Context from "effect/Context";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Context } from "effect";
 
 export interface AnalyticsServiceShape {
   /**

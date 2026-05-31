@@ -8,9 +8,9 @@ import type {
   ServerProviderModel,
   ServerProviderState,
 } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Data from "effect/Data";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Data } from "effect";
+import { Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 import { isWindowsCommandNotFound } from "../processRunner.ts";

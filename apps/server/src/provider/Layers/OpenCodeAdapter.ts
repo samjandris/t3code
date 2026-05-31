@@ -13,15 +13,15 @@ import {
   TurnId,
   type UserInputQuestion,
 } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Queue from "effect/Queue";
-import * as Ref from "effect/Ref";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Cause } from "effect";
+import { Crypto } from "effect";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Queue } from "effect";
+import { Ref } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import type { OpencodeClient, Part, PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
@@ -49,7 +49,7 @@ import {
   toOpenCodeQuestionAnswers,
   type OpenCodeServerConnection,
 } from "../opencodeRuntime.ts";
-import * as Option from "effect/Option";
+import { Option } from "effect";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
 

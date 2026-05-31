@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { DEFAULT_SERVER_SETTINGS, ServerSettings, ServerSettingsPatch } from "./settings.ts";

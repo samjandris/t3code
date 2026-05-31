@@ -1,9 +1,9 @@
 import { ORCHESTRATION_WS_METHODS, WS_METHODS, WsRpcGroup } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as PubSub from "effect/PubSub";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { PubSub } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import { RpcMessage, RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 type RpcServerInstance = RpcServer.RpcServer<any>;

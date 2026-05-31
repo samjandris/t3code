@@ -8,11 +8,11 @@ import {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { assert, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as Duration from "effect/Duration";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
+import { Effect } from "effect";
+import { Duration } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Schema } from "effect";
 import { ServerConfig } from "./config.ts";
 import { ServerSettingsLive, ServerSettingsService } from "./serverSettings.ts";
 

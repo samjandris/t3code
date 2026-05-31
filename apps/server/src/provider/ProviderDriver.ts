@@ -26,9 +26,9 @@ import type {
   ProviderInstanceEnvironment,
   ProviderInstanceId,
 } from "@t3tools/contracts";
-import type * as Effect from "effect/Effect";
-import type * as Schema from "effect/Schema";
-import type * as Scope from "effect/Scope";
+import type { Effect } from "effect";
+import type { Schema } from "effect";
+import type { Scope } from "effect";
 
 import type { TextGenerationShape } from "../textGeneration/TextGeneration.ts";
 import type { ProviderAdapterError, ProviderDriverError } from "./Errors.ts";

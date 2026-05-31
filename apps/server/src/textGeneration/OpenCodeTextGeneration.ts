@@ -1,9 +1,9 @@
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Semaphore } from "effect";
 
 import {
   TextGenerationError,

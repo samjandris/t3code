@@ -14,10 +14,10 @@ import {
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { createModelSelection } from "@t3tools/shared/model";
-import * as Arr from "effect/Array";
-import * as Duration from "effect/Duration";
-import * as Equal from "effect/Equal";
-import * as Result from "effect/Result";
+import { Array as Arr } from "effect";
+import { Duration } from "effect";
+import { Equal } from "effect";
+import { Result } from "effect";
 import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
 import {
   canCheckForUpdate,

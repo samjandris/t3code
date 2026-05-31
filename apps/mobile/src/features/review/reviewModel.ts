@@ -1,9 +1,9 @@
 import type { ChangeTypes, FileDiffMetadata } from "@pierre/diffs/types";
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import type { OrchestrationCheckpointSummary, ReviewDiffPreviewSource } from "@t3tools/contracts";
-import * as Arr from "effect/Array";
-import { pipe } from "effect/Function";
-import * as Order from "effect/Order";
+import { Array as Arr } from "effect";
+import { pipe } from "effect";
+import { Order } from "effect";
 
 export type ReviewSectionKind = "turn" | "working-tree" | "branch-range";
 

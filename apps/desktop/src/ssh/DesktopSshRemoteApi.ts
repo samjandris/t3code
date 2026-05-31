@@ -10,11 +10,11 @@ import {
 } from "@t3tools/contracts";
 import { SshHttpBridgeError } from "@t3tools/ssh/errors";
 import { fetchLoopbackSshJson } from "@t3tools/ssh/tunnel";
-import * as Context from "effect/Context";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
+import { Context } from "effect";
+import { Data } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 export type DesktopSshRemoteApiOperation =
