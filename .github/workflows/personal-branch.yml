@@ -1,0 +1,62 @@
+name: Personal Branch
+
+on:
+  push:
+    branches:
+      - main
+      - feature/ci-releases
+      - feature/opencode-updates
+      - feature/ui-tweaks
+      - feature/tool-summarization
+      - fix/perf-improvements
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: personal-branch
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: Rebuild personal branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Rebuild personal from allowlisted branches
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git checkout -B personal origin/main
+
+          while IFS= read -r branch || [[ -n "$branch" ]]; do
+            branch="${branch%%#*}"
+            branch="$(echo "$branch" | xargs)"
+
+            if [[ -z "$branch" ]]; then
+              continue
+            fi
+
+            if ! git rev-parse --verify --quiet "origin/$branch" >/dev/null; then
+              echo "Allowlisted branch does not exist on origin: $branch" >&2
+              exit 1
+            fi
+
+            git merge --no-edit "origin/$branch"
+          done < .github/personal-branches.txt
+
+          git push --force-with-lease origin personal

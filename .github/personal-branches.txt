@@ -1,0 +1,7 @@
+# Branches merged into the generated `personal` integration branch.
+# Order matters: branches are merged from top to bottom onto origin/main.
+feature/ci-releases
+feature/opencode-updates
+feature/ui-tweaks
+feature/tool-summarization
+fix/perf-improvements
