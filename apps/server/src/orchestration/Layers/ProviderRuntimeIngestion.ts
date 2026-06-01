@@ -799,7 +799,7 @@ const make = Effect.gen(function* () {
     const data = dataWithToolCallId(event);
     yield* orchestrationEngine.dispatch({
       type: "thread.activity.append",
-      commandId: providerCommandId(event, "tool-call-summary"),
+      commandId: yield* providerCommandId(event, "tool-call-summary"),
       threadId: thread.id,
       activity: {
         id: EventId.make(`${event.eventId}:summary`),
