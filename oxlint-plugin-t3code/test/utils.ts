@@ -1,13 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
-import * as PlatformError from "effect/PlatformError";
-import * as Predicate from "effect/Predicate";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Data } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Path } from "effect";
+import { PlatformError } from "effect";
+import { Predicate } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 class OxlintFixtureFailure extends Data.TaggedError("OxlintFixtureFailure")<{

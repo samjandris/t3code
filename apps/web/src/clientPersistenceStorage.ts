@@ -5,7 +5,7 @@ import {
   type EnvironmentId as EnvironmentIdValue,
   type PersistedSavedEnvironmentRecord,
 } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 
 import { getLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
 

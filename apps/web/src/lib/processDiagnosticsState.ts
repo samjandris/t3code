@@ -3,9 +3,9 @@ import type {
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryResult,
 } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
+import { Cause } from "effect";
+import { Effect } from "effect";
+import { Option } from "effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback } from "react";
 

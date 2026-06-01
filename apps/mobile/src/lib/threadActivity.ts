@@ -12,8 +12,8 @@ import type {
 } from "@t3tools/contracts";
 
 import type { DraftComposerImageAttachment } from "./composerImages";
-import * as Arr from "effect/Array";
-import * as Order from "effect/Order";
+import { Array as Arr } from "effect";
+import { Order } from "effect";
 
 export interface PendingApproval {
   readonly requestId: ApprovalRequestId;

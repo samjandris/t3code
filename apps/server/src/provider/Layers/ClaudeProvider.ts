@@ -6,11 +6,11 @@ import {
   type ServerProviderModel,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Result from "effect/Result";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { Result } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
   createModelCapabilities,

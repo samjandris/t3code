@@ -9,7 +9,7 @@ import {
   type OrchestrationReadModel,
   ProviderInstanceId,
 } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 
 import {
   findThreadById,

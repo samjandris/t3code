@@ -1,12 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import * as Cause from "effect/Cause";
-import * as Deferred from "effect/Deferred";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
-import * as PlatformError from "effect/PlatformError";
+import { Cause } from "effect";
+import { Deferred } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Ref } from "effect";
+import { PlatformError } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { SecretStoreError, ServerSecretStore } from "../Services/ServerSecretStore.ts";

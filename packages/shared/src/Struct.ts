@@ -1,4 +1,4 @@
-import * as P from "effect/Predicate";
+import { Predicate as P } from "effect";
 
 export type DeepPartial<T> = T extends readonly (infer U)[]
   ? readonly DeepPartial<U>[]

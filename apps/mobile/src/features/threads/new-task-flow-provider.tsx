@@ -7,8 +7,8 @@ import type {
   RuntimeMode,
 } from "@t3tools/contracts";
 import { DEFAULT_PROVIDER_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "@t3tools/contracts";
-import * as Arr from "effect/Array";
-import { pipe } from "effect/Function";
+import { Array as Arr } from "effect";
+import { pipe } from "effect";
 
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";

@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 export default Effect.gen(function* () {

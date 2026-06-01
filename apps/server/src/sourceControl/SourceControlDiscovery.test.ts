@@ -1,8 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { VcsProcessSpawnError } from "@t3tools/contracts";
 

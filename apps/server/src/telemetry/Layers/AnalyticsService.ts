@@ -7,11 +7,11 @@
  * @module AnalyticsServiceLive
  */
 
-import * as Config from "effect/Config";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
+import { Config } from "effect";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Ref } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
 import { ServerConfig } from "../../config.ts";

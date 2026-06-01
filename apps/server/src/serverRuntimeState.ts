@@ -1,8 +1,8 @@
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Option } from "effect";
+import { Schema } from "effect";
 
 import { writeFileStringAtomically } from "./atomicWrite.ts";
 import { type ServerConfigShape } from "./config.ts";

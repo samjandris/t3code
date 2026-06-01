@@ -24,15 +24,15 @@ import {
   ThreadId,
   ProviderSendTurnInput,
 } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
-import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Crypto } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { FileSystem } from "effect";
+import { Queue } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";

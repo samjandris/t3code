@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NativeSyntheticEvent } from "react-native";
 import { useRouter } from "expo-router";
-import * as Arr from "effect/Array";
-import { pipe } from "effect/Function";
-import * as Result from "effect/Result";
+import { Array as Arr } from "effect";
+import { pipe } from "effect";
+import { Result } from "effect";
 
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 

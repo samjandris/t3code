@@ -1,9 +1,9 @@
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import type * as Exit from "effect/Exit";
-import * as ExitRuntime from "effect/Exit";
-import * as Option from "effect/Option";
-import * as Tracer from "effect/Tracer";
+import { Cause } from "effect";
+import { Effect } from "effect";
+import type { Exit } from "effect";
+import { Exit as ExitRuntime } from "effect";
+import { Option } from "effect";
+import { Tracer } from "effect";
 import { OtlpResource, OtlpTracer } from "effect/unstable/observability";
 
 import { RotatingFileSink } from "./logging.ts";

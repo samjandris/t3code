@@ -25,8 +25,8 @@ import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Arr from "effect/Array";
-import * as Order from "effect/Order";
+import { Array as Arr } from "effect";
+import { Order } from "effect";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { ErrorBanner } from "../../components/ErrorBanner";

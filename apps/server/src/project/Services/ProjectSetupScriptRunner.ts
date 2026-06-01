@@ -1,6 +1,6 @@
-import * as Context from "effect/Context";
-import * as Data from "effect/Data";
-import type * as Effect from "effect/Effect";
+import { Context } from "effect";
+import { Data } from "effect";
+import type { Effect } from "effect";
 
 export interface ProjectSetupScriptRunnerResultNoScript {
   readonly status: "no-script";

@@ -18,10 +18,10 @@ import {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
-import * as Clock from "effect/Clock";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
+import { Clock } from "effect";
+import { Effect } from "effect";
+import { Option } from "effect";
+import { Schema } from "effect";
 
 import type { TestTurnResponse } from "./TestProviderAdapter.integration.ts";
 import {

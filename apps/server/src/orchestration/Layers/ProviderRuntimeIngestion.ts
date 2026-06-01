@@ -17,14 +17,14 @@ import {
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
-import * as Cache from "effect/Cache";
-import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Stream from "effect/Stream";
+import { Cache } from "effect";
+import { Cause } from "effect";
+import { Crypto } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Stream } from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";

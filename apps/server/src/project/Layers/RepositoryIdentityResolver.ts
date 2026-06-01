@@ -1,9 +1,9 @@
 import type { RepositoryIdentity } from "@t3tools/contracts";
-import * as Cache from "effect/Cache";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
+import { Cache } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
 import {
   detectSourceControlProviderFromGitRemoteUrl,
   normalizeGitRemoteUrl,

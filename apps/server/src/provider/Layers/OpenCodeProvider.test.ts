@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Schema } from "effect";
 import { beforeEach } from "vitest";
 
 import { OpenCodeSettings } from "@t3tools/contracts";

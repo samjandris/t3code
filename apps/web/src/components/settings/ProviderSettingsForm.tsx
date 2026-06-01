@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
+import { Option } from "effect";
+import { Schema } from "effect";
 import type {
   ProviderSettingsFormAnnotation,
   ProviderSettingsFormControl,

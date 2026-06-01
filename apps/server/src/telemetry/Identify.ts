@@ -1,9 +1,9 @@
-import * as Crypto from "effect/Crypto";
-import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
-import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
+import { Crypto } from "effect";
+import { Effect } from "effect";
+import { Encoding } from "effect";
+import { FileSystem } from "effect";
+import { Path } from "effect";
+import { Schema } from "effect";
 import { homedir } from "node:os";
 import { ServerConfig } from "../config.ts";
 

@@ -7,8 +7,8 @@ import {
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { assert, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
 
 import {
   hydrateCachedProvider,

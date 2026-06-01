@@ -10,10 +10,10 @@ import {
   TurnId,
   ProviderDriverKind,
 } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
-import * as Queue from "effect/Queue";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Crypto } from "effect";
+import { Queue } from "effect";
+import { Stream } from "effect";
 
 import {
   ProviderAdapterSessionNotFoundError,

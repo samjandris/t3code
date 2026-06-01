@@ -13,14 +13,14 @@
  * @module provider/Drivers/ClaudeDriver
  */
 import { ClaudeSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
-import * as Cache from "effect/Cache";
-import * as Duration from "effect/Duration";
-import * as Crypto from "effect/Crypto";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Cache } from "effect";
+import { Duration } from "effect";
+import { Crypto } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Path } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
 

@@ -4,12 +4,12 @@ import type {
   DesktopRuntimeArch,
   DesktopRuntimeInfo,
 } from "@t3tools/contracts";
-import * as Config from "effect/Config";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
+import { Config } from "effect";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
 
 import {
   type DesktopSettings,

@@ -1,12 +1,12 @@
 import { assert, describe, it } from "@effect/vitest";
 import { WS_METHODS } from "@t3tools/contracts";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as Metric from "effect/Metric";
-import * as Stream from "effect/Stream";
-import * as Tracer from "effect/Tracer";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { Metric } from "effect";
+import { Stream } from "effect";
+import { Tracer } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 
 import {

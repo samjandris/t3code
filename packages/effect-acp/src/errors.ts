@@ -1,4 +1,4 @@
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 
 import * as AcpSchema from "./_generated/schema.gen.ts";
 

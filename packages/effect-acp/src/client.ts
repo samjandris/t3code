@@ -1,10 +1,10 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Stdio from "effect/Stdio";
-import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Stdio } from "effect";
+import { Layer } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import * as RpcClient from "effect/unstable/rpc/RpcClient";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 import { ChildProcessSpawner } from "effect/unstable/process";

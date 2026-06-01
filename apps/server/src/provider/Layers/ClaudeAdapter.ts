@@ -51,19 +51,19 @@ import {
   getProviderOptionDescriptors,
   resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
-import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as FileSystem from "effect/FileSystem";
-import * as Fiber from "effect/Fiber";
-import * as Path from "effect/Path";
-import * as Queue from "effect/Queue";
-import * as Ref from "effect/Ref";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Cause } from "effect";
+import { Crypto } from "effect";
+import { DateTime } from "effect";
+import { Deferred } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { FileSystem } from "effect";
+import { Fiber } from "effect";
+import { Path } from "effect";
+import { Queue } from "effect";
+import { Ref } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";

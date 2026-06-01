@@ -1,8 +1,8 @@
 import { it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as PubSub from "effect/PubSub";
-import * as Result from "effect/Result";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { PubSub } from "effect";
+import { Result } from "effect";
+import { Stream } from "effect";
 import { describe, expect } from "vitest";
 
 import { ProviderInstanceId } from "@t3tools/contracts";

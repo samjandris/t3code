@@ -1,7 +1,7 @@
 import { resolveDefaultBranchActionDialogCopy } from "@t3tools/client-runtime";
 import { resolveAutoFeatureBranchName } from "@t3tools/shared/git";
-import * as Arr from "effect/Array";
-import * as Result from "effect/Result";
+import { Array as Arr } from "effect";
+import { Result } from "effect";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo } from "react";
 import { View } from "react-native";

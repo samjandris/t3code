@@ -23,8 +23,8 @@ import {
   scopedThreadKey,
   scopeThreadRef,
 } from "@t3tools/client-runtime";
-import * as Schema from "effect/Schema";
-import * as Equal from "effect/Equal";
+import { Schema } from "effect";
+import { Equal } from "effect";
 import { DeepMutable } from "effect/Types";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { useMemo } from "react";

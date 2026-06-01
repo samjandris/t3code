@@ -1,10 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Sink from "effect/Sink";
-import * as Stream from "effect/Stream";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Sink } from "effect";
+import { Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import * as ProcessDiagnostics from "./ProcessDiagnostics.ts";

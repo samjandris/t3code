@@ -1,8 +1,8 @@
-import * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import { Context } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";

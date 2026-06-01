@@ -6,8 +6,8 @@ import type {
 import { SymbolView } from "expo-symbols";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
-import * as Arr from "effect/Array";
-import * as Order from "effect/Order";
+import { Array as Arr } from "effect";
+import { Order } from "effect";
 import { useThemeColor } from "../../lib/useThemeColor";
 
 import { AppText as Text } from "../../components/AppText";

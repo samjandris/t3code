@@ -1,6 +1,6 @@
 import type { EnvironmentId, GitManagerServiceError, VcsStatusResult } from "@t3tools/contracts";
-import type * as Cause from "effect/Cause";
-import * as DateTime from "effect/DateTime";
+import type { Cause } from "effect";
+import { DateTime } from "effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import type { WsRpcClient } from "./wsRpcClient.ts";
 

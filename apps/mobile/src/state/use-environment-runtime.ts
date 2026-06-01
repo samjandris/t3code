@@ -11,8 +11,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { appAtomRegistry } from "./atom-registry";
-import * as Arr from "effect/Array";
-import * as Order from "effect/Order";
+import { Array as Arr } from "effect";
+import { Order } from "effect";
 
 export const environmentRuntimeManager = createEnvironmentRuntimeManager({
   getRegistry: () => appAtomRegistry,

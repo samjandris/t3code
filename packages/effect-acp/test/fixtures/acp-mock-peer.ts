@@ -1,5 +1,5 @@
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
+import { Effect } from "effect";
+import { Layer } from "effect";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";

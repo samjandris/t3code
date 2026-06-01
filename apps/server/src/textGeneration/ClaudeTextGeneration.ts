@@ -7,10 +7,10 @@
  *
  * @module ClaudeTextGeneration
  */
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Option } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { type ClaudeSettings, type ModelSelection } from "@t3tools/contracts";

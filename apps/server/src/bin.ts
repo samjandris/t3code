@@ -1,7 +1,7 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
+import { Effect } from "effect";
+import { Layer } from "effect";
 import { Command } from "effect/unstable/cli";
 
 import * as NetService from "@t3tools/shared/Net";

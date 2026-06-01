@@ -2,13 +2,13 @@
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Config from "effect/Config";
-import * as Data from "effect/Data";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Logger from "effect/Logger";
-import * as Schema from "effect/Schema";
+import { Config } from "effect";
+import { Data } from "effect";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Logger } from "effect";
+import { Schema } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 import {
   FetchHttpClient,

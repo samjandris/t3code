@@ -1,5 +1,5 @@
 import { TextGenerationError } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 
 const isTextGenerationError = Schema.is(TextGenerationError);
 

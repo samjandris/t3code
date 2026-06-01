@@ -1,6 +1,6 @@
-import * as Effect from "effect/Effect";
-import * as Ref from "effect/Ref";
-import * as Semaphore from "effect/Semaphore";
+import { Effect } from "effect";
+import { Ref } from "effect";
+import { Semaphore } from "effect";
 
 export interface ProviderMaintenanceCommandCoordinatorShape<E> {
   readonly withCommandLock: <A, R>(input: {

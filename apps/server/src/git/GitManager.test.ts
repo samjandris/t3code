@@ -5,11 +5,11 @@ import { spawnSync } from "node:child_process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as PlatformError from "effect/PlatformError";
-import * as Scope from "effect/Scope";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { PlatformError } from "effect";
+import { Scope } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { expect } from "vitest";
 import type {

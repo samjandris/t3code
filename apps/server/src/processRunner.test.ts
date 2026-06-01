@@ -1,11 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as Deferred from "effect/Deferred";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import * as Sink from "effect/Sink";
-import * as Stream from "effect/Stream";
+import { Deferred } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
+import { Layer } from "effect";
+import { Sink } from "effect";
+import { Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { ChildProcessSpawner } from "effect/unstable/process";
 

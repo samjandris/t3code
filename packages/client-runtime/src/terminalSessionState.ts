@@ -6,10 +6,10 @@ import type {
   EnvironmentId,
 } from "@t3tools/contracts";
 import { ThreadId, type TerminalAttachInput } from "@t3tools/contracts";
-import * as Arr from "effect/Array";
-import { pipe } from "effect/Function";
-import * as Order from "effect/Order";
-import * as Result from "effect/Result";
+import { Array as Arr } from "effect";
+import { pipe } from "effect";
+import { Order } from "effect";
+import { Result } from "effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 export interface TerminalSessionState {

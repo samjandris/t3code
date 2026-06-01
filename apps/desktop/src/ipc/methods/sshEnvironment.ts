@@ -13,8 +13,8 @@ import {
   AuthSessionState,
   AuthWebSocketTokenResult,
 } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
+import { Effect } from "effect";
+import { Schema } from "effect";
 
 import * as IpcChannels from "../channels.ts";
 import { makeIpcMethod } from "../DesktopIpc.ts";

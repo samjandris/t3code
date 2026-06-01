@@ -3,13 +3,13 @@ import * as OS from "node:os";
 import fsPromises from "node:fs/promises";
 import type { Dirent } from "node:fs";
 
-import * as Cache from "effect/Cache";
-import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
+import { Cache } from "effect";
+import { DateTime } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { Path } from "effect";
 
 import { type FilesystemBrowseInput, type ProjectEntry } from "@t3tools/contracts";
 import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/path";

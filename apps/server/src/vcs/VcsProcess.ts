@@ -1,6 +1,6 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
@@ -11,7 +11,7 @@ import {
   VcsProcessTimeoutError,
 } from "@t3tools/contracts";
 import { ProcessRunner, layer as ProcessRunnerLive } from "../processRunner.ts";
-import * as Match from "effect/Match";
+import { Match } from "effect";
 
 export interface VcsProcessInput {
   readonly operation: string;

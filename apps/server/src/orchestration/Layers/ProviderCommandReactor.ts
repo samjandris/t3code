@@ -13,16 +13,16 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
-import * as Cache from "effect/Cache";
-import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Equal from "effect/Equal";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import { Cache } from "effect";
+import { Cause } from "effect";
+import { Crypto } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Equal } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";

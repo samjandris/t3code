@@ -10,8 +10,8 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import * as Arr from "effect/Array";
-import * as Result from "effect/Result";
+import { Array as Arr } from "effect";
+import { Result } from "effect";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   isProviderDriverKind,

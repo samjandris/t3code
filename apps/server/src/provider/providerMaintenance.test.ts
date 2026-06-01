@@ -5,8 +5,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import os from "node:os";
 import path from "node:path";
 import { ProviderDriverKind } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
-import * as Effect from "effect/Effect";
+import { Crypto } from "effect";
+import { Effect } from "effect";
 import {
   clearLatestProviderVersionCacheForTests,
   createProviderVersionAdvisory,

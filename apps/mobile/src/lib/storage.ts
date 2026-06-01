@@ -1,7 +1,7 @@
-import * as Arr from "effect/Array";
-import { pipe } from "effect/Function";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
+import { Array as Arr } from "effect";
+import { pipe } from "effect";
+import { Option } from "effect";
+import { Schema } from "effect";
 import * as SecureStore from "expo-secure-store";
 import { EnvironmentId, OrchestrationShellSnapshot } from "@t3tools/contracts";
 

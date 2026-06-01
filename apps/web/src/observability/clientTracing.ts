@@ -1,8 +1,8 @@
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Scope from "effect/Scope";
-import * as Tracer from "effect/Tracer";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { ManagedRuntime } from "effect";
+import { Scope } from "effect";
+import { Tracer } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import { OtlpSerialization, OtlpTracer } from "effect/unstable/observability";
 

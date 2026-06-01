@@ -7,20 +7,20 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
-import * as Data from "effect/Data";
-import * as Deferred from "effect/Deferred";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Queue from "effect/Queue";
-import * as Ref from "effect/Ref";
-import * as Scope from "effect/Scope";
-import * as Context from "effect/Context";
-import * as Console from "effect/Console";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
+import { Data } from "effect";
+import { Deferred } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { Queue } from "effect";
+import { Ref } from "effect";
+import { Scope } from "effect";
+import { Context } from "effect";
+import { Console } from "effect";
+import { Crypto } from "effect";
+import { DateTime } from "effect";
 
 import { ServerConfig } from "./config.ts";
 import { Keybindings } from "./keybindings.ts";

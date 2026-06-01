@@ -1,10 +1,10 @@
 import * as NodeNet from "node:net";
 
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Context from "effect/Context";
-import * as Predicate from "effect/Predicate";
+import { Data } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Context } from "effect";
+import { Predicate } from "effect";
 
 export class NetError extends Data.TaggedError("NetError")<{
   readonly message: string;

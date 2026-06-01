@@ -1,16 +1,16 @@
-import * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as PubSub from "effect/PubSub";
-import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
-import * as SynchronizedRef from "effect/SynchronizedRef";
+import { Context } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { PubSub } from "effect";
+import { Ref } from "effect";
+import { Schedule } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
+import { SynchronizedRef } from "effect";
 import type {
   GitManagerServiceError,
   VcsStatusInput,

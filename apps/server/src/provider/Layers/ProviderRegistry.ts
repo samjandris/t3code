@@ -29,16 +29,16 @@ import {
   type ServerProvider,
   type ServerProviderUpdateState,
 } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Equal from "effect/Equal";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
-import * as PubSub from "effect/PubSub";
-import * as Ref from "effect/Ref";
-import * as Stream from "effect/Stream";
-import * as Semaphore from "effect/Semaphore";
+import { Cause } from "effect";
+import { Effect } from "effect";
+import { Equal } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Path } from "effect";
+import { PubSub } from "effect";
+import { Ref } from "effect";
+import { Stream } from "effect";
+import { Semaphore } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";

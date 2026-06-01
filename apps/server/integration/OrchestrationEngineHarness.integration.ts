@@ -9,18 +9,18 @@ import {
   type OrchestrationEvent,
   type OrchestrationThread,
 } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { ManagedRuntime } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { Ref } from "effect";
+import { Schedule } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 
 import { CheckpointStoreLive } from "../src/checkpointing/Layers/CheckpointStore.ts";
 import { CheckpointStore } from "../src/checkpointing/Services/CheckpointStore.ts";

@@ -1,9 +1,9 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
-import * as PlatformError from "effect/PlatformError";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Path } from "effect";
+import { PlatformError } from "effect";
 
 import { SshPasswordPromptError } from "./errors.ts";
 

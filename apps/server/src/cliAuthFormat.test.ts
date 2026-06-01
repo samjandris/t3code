@@ -1,5 +1,5 @@
 import { expect, it } from "@effect/vitest";
-import * as DateTime from "effect/DateTime";
+import { DateTime } from "effect";
 
 import {
   formatIssuedPairingCredential,

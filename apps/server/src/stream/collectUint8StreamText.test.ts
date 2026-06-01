@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Stream } from "effect";
 
 import { collectUint8StreamText } from "./collectUint8StreamText.ts";
 

@@ -11,20 +11,20 @@ import {
 } from "@t3tools/contracts";
 import { makeKeyedCoalescingWorker } from "@t3tools/shared/KeyedCoalescingWorker";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
-import * as Equal from "effect/Equal";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
-import * as SynchronizedRef from "effect/SynchronizedRef";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { Encoding } from "effect";
+import { Equal } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Path } from "effect";
+import { Schema } from "effect";
+import { Scope } from "effect";
+import { Semaphore } from "effect";
+import { SynchronizedRef } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import {

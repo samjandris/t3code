@@ -1,5 +1,5 @@
-import * as Order from "effect/Order";
-import * as Arr from "effect/Array";
+import { Order } from "effect";
+import { Array as Arr } from "effect";
 import type { RepositoryIdentity } from "@t3tools/contracts";
 
 import { scopedProjectKey } from "./scopedEntities";

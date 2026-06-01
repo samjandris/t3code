@@ -11,7 +11,7 @@ import type {
   VcsStatusResult,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import * as Option from "effect/Option";
+import { Option } from "effect";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {

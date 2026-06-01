@@ -1,9 +1,9 @@
 import { AuthSessionId } from "@t3tools/contracts";
-import * as Console from "effect/Console";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as References from "effect/References";
+import { Console } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { References } from "effect";
 import { Argument, Command, Flag, GlobalFlag } from "effect/unstable/cli";
 
 import { AuthControlPlaneRuntimeLive } from "../auth/Layers/AuthControlPlane.ts";

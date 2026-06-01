@@ -4,10 +4,10 @@ import {
   type OrchestrationEvent,
   type OrchestrationReadModel,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
-import * as Crypto from "effect/Crypto";
-import * as Effect from "effect/Effect";
-import type * as PlatformError from "effect/PlatformError";
+import { DateTime } from "effect";
+import { Crypto } from "effect";
+import { Effect } from "effect";
+import type { PlatformError } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
 import {

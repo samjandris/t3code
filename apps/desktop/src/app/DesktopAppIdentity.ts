@@ -1,10 +1,10 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
-import * as Schema from "effect/Schema";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Ref } from "effect";
+import { Schema } from "effect";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";

@@ -6,17 +6,17 @@
  */
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
-import * as Cache from "effect/Cache";
-import * as Config from "effect/Config";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import { identity } from "effect/Function";
-import * as Layer from "effect/Layer";
-import * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
-import * as Context from "effect/Context";
-import * as Stream from "effect/Stream";
+import { Cache } from "effect";
+import { Config } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
+import { identity } from "effect";
+import { Layer } from "effect";
+import { Scope } from "effect";
+import { Semaphore } from "effect";
+import { Context } from "effect";
+import { Stream } from "effect";
 import * as Reactivity from "effect/unstable/reactivity/Reactivity";
 import * as Client from "effect/unstable/sql/SqlClient";
 import type { Connection } from "effect/unstable/sql/SqlConnection";

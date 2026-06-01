@@ -1,7 +1,7 @@
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Ref } from "effect";
 
 export interface DesktopStateShape {
   readonly backendReady: Ref.Ref<boolean>;

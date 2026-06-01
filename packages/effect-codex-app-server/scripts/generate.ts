@@ -3,12 +3,12 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { make as makeJsonSchemaGenerator } from "@effect/openapi-generator/JsonSchemaGenerator";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Logger from "effect/Logger";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Logger } from "effect";
+import { Path } from "effect";
+import { Schema } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
@@ -634,7 +634,7 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
 
   const schemaOutput = [
     ...prelude,
-    'import * as Schema from "effect/Schema";',
+    'import { Schema } from "effect";',
     "",
     [...generatedEntries.values()].join("\n\n"),
     "",

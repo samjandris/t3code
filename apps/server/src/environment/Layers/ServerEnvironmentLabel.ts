@@ -1,8 +1,8 @@
 import * as OS from "node:os";
 
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Option } from "effect";
 
 import { ProcessRunner } from "../../processRunner.ts";
 

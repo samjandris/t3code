@@ -1,5 +1,5 @@
 import type { EnvironmentId, VcsRef, ProjectId } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 export {
   dedupeRemoteBranchesWithLocalMatches,
   deriveLocalBranchNameFromRemoteRef,

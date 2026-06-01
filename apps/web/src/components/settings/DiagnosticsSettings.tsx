@@ -13,8 +13,8 @@ import type {
   ServerProcessResourceHistorySummary,
   ServerProcessSignal,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
-import * as Option from "effect/Option";
+import { DateTime } from "effect";
+import { Option } from "effect";
 
 import { ensureLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";

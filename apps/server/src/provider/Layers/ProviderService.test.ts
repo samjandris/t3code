@@ -22,16 +22,16 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import { it, assert, vi } from "@effect/vitest";
 
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import * as Metric from "effect/Metric";
-import * as Option from "effect/Option";
-import * as PubSub from "effect/PubSub";
-import * as Ref from "effect/Ref";
-import * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import { Effect } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { Layer } from "effect";
+import { Metric } from "effect";
+import { Option } from "effect";
+import { PubSub } from "effect";
+import { Ref } from "effect";
+import { Scope } from "effect";
+import { Stream } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 

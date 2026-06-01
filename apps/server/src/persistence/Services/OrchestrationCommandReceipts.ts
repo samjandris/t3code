@@ -15,10 +15,10 @@ import {
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import { Option } from "effect";
+import { Schema } from "effect";
+import { Context } from "effect";
+import type { Effect } from "effect";
 
 import type { OrchestrationCommandReceiptRepositoryError } from "../Errors.ts";
 

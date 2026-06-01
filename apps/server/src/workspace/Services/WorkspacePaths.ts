@@ -6,9 +6,9 @@
  *
  * @module WorkspacePaths
  */
-import * as Schema from "effect/Schema";
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import { Schema } from "effect";
+import { Context } from "effect";
+import type { Effect } from "effect";
 
 export class WorkspaceRootNotExistsError extends Schema.TaggedErrorClass<WorkspaceRootNotExistsError>()(
   "WorkspaceRootNotExistsError",

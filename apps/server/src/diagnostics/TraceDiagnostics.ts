@@ -7,13 +7,13 @@ import type {
   ServerTraceDiagnosticsSpanOccurrence,
   ServerTraceDiagnosticsSpanSummary,
 } from "@t3tools/contracts";
-import * as Context from "effect/Context";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
+import { Context } from "effect";
+import { DateTime } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { PlatformError } from "effect";
 
 interface TraceRecordLike {
   readonly name?: unknown;

@@ -1,8 +1,8 @@
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
-import * as Arr from "effect/Array";
-import * as Order from "effect/Order";
+import { Array as Arr } from "effect";
+import { Order } from "effect";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {

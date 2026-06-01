@@ -2,13 +2,13 @@
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Array from "effect/Array";
-import * as Config from "effect/Config";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
-import * as String from "effect/String";
+import { Array } from "effect";
+import { Config } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Schema } from "effect";
+import { Stream } from "effect";
+import { String } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 

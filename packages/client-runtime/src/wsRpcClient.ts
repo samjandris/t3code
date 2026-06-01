@@ -10,8 +10,8 @@ import {
   WS_METHODS,
 } from "@t3tools/contracts";
 import { applyGitStatusStreamEvent } from "@t3tools/shared/git";
-import type * as Effect from "effect/Effect";
-import type * as Stream from "effect/Stream";
+import type { Effect } from "effect";
+import type { Stream } from "effect";
 
 import { type WsRpcProtocolClient } from "./wsRpcProtocol.ts";
 import { WsTransport } from "./wsTransport.ts";

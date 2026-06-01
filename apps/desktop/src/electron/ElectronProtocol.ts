@@ -1,12 +1,12 @@
-import * as Cause from "effect/Cause";
-import * as Context from "effect/Context";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
-import * as Scope from "effect/Scope";
+import { Cause } from "effect";
+import { Context } from "effect";
+import { Data } from "effect";
+import { Effect } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Ref } from "effect";
+import { Scope } from "effect";
 
 import * as Electron from "electron";
 

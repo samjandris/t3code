@@ -8,20 +8,20 @@ import {
   type TerminalOpenInput,
   type TerminalRestartInput,
 } from "@t3tools/contracts";
-import * as Data from "effect/Data";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
-import * as Path from "effect/Path";
-import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
-import * as Scope from "effect/Scope";
+import { Data } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Encoding } from "effect";
+import { Exit } from "effect";
+import { Fiber } from "effect";
+import { FileSystem } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { PlatformError } from "effect";
+import { Path } from "effect";
+import { Ref } from "effect";
+import { Schedule } from "effect";
+import { Scope } from "effect";
 import { TestClock } from "effect/testing";
 import { expect } from "vitest";
 

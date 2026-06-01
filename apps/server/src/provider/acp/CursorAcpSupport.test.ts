@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import { describe, expect, it } from "vitest";
 

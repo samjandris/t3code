@@ -1,8 +1,8 @@
-import * as Cause from "effect/Cause";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import { Cause } from "effect";
+import { Context } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
 
 import type * as Electron from "electron";
 

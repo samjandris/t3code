@@ -1,4 +1,4 @@
-import * as Schema from "effect/Schema";
+import { Schema } from "effect";
 import { TrimmedString } from "./baseSchemas.ts";
 
 export const MAX_KEYBINDING_VALUE_LENGTH = 64;

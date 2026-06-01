@@ -1,10 +1,10 @@
-import { pipe } from "effect/Function";
-import * as Order from "effect/Order";
-import * as Arr from "effect/Array";
-import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
+import { pipe } from "effect";
+import { Order } from "effect";
+import { Array as Arr } from "effect";
+import { DateTime } from "effect";
+import { Duration } from "effect";
+import { Effect } from "effect";
+import { Fiber } from "effect";
 import type {
   OrchestrationThread,
   OrchestrationThreadStreamItem,

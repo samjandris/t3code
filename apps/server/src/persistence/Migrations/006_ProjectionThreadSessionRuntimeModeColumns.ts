@@ -1,5 +1,5 @@
 import * as SqlClient from "effect/unstable/sql/SqlClient";
-import * as Effect from "effect/Effect";
+import { Effect } from "effect";
 
 const DEFAULT_RUNTIME_MODE = "full-access";
 

@@ -24,13 +24,13 @@ import {
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
-import * as Arr from "effect/Array";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Result from "effect/Result";
-import * as Schema from "effect/Schema";
-import * as Struct from "effect/Struct";
+import { Array as Arr } from "effect";
+import { Effect } from "effect";
+import { Layer } from "effect";
+import { Option } from "effect";
+import { Result } from "effect";
+import { Schema } from "effect";
+import { Struct } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 

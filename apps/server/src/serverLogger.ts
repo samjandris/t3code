@@ -1,7 +1,7 @@
-import * as Effect from "effect/Effect";
-import * as Logger from "effect/Logger";
-import * as References from "effect/References";
-import * as Layer from "effect/Layer";
+import { Effect } from "effect";
+import { Logger } from "effect";
+import { References } from "effect";
+import { Layer } from "effect";
 
 import { ServerConfig } from "./config.ts";
 
