@@ -18,6 +18,7 @@ import { Crypto } from "effect";
 import { Effect } from "effect";
 import { FileSystem } from "effect";
 import { Path } from "effect";
+import { Ref } from "effect";
 import { Schema } from "effect";
 import { Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -101,6 +102,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
       const httpClient = yield* HttpClient.HttpClient;
       const eventLoggers = yield* ProviderEventLoggers;
       const processEnv = mergeProviderInstanceEnvironment(environment);
+      const retainedCapabilitySnapshotRef = yield* Ref.make<ServerProvider | undefined>(undefined);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -144,14 +146,21 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         // an authenticated, enabled provider with at least one non-custom
         // model whose capabilities haven't been captured yet.
         enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
-          enrichCursorSnapshot({
-            settings,
-            environment: processEnv,
-            snapshot: currentSnapshot,
-            maintenanceCapabilities,
-            publishSnapshot,
-            stampIdentity,
-            httpClient,
+          Effect.gen(function* () {
+            const retainedSnapshot = yield* Ref.get(retainedCapabilitySnapshotRef);
+            yield* enrichCursorSnapshot({
+              settings,
+              environment: processEnv,
+              snapshot: currentSnapshot,
+              retainedSnapshot,
+              maintenanceCapabilities,
+              publishSnapshot: (nextSnapshot) =>
+                Ref.set(retainedCapabilitySnapshotRef, nextSnapshot).pipe(
+                  Effect.andThen(publishSnapshot(nextSnapshot)),
+                ),
+              stampIdentity,
+              httpClient,
+            });
           }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)),
         refreshInterval: SNAPSHOT_REFRESH_INTERVAL,
       }).pipe(
