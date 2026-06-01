@@ -23,12 +23,14 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   normalizeCliError,
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
+  sanitizeToolCallSummary,
   toJsonSchemaObject,
 } from "./TextGenerationUtils.ts";
 import {
@@ -84,7 +86,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateToolCallSummary",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -114,7 +117,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateToolCallSummary";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -355,10 +359,35 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     };
   });
 
+  const generateToolCallSummary: TextGenerationShape["generateToolCallSummary"] = Effect.fn(
+    "ClaudeTextGeneration.generateToolCallSummary",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildToolCallSummaryPrompt({
+      toolName: input.toolName,
+      toolType: input.toolType,
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.detail ? { detail: input.detail } : {}),
+      payload: input.payload,
+    });
+
+    const generated = yield* runClaudeJson({
+      operation: "generateToolCallSummary",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return {
+      summary: sanitizeToolCallSummary(generated.summary),
+    };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateToolCallSummary,
   } satisfies TextGenerationShape;
 });

@@ -22,12 +22,14 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import { type TextGenerationShape } from "./TextGeneration.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
+  sanitizeToolCallSummary,
 } from "./TextGenerationUtils.ts";
 import {
   OpenCodeRuntime,
@@ -160,7 +162,8 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateToolCallSummary";
   }) =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
@@ -270,7 +273,8 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateToolCallSummary";
     readonly cwd: string;
     readonly prompt: string;
     readonly outputSchemaJson: S;
@@ -458,10 +462,34 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
     };
   });
 
+  const generateToolCallSummary: TextGenerationShape["generateToolCallSummary"] = Effect.fn(
+    "OpenCodeTextGeneration.generateToolCallSummary",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildToolCallSummaryPrompt({
+      toolName: input.toolName,
+      toolType: input.toolType,
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.detail ? { detail: input.detail } : {}),
+      payload: input.payload,
+    });
+    const generated = yield* runOpenCodeJson({
+      operation: "generateToolCallSummary",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return {
+      summary: sanitizeToolCallSummary(generated.summary),
+    };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateToolCallSummary,
   } satisfies TextGenerationShape;
 });
