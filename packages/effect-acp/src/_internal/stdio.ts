@@ -1,5 +1,5 @@
 import * as Queue from "effect/Queue";
-import * as Stream from "effect/Stream";
+import { Stream } from "effect";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Sink from "effect/Sink";
