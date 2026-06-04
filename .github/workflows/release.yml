@@ -393,7 +393,7 @@ jobs:
             echo "Signing disabled for ${{ matrix.platform }}."
           fi
 
-          vp run dist:desktop:artifact -- "${args[@]}"
+          node scripts/build-desktop-artifact.ts "${args[@]}"
 
       - name: Collect release assets
         shell: bash
