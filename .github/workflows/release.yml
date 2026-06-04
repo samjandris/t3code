@@ -206,11 +206,13 @@ jobs:
             platform: linux
             target: AppImage
             arch: x64
-          - label: Windows x64
-            runner: windows-2025
-            platform: win
-            target: nsis
-            arch: x64
+          # Temporarily disabled while the GitHub-hosted Windows runner
+          # packaging failure is investigated.
+          # - label: Windows x64
+          #   runner: windows-2025
+          #   platform: win
+          #   target: nsis
+          #   arch: x64
           # - label: Windows arm64
           #   runner: windows-11-arm
           #   platform: win
