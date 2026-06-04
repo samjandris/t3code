@@ -17,6 +17,7 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/unstable/http";
@@ -100,6 +101,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
       const httpClient = yield* HttpClient.HttpClient;
       const eventLoggers = yield* ProviderEventLoggers;
       const processEnv = mergeProviderInstanceEnvironment(environment);
+      const retainedCapabilitySnapshotRef = yield* Ref.make<ServerProvider | undefined>(undefined);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -141,13 +143,20 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         // Model catalog and capabilities come exclusively from Cursor's
         // list_available_models extension method during provider checks.
         enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
-          enrichCursorSnapshot({
-            settings,
-            snapshot: currentSnapshot,
-            maintenanceCapabilities,
-            publishSnapshot,
-            stampIdentity,
-            httpClient,
+          Effect.gen(function* () {
+            const retainedSnapshot = yield* Ref.get(retainedCapabilitySnapshotRef);
+            yield* enrichCursorSnapshot({
+              settings,
+              snapshot: currentSnapshot,
+              retainedSnapshot,
+              maintenanceCapabilities,
+              publishSnapshot: (nextSnapshot) =>
+                Ref.set(retainedCapabilitySnapshotRef, nextSnapshot).pipe(
+                  Effect.andThen(publishSnapshot(nextSnapshot)),
+                ),
+              stampIdentity,
+              httpClient,
+            });
           }),
         refreshInterval: SNAPSHOT_REFRESH_INTERVAL,
       }).pipe(
