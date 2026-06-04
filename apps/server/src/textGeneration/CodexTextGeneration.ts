@@ -24,6 +24,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummariesPrompt,
   buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -104,7 +105,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateToolCallSummary",
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries",
     value: unknown,
   ): Effect.Effect<string, TextGenerationError> =>
     encodeJsonString(value).pipe(
@@ -124,7 +126,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateToolCallSummary",
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries",
     attachments: BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -167,7 +170,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateToolCallSummary";
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -431,11 +435,35 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     };
   });
 
+  const generateToolCallSummaries: TextGenerationShape["generateToolCallSummaries"] = Effect.fn(
+    "CodexTextGeneration.generateToolCallSummaries",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildToolCallSummariesPrompt({
+      items: input.items,
+    });
+
+    const generated = yield* runCodexJson({
+      operation: "generateToolCallSummaries",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return {
+      summaries: generated.summaries.map((item) => ({
+        id: item.id,
+        summary: sanitizeToolCallSummary(item.summary),
+      })),
+    };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateToolCallSummary,
+    generateToolCallSummaries,
   } satisfies TextGenerationShape;
 });

@@ -117,4 +117,56 @@ describe("makeTextGenerationFromRegistry", () => {
       }
     }),
   );
+
+  it.effect("delegates batched tool summaries to the provider batch method", () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("codex_personal");
+      const calls: number[] = [];
+      const instance = makeStubInstance(
+        instanceId,
+        makeStubTextGeneration({
+          generateToolCallSummaries: (input) => {
+            calls.push(input.items.length);
+            return Effect.succeed({
+              summaries: input.items.map((item) => ({
+                id: item.id,
+                summary: `summarized ${item.toolName}`,
+              })),
+            });
+          },
+        }),
+      );
+
+      const tg = makeTextGenerationFromRegistry(makeStubRegistry([instance]));
+      const generateToolCallSummaries = tg.generateToolCallSummaries;
+      expect(generateToolCallSummaries).toBeDefined();
+      if (!generateToolCallSummaries) {
+        return;
+      }
+      const result = yield* generateToolCallSummaries({
+        cwd: process.cwd(),
+        modelSelection: createModelSelection(instanceId, "gpt-5"),
+        items: [
+          {
+            id: "event-1",
+            toolName: "read",
+            toolType: "function",
+            payload: "{}",
+          },
+          {
+            id: "event-2",
+            toolName: "write",
+            toolType: "function",
+            payload: "{}",
+          },
+        ],
+      });
+
+      expect(calls).toEqual([2]);
+      expect(result.summaries).toEqual([
+        { id: "event-1", summary: "summarized read" },
+        { id: "event-2", summary: "summarized write" },
+      ]);
+    }),
+  );
 });

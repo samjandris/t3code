@@ -22,6 +22,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummariesPrompt,
   buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import { type TextGenerationShape } from "./TextGeneration.ts";
@@ -163,7 +164,8 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateToolCallSummary";
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries";
   }) =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
@@ -274,7 +276,8 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateToolCallSummary";
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries";
     readonly cwd: string;
     readonly prompt: string;
     readonly outputSchemaJson: S;
@@ -485,11 +488,34 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
     };
   });
 
+  const generateToolCallSummaries: TextGenerationShape["generateToolCallSummaries"] = Effect.fn(
+    "OpenCodeTextGeneration.generateToolCallSummaries",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildToolCallSummariesPrompt({
+      items: input.items,
+    });
+    const generated = yield* runOpenCodeJson({
+      operation: "generateToolCallSummaries",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return {
+      summaries: generated.summaries.map((item) => ({
+        id: item.id,
+        summary: sanitizeToolCallSummary(item.summary),
+      })),
+    };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateToolCallSummary,
+    generateToolCallSummaries,
   } satisfies TextGenerationShape;
 });
