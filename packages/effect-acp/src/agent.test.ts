@@ -6,7 +6,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
+import { Scope } from "effect";
 
 import { assert, it } from "@effect/vitest";
 
