@@ -216,3 +216,93 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
+
+// ---------------------------------------------------------------------------
+// Tool call summary
+// ---------------------------------------------------------------------------
+
+export interface ToolCallSummaryPromptInput {
+  toolName: string;
+  toolType: string;
+  status?: string | undefined;
+  detail?: string | undefined;
+  payload: string;
+}
+
+export interface ToolCallSummariesPromptItem extends ToolCallSummaryPromptInput {
+  id: string;
+}
+
+export interface ToolCallSummariesPromptInput {
+  items: ReadonlyArray<ToolCallSummariesPromptItem>;
+}
+
+const TOOL_CALL_SUMMARY_DETAIL_LIMIT = 8_000;
+const TOOL_CALL_SUMMARY_PAYLOAD_LIMIT = 20_000;
+
+const toolCallSummaryRules = [
+  "Rules:",
+  "- describe what the tool call did or attempted in past tense (e.g., 'Loaded config file', not 'Loading config file')",
+  "- if the tool call failed or errored, reflect that (e.g., 'Failed to write config file')",
+  "- if the tool call updated a todo list, explicitly state what changed (e.g., 'Marked fetch users task complete', 'Added 3 new tasks')",
+  "- keep it short and specific (4-10 words)",
+  "- capitalize the first word unless it is a filename or code reference (e.g., a path, variable, or identifier)",
+  "- avoid opening the summary with the same word as the tool name AT ALL COSTS (IMPORTANT) (e.g., for a 'read' tool, avoid starting with 'Read x file')",
+  "- do not include raw stdout, stderr, stack traces, JSON, or command syntax unless it is the essential action",
+  "- avoid quotes, prefixes, and trailing punctuation (IMPORTANT)",
+];
+
+function toolCallSummaryContext(input: ToolCallSummaryPromptInput): ReadonlyArray<string> {
+  return [
+    `Tool: ${input.toolName}`,
+    `Type: ${input.toolType}`,
+    ...(input.status ? [`Status: ${input.status}`] : []),
+    ...(input.detail
+      ? ["", "Visible output:", limitSection(input.detail, TOOL_CALL_SUMMARY_DETAIL_LIMIT)]
+      : []),
+    "",
+    "Raw tool payload:",
+    limitSection(input.payload, TOOL_CALL_SUMMARY_PAYLOAD_LIMIT),
+  ];
+}
+
+export function buildToolCallSummaryPrompt(input: ToolCallSummaryPromptInput) {
+  const prompt = [
+    "You write concise work-log summaries for coding-agent tool calls.",
+    "Return a JSON object with key: summary.",
+    ...toolCallSummaryRules,
+    "",
+    ...toolCallSummaryContext(input),
+  ].join("\n");
+  const outputSchema = Schema.Struct({
+    summary: Schema.String,
+  });
+
+  return { prompt, outputSchema };
+}
+
+export function buildToolCallSummariesPrompt(input: ToolCallSummariesPromptInput) {
+  const prompt = [
+    "You write concise work-log summaries for coding-agent tool calls.",
+    "Return a JSON object with key: summaries.",
+    "Each summaries item must include the original id and a summary.",
+    ...toolCallSummaryRules,
+    "",
+    ...input.items.flatMap((item, index) => [
+      `Tool call ${index + 1}:`,
+      `Id: ${item.id}`,
+      ...toolCallSummaryContext(item),
+      "",
+    ]),
+  ].join("\n");
+  const outputSchema = Schema.Struct({
+    summaries: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        summary: Schema.String,
+      }),
+    ),
+  });
+
+  return { prompt, outputSchema };
+}
