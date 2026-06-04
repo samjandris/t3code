@@ -70,6 +70,42 @@ export interface ThreadTitleGenerationResult {
   title: string;
 }
 
+export interface ToolCallSummaryGenerationInput {
+  cwd: string;
+  toolName: string;
+  toolType: string;
+  status?: string | undefined;
+  detail?: string | undefined;
+  payload: string;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+export interface ToolCallSummaryGenerationResult {
+  summary: string;
+}
+
+export interface ToolCallSummariesGenerationItem extends Omit<
+  ToolCallSummaryGenerationInput,
+  "cwd" | "modelSelection"
+> {
+  id: string;
+}
+
+export interface ToolCallSummariesGenerationInput {
+  cwd: string;
+  items: ReadonlyArray<ToolCallSummariesGenerationItem>;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+export interface ToolCallSummariesGenerationResult {
+  summaries: ReadonlyArray<{
+    id: string;
+    summary: string;
+  }>;
+}
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -77,6 +113,12 @@ export interface TextGenerationService {
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
   generateThreadTitle(input: ThreadTitleGenerationInput): Promise<ThreadTitleGenerationResult>;
+  generateToolCallSummary?(
+    input: ToolCallSummaryGenerationInput,
+  ): Promise<ToolCallSummaryGenerationResult>;
+  generateToolCallSummaries?(
+    input: ToolCallSummariesGenerationInput,
+  ): Promise<ToolCallSummariesGenerationResult>;
 }
 
 /**
@@ -110,6 +152,20 @@ export interface TextGenerationShape {
   readonly generateThreadTitle: (
     input: ThreadTitleGenerationInput,
   ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+  /**
+   * Generate a concise work-log summary for a completed provider tool call.
+   */
+  readonly generateToolCallSummary?: (
+    input: ToolCallSummaryGenerationInput,
+  ) => Effect.Effect<ToolCallSummaryGenerationResult, TextGenerationError>;
+
+  /**
+   * Generate concise work-log summaries for completed provider tool calls in one model request.
+   */
+  readonly generateToolCallSummaries?: (
+    input: ToolCallSummariesGenerationInput,
+  ) => Effect.Effect<ToolCallSummariesGenerationResult, TextGenerationError>;
 }
 
 /**
@@ -123,7 +179,9 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateToolCallSummary"
+  | "generateToolCallSummaries";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistryShape,
@@ -161,6 +219,55 @@ export const makeTextGenerationFromRegistry = (
   generateThreadTitle: (input) =>
     resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
       Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
+    ),
+  generateToolCallSummary: (input) =>
+    resolveInstance(registry, "generateToolCallSummary", input.modelSelection.instanceId).pipe(
+      Effect.flatMap((textGeneration) =>
+        textGeneration.generateToolCallSummary
+          ? textGeneration.generateToolCallSummary(input)
+          : Effect.fail(
+              new TextGenerationError({
+                operation: "generateToolCallSummary",
+                detail: `Provider instance '${input.modelSelection.instanceId}' does not support tool call summaries.`,
+              }),
+            ),
+      ),
+    ),
+  generateToolCallSummaries: (input) =>
+    resolveInstance(registry, "generateToolCallSummaries", input.modelSelection.instanceId).pipe(
+      Effect.flatMap((textGeneration) => {
+        const generateToolCallSummaries = textGeneration.generateToolCallSummaries;
+        if (generateToolCallSummaries) {
+          return generateToolCallSummaries(input);
+        }
+
+        const generateToolCallSummary = textGeneration.generateToolCallSummary;
+        if (!generateToolCallSummary) {
+          return Effect.fail(
+            new TextGenerationError({
+              operation: "generateToolCallSummaries",
+              detail: `Provider instance '${input.modelSelection.instanceId}' does not support tool call summaries.`,
+            }),
+          );
+        }
+
+        return Effect.forEach(input.items, (item) =>
+          generateToolCallSummary({
+            cwd: input.cwd,
+            toolName: item.toolName,
+            toolType: item.toolType,
+            ...(item.status ? { status: item.status } : {}),
+            ...(item.detail ? { detail: item.detail } : {}),
+            payload: item.payload,
+            modelSelection: input.modelSelection,
+          }).pipe(
+            Effect.map((generated) => ({
+              id: item.id,
+              summary: generated.summary,
+            })),
+          ),
+        ).pipe(Effect.map((summaries) => ({ summaries })));
+      }),
     ),
 });
 
