@@ -5,7 +5,6 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
-  buildToolCallSummariesPrompt,
 } from "./TextGenerationPrompts.ts";
 import { normalizeCliError, sanitizeThreadTitle } from "./TextGenerationUtils.ts";
 import { TextGenerationError } from "@t3tools/contracts";
@@ -134,37 +133,6 @@ describe("buildThreadTitlePrompt", () => {
     expect(result.prompt).toContain("thread.png");
     expect(result.prompt).toContain("image/png");
     expect(result.prompt).toContain("67890 bytes");
-  });
-});
-
-describe("buildToolCallSummariesPrompt", () => {
-  it("asks for id-preserving batched summaries and truncates per-tool context", () => {
-    const result = buildToolCallSummariesPrompt({
-      items: [
-        {
-          id: "event-1",
-          toolName: "read",
-          toolType: "function",
-          detail: "x".repeat(9_000),
-          payload: "y".repeat(21_000),
-        },
-        {
-          id: "event-2",
-          toolName: "write",
-          toolType: "function",
-          status: "failed",
-          payload: "payload",
-        },
-      ],
-    });
-
-    expect(result.prompt).toContain("Return a JSON object with key: summaries.");
-    expect(result.prompt).toContain("Id: event-1");
-    expect(result.prompt).toContain("Id: event-2");
-    expect(result.prompt).toContain("x".repeat(8_000));
-    expect(result.prompt).not.toContain("x".repeat(8_001));
-    expect(result.prompt).toContain("y".repeat(20_000));
-    expect(result.prompt).not.toContain("y".repeat(20_001));
   });
 });
 
