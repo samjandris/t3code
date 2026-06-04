@@ -23,6 +23,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummariesPrompt,
   buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import * as TextGeneration from "./TextGeneration.ts";
@@ -42,6 +43,7 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generateBranchName",
   "generateThreadTitle",
   "generateToolCallSummary",
+  "generateToolCallSummaries",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -257,7 +259,8 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateToolCallSummary";
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries";
   }) =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
@@ -637,11 +640,33 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  const generateToolCallSummaries: TextGeneration.TextGeneration["Service"]["generateToolCallSummaries"] =
+    Effect.fn("OpenCodeTextGeneration.generateToolCallSummaries")(function* (input) {
+      const { prompt, outputSchema } = buildToolCallSummariesPrompt({
+        items: input.items,
+      });
+      const generated = yield* runOpenCodeJson({
+        operation: "generateToolCallSummaries",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        summaries: generated.summaries.map((item) => ({
+          id: item.id,
+          summary: sanitizeToolCallSummary(item.summary),
+        })),
+      };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateToolCallSummary,
+    generateToolCallSummaries,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
