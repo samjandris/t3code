@@ -15,6 +15,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummariesPrompt,
   buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -36,7 +37,8 @@ function mapCursorAcpError(
     | "generatePrContent"
     | "generateBranchName"
     | "generateThreadTitle"
-    | "generateToolCallSummary",
+    | "generateToolCallSummary"
+    | "generateToolCallSummaries",
   detail: string,
   cause: unknown,
 ): TextGenerationError {
@@ -78,7 +80,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateToolCallSummary";
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -297,11 +300,35 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
     };
   });
 
+  const generateToolCallSummaries: TextGenerationShape["generateToolCallSummaries"] = Effect.fn(
+    "CursorTextGeneration.generateToolCallSummaries",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildToolCallSummariesPrompt({
+      items: input.items,
+    });
+
+    const generated = yield* runCursorJson({
+      operation: "generateToolCallSummaries",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return {
+      summaries: generated.summaries.map((item) => ({
+        id: item.id,
+        summary: sanitizeToolCallSummary(item.summary),
+      })),
+    };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateToolCallSummary,
+    generateToolCallSummaries,
   } satisfies TextGenerationShape;
 });
