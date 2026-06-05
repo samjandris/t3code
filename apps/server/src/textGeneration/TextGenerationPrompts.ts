@@ -285,7 +285,9 @@ export function buildToolCallSummariesPrompt(input: ToolCallSummariesPromptInput
   const prompt = [
     "You write concise work-log summaries for coding-agent tool calls.",
     "Return a JSON object with key: summaries.",
-    "Each summaries item must include the original id and a summary.",
+    "Return exactly one summaries item for every tool call below, no more and no fewer.",
+    "Each summaries item must copy the original id exactly, byte-for-byte, and include a summary.",
+    "Do not omit any id, even when two tool calls look similar or have the same tool name.",
     ...toolCallSummaryRules,
     "",
     ...input.items.flatMap((item, index) => [

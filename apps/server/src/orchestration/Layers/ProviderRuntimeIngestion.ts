@@ -59,7 +59,7 @@ const BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_TTL = Duration.minutes(120);
 const BUFFERED_PROPOSED_PLAN_BY_ID_CACHE_CAPACITY = 10_000;
 const BUFFERED_PROPOSED_PLAN_BY_ID_TTL = Duration.minutes(120);
 const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
-const TOOL_SUMMARY_BATCH_WINDOW = Duration.millis(75);
+const TOOL_SUMMARY_BATCH_WINDOW = Duration.millis(1_500);
 const TOOL_SUMMARY_BATCH_MAX_ITEMS = 8;
 const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.T3CODE_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
 
@@ -322,6 +322,65 @@ function dataWithToolCallId(event: ProviderRuntimeEvent): Record<string, unknown
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function asTrimmedString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function formatCommandArrayPart(value: string): string {
+  return /[\s"'`]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+}
+
+function formatRawCommandValue(value: unknown): string | undefined {
+  const direct = asTrimmedString(value);
+  if (direct) {
+    return direct;
+  }
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const parts = value.flatMap((entry) => {
+    const part = asTrimmedString(entry);
+    return part ? [formatCommandArrayPart(part)] : [];
+  });
+  return parts.length > 0 ? parts.join(" ") : undefined;
+}
+
+function rawCommandFallbackForSummary(request: PendingToolCallSummary): string {
+  const payload = asRecord(request.event.payload);
+  const data = asRecord(payload?.data);
+  const state = asRecord(data?.state);
+  const item = asRecord(data?.item);
+  const itemResult = asRecord(item?.result);
+  const itemInput = asRecord(item?.input);
+  const dataInput = asRecord(data?.input);
+  const stateInput = asRecord(state?.input);
+
+  const candidates = [
+    item?.command,
+    itemInput?.command,
+    itemResult?.command,
+    dataInput?.command,
+    dataInput?.cmd,
+    stateInput?.command,
+    stateInput?.cmd,
+    data?.command,
+    payload?.itemType === "command_execution" ? payload?.detail : undefined,
+  ];
+
+  for (const candidate of candidates) {
+    const command = formatRawCommandValue(candidate);
+    if (command) {
+      return command;
+    }
+  }
+
+  return request.item.payload;
 }
 
 function requestDataWithToolCallId(
@@ -886,7 +945,7 @@ const make = Effect.gen(function* () {
                   const byId = new Map(generated.summaries.map((item) => [item.id, item.summary]));
                   return chunk.map((request) => ({
                     request,
-                    summary: byId.get(request.item.id) ?? "Summary unavailable",
+                    summary: byId.get(request.item.id) ?? rawCommandFallbackForSummary(request),
                   }));
                 }),
                 Effect.catchCause((cause) =>
@@ -900,7 +959,7 @@ const make = Effect.gen(function* () {
                     Effect.as(
                       chunk.map((request) => ({
                         request,
-                        summary: "Summary unavailable",
+                        summary: rawCommandFallbackForSummary(request),
                       })),
                     ),
                   ),
