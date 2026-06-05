@@ -30,6 +30,7 @@ export function MobileComposerOptionsSheet(props: {
 
   const selectAction = (event: string) => {
     props.onSelectAction(event);
+    props.onClose();
   };
 
   return (
@@ -51,6 +52,10 @@ export function MobileComposerOptionsSheet(props: {
             right: 0,
             bottom: 0,
             left: 0,
+            // Keep the full-screen dismiss target behind the sheet. On native modal
+            // surfaces this backdrop can otherwise win the responder and make rows
+            // inside Properties look tappable while their actions never fire.
+            zIndex: 0,
             backgroundColor: backdropColor,
           }}
           onPress={props.onClose}
@@ -66,6 +71,7 @@ export function MobileComposerOptionsSheet(props: {
             borderWidth: 1,
             borderColor: String(borderColor),
             backgroundColor: String(panelColor),
+            zIndex: 1,
           }}
         >
           <View className="flex-row items-center justify-between pb-3">
@@ -77,7 +83,7 @@ export function MobileComposerOptionsSheet(props: {
               <SymbolView name="xmark" size={14} tintColor={String(iconColor)} type="monochrome" />
             </Pressable>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {props.actions.map((action) => (
               <View key={action.id} className="pb-5">
                 <View className="flex-row items-baseline justify-between gap-3 px-1 pb-2">
