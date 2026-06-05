@@ -67,6 +67,7 @@ export interface ThreadDetailScreenProps {
   readonly onPickDraftImages: () => Promise<void>;
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
+  readonly onRefresh: () => Promise<void>;
   readonly onStopThread: () => Promise<void>;
   readonly onSendMessage: () => void;
   readonly onUpdateThreadModelSelection: (modelSelection: ModelSelection) => Promise<void>;
@@ -313,6 +314,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 onPickDraftImages={props.onPickDraftImages}
                 onNativePasteImages={props.onNativePasteImages}
                 onRemoveDraftImage={props.onRemoveDraftImage}
+                onRefresh={props.onRefresh}
                 onStopThread={props.onStopThread}
                 onSendMessage={props.onSendMessage}
                 onUpdateModelSelection={props.onUpdateThreadModelSelection}
