@@ -100,7 +100,7 @@ jobs:
         with:
           profile: ${{ steps.eas-target.outputs.profile }}
           branch: ${{ steps.eas-target.outputs.branch }}
-          platform: all
+          platform: ios
           environment: preview
           working-directory: apps/mobile
           github-token: ${{ secrets.GITHUB_TOKEN }}
