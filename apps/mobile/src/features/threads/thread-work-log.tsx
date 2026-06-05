@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   useColorScheme,
+  useWindowDimensions,
   View,
   type ColorValue,
 } from "react-native";
@@ -21,6 +22,7 @@ import { AppText as Text } from "../../components/AppText";
 import { cn } from "../../lib/cn";
 import type { ThreadFeedActivity } from "../../lib/threadActivity";
 
+const TOOL_SUMMARY_SHIMMER_WIDTH = 52;
 const WORK_LOG_LAYOUT_ANIMATION = {
   duration: 180,
   create: {
@@ -98,6 +100,7 @@ function ThreadWorkLogRow(props: {
 }) {
   const isToolSummaryPending = props.row.toolSummaryStatus === "pending";
   const previousToolSummaryStatusRef = useRef(props.row.toolSummaryStatus);
+  const { width: windowWidth } = useWindowDimensions();
   const shimmerProgress = useSharedValue(0);
   const revealProgress = useSharedValue(0);
   const canExpand = props.row.fullDetail !== null;
@@ -139,8 +142,15 @@ function ThreadWorkLogRow(props: {
   }, [props.row.toolSummaryStatus, revealProgress]);
 
   const shimmerStyle = useAnimatedStyle(() => ({
-    opacity: isToolSummaryPending ? 0.24 : 0,
-    transform: [{ translateX: shimmerProgress.value * 180 - 90 }, { rotate: "16deg" }],
+    opacity: isToolSummaryPending ? 0.44 : 0,
+    transform: [
+      {
+        translateX:
+          shimmerProgress.value * (Math.min(windowWidth, 320) + TOOL_SUMMARY_SHIMMER_WIDTH * 2) -
+          TOOL_SUMMARY_SHIMMER_WIDTH,
+      },
+      { rotate: "16deg" },
+    ],
   }));
   const revealStyle = useAnimatedStyle(() => ({
     opacity: revealProgress.value,
@@ -188,7 +198,7 @@ function ThreadWorkLogRow(props: {
               position: "absolute",
               top: -12,
               bottom: -12,
-              width: 60,
+              width: TOOL_SUMMARY_SHIMMER_WIDTH,
               backgroundColor: "rgba(255,255,255,0.42)",
             },
           ]}
