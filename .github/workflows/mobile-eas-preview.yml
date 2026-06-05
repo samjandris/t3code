@@ -66,12 +66,16 @@ jobs:
         run: |
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             update_branch="pr-$PR_NUMBER"
+            build_profile="preview:dev"
           else
             update_branch="preview"
+            build_profile="preview"
           fi
 
           echo "branch=$update_branch" >> "$GITHUB_OUTPUT"
+          echo "profile=$build_profile" >> "$GITHUB_OUTPUT"
           echo "Using EAS update branch: $update_branch"
+          echo "Using EAS build profile: $build_profile"
 
       - name: Setup EAS
         if: steps.expo-token.outputs.present == 'true'
@@ -94,7 +98,7 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         with:
-          profile: preview:dev
+          profile: ${{ steps.eas-target.outputs.profile }}
           branch: ${{ steps.eas-target.outputs.branch }}
           platform: all
           environment: preview
