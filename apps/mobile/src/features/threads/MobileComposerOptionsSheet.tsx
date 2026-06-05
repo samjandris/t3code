@@ -30,7 +30,6 @@ export function MobileComposerOptionsSheet(props: {
 
   const selectAction = (event: string) => {
     props.onSelectAction(event);
-    props.onClose();
   };
 
   return (
