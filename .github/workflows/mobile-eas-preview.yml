@@ -15,7 +15,7 @@ jobs:
   preview:
     name: EAS Preview
     if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, '🚀 Mobile Continuous Deployment')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write
