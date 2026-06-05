@@ -33,7 +33,6 @@ import { PendingUserInputCard } from "./PendingUserInputCard";
 import {
   COMPOSER_COLLAPSED_CHROME,
   COMPOSER_EXPANDED_CHROME,
-  COMPOSER_EXPANDED_TOOLBAR_CHROME,
   ThreadComposer,
 } from "./ThreadComposer";
 import { ThreadFeed } from "./ThreadFeed";
@@ -67,6 +66,7 @@ export interface ThreadDetailScreenProps {
   readonly onPickDraftImages: () => Promise<void>;
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
+  readonly onRefresh: () => Promise<void>;
   readonly onStopThread: () => Promise<void>;
   readonly onSendMessage: () => void;
   readonly onUpdateThreadModelSelection: (modelSelection: ModelSelection) => Promise<void>;
@@ -212,9 +212,13 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const layoutVariant = props.layoutVariant ?? "compact";
   const isSplitLayout = layoutVariant === "split";
   useStreamingHaptics(props.selectedThread.id, props.selectedThreadFeed);
-  const expandedToolbarInset = composerExpanded ? COMPOSER_EXPANDED_TOOLBAR_CHROME : 0;
-  const feedBottomInset =
-    Math.max(estimatedOverlayHeight, measuredOverlayHeight) + expandedToolbarInset + 8;
+  // Prefer the measured floating overlay height because it already includes
+  // the expanded composer toolbar, pending cards, and safe-area padding. Adding
+  // another toolbar/safe-area estimate after measurement leaves a blank gap at
+  // the end of the thread after keyboard and drawer transitions. Keep the
+  // estimate only as the first-layout fallback until upstream list/keyboard
+  // measurement is stable enough to remove this workaround.
+  const feedBottomInset = Math.max(estimatedOverlayHeight, measuredOverlayHeight) + 8;
 
   const completeDrawerGesture = useCallback(() => {
     void Haptics.selectionAsync();
@@ -313,6 +317,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 onPickDraftImages={props.onPickDraftImages}
                 onNativePasteImages={props.onNativePasteImages}
                 onRemoveDraftImage={props.onRemoveDraftImage}
+                onRefresh={props.onRefresh}
                 onStopThread={props.onStopThread}
                 onSendMessage={props.onSendMessage}
                 onUpdateModelSelection={props.onUpdateThreadModelSelection}
