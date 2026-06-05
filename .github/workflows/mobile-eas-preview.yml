@@ -3,11 +3,18 @@ name: Mobile EAS Preview
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled]
+  push:
+    branches:
+      - dev
+
+concurrency:
+  group: mobile-eas-preview-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   preview:
     name: EAS Preview
-    if: contains(github.event.pull_request.labels.*.name, '🚀 Mobile Continuous Deployment')
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, '🚀 Mobile Continuous Deployment')
     runs-on: blacksmith-8vcpu-ubuntu-2404
     permissions:
       contents: read
@@ -51,6 +58,21 @@ jobs:
           echo "$vp_pnpm_bin" >> "$GITHUB_PATH"
           "$vp_pnpm_bin/pnpm" --version
 
+      - id: eas-target
+        name: Resolve EAS update branch
+        if: steps.expo-token.outputs.present == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            update_branch="pr-$PR_NUMBER"
+          else
+            update_branch="preview"
+          fi
+
+          echo "branch=$update_branch" >> "$GITHUB_OUTPUT"
+          echo "Using EAS update branch: $update_branch"
+
       - name: Setup EAS
         if: steps.expo-token.outputs.present == 'true'
         uses: expo/expo-github-action@v8
@@ -73,7 +95,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         with:
           profile: preview:dev
-          branch: pr-${{ github.event.pull_request.number }}
+          branch: ${{ steps.eas-target.outputs.branch }}
           platform: all
           environment: preview
           working-directory: apps/mobile
