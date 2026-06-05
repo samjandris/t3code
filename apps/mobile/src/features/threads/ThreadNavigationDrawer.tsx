@@ -188,7 +188,12 @@ export function ThreadNavigationDrawer(props: {
 
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentInset={{ bottom: Math.max(insets.bottom, 18) + 12 }}
+              // The drawer container already pads its bottom by the safe area.
+              // Keep only list breathing room here; adding the safe area again
+              // creates a large blank tail in the thread drawer on iPhones with
+              // a home indicator. Remove once upstream drawer/list composition
+              // stops applying bottom padding at both layers.
+              contentInset={{ bottom: 12 }}
               contentContainerStyle={{
                 gap: 20,
                 paddingHorizontal: 14,

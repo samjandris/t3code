@@ -5,7 +5,14 @@ import * as Option from "effect/Option";
 import { pipe } from "effect/Function";
 import { EnvironmentId, type ProjectScript } from "@t3tools/contracts";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
-import { Pressable, ScrollView, Text as RNText, View, useColorScheme } from "react-native";
+import {
+  Keyboard,
+  Pressable,
+  ScrollView,
+  Text as RNText,
+  View,
+  useColorScheme,
+} from "react-native";
 import { useThemeColor } from "../../lib/useThemeColor";
 import { useVcsStatus } from "../../state/use-vcs-status";
 import { dismissGitActionResult, useGitActionProgress } from "../../state/use-vcs-action-state";
@@ -126,6 +133,12 @@ export function ThreadRouteScreen() {
   const gitActionProgress = useGitActionProgress(gitActionProgressTarget);
 
   const handleOpenDrawer = useCallback(() => {
+    // Work around current drawer/keyboard interaction: if the composer owns
+    // focus, iOS keeps the keyboard raised under the transparent drawer modal,
+    // clipping the drawer and leaving the thread feed with a stale keyboard gap
+    // after close. Remove this once upstream modal presentation dismisses or
+    // isolates the keyboard automatically.
+    Keyboard.dismiss();
     setDrawerVisible(true);
   }, []);
 
@@ -378,6 +391,7 @@ export function ThreadRouteScreen() {
           onNativePasteImages={composer.onNativePasteImages}
           onRemoveDraftImage={composer.onRemoveDraftImage}
           serverConfig={serverConfig}
+          onRefresh={commands.onRefresh}
           onStopThread={commands.onStopThread}
           onSendMessage={composer.onSendMessage}
           onUpdateThreadModelSelection={commands.onUpdateThreadModelSelection}
