@@ -52,6 +52,7 @@ import { attachTerminalSession } from "../terminalSessionState";
 const MIN_DRAWER_HEIGHT = 180;
 const MAX_DRAWER_HEIGHT_RATIO = 0.75;
 const MULTI_CLICK_SELECTION_ACTION_DELAY_MS = 260;
+const TERMINAL_TOUCH_SCROLL_THRESHOLD_PX = 6;
 
 function maxDrawerHeight(): number {
   if (typeof window === "undefined") return DEFAULT_THREAD_TERMINAL_HEIGHT;
@@ -82,6 +83,21 @@ function fitTerminalSafely(fitAddon: FitAddon): boolean {
   } catch {
     return false;
   }
+}
+
+function terminalRowHeight(terminal: Terminal, mountElement: HTMLElement): number {
+  const screenElement = mountElement.querySelector<HTMLElement>(".xterm-screen");
+  const screenHeight = screenElement?.getBoundingClientRect().height ?? 0;
+  if (screenHeight > 0 && terminal.rows > 0) {
+    return screenHeight / terminal.rows;
+  }
+  return terminal.options.fontSize ? terminal.options.fontSize * 1.2 : 14.4;
+}
+
+function terminalCanScroll(terminal: Terminal, lineDelta: number): boolean {
+  if (lineDelta < 0) return terminal.buffer.active.viewportY > 0;
+  if (lineDelta > 0) return terminal.buffer.active.viewportY < terminal.buffer.active.baseY;
+  return false;
 }
 
 function runtimeEnvSignature(runtimeEnv: Record<string, string> | undefined): string {
@@ -300,6 +316,12 @@ export function TerminalViewport({
   const selectionActionRequestIdRef = useRef(0);
   const selectionActionOpenRef = useRef(false);
   const selectionActionTimerRef = useRef<number | null>(null);
+  const touchScrollStateRef = useRef<{
+    id: number;
+    lastY: number;
+    residualLines: number;
+    hasScrolled: boolean;
+  } | null>(null);
   const keybindingsRef = useRef(keybindings);
   const runtimeEnvKey = useMemo(() => runtimeEnvSignature(runtimeEnv), [runtimeEnv]);
   const handleSessionExited = useEffectEvent(() => {
@@ -573,6 +595,75 @@ export function TerminalViewport({
     window.addEventListener("mouseup", handleMouseUp);
     mount.addEventListener("pointerdown", handlePointerDown);
 
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        touchScrollStateRef.current = null;
+        return;
+      }
+      const touch = event.touches.item(0);
+      if (!touch) {
+        touchScrollStateRef.current = null;
+        return;
+      }
+      touchScrollStateRef.current = {
+        id: touch.identifier,
+        lastY: touch.clientY,
+        residualLines: 0,
+        hasScrolled: false,
+      };
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const activeTerminal = terminalRef.current;
+      const mountElement = containerRef.current;
+      const touchScrollState = touchScrollStateRef.current;
+      if (!activeTerminal || !mountElement || !touchScrollState || event.touches.length !== 1) {
+        return;
+      }
+
+      const touch = Array.from(event.touches).find(({ identifier }) => {
+        return identifier === touchScrollState.id;
+      });
+      if (!touch) {
+        touchScrollStateRef.current = null;
+        return;
+      }
+
+      const deltaY = touch.clientY - touchScrollState.lastY;
+      if (!touchScrollState.hasScrolled && Math.abs(deltaY) < TERMINAL_TOUCH_SCROLL_THRESHOLD_PX) {
+        return;
+      }
+
+      touchScrollState.lastY = touch.clientY;
+      touchScrollState.hasScrolled = true;
+      touchScrollState.residualLines += -deltaY / terminalRowHeight(activeTerminal, mountElement);
+      const lineDelta =
+        touchScrollState.residualLines < 0
+          ? Math.ceil(touchScrollState.residualLines)
+          : Math.floor(touchScrollState.residualLines);
+      if (lineDelta === 0) {
+        return;
+      }
+      if (!terminalCanScroll(activeTerminal, lineDelta)) {
+        touchScrollState.residualLines = 0;
+        return;
+      }
+
+      touchScrollState.residualLines -= lineDelta;
+      activeTerminal.scrollLines(lineDelta);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handleTouchEnd = () => {
+      touchScrollStateRef.current = null;
+    };
+
+    mount.addEventListener("touchstart", handleTouchStart, { passive: true });
+    mount.addEventListener("touchmove", handleTouchMove, { passive: false });
+    mount.addEventListener("touchend", handleTouchEnd);
+    mount.addEventListener("touchcancel", handleTouchEnd);
+
     const themeObserver = new MutationObserver(() => {
       const activeTerminal = terminalRef.current;
       if (!activeTerminal) return;
@@ -719,6 +810,10 @@ export function TerminalViewport({
       }
       window.removeEventListener("mouseup", handleMouseUp);
       mount.removeEventListener("pointerdown", handlePointerDown);
+      mount.removeEventListener("touchstart", handleTouchStart);
+      mount.removeEventListener("touchmove", handleTouchMove);
+      mount.removeEventListener("touchend", handleTouchEnd);
+      mount.removeEventListener("touchcancel", handleTouchEnd);
       themeObserver.disconnect();
       terminalRef.current = null;
       fitAddonRef.current = null;
