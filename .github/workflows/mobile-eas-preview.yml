@@ -90,15 +90,14 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas env:pull preview --non-interactive
 
-      - name: Deploy with fingerprint check
+      - name: Start iOS preview build
         if: steps.expo-token.outputs.present == 'true'
-        uses: expo/expo-github-action/continuous-deploy-fingerprint@main
+        working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        with:
-          profile: ${{ steps.eas-target.outputs.profile }}
-          branch: ${{ steps.eas-target.outputs.branch }}
-          platform: ios
-          environment: preview
-          working-directory: apps/mobile
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          eas build \
+            --platform ios \
+            --profile "${{ steps.eas-target.outputs.profile }}" \
+            --non-interactive \
+            --no-wait
