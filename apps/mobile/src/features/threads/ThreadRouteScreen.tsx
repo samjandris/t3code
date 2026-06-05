@@ -378,6 +378,7 @@ export function ThreadRouteScreen() {
           onNativePasteImages={composer.onNativePasteImages}
           onRemoveDraftImage={composer.onRemoveDraftImage}
           serverConfig={serverConfig}
+          onRefresh={commands.onRefresh}
           onStopThread={commands.onStopThread}
           onSendMessage={composer.onSendMessage}
           onUpdateThreadModelSelection={commands.onUpdateThreadModelSelection}
