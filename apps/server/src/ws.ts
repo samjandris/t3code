@@ -57,6 +57,10 @@ import { ServerConfig } from "./config.ts";
 import { Keybindings } from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
+import {
+  sanitizeOrchestrationEventForClient,
+  sanitizeThreadForClient,
+} from "./orchestration/clientPayload.ts";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -970,7 +974,7 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
                 ),
                 Stream.map((event) => ({
                   kind: "event" as const,
-                  event,
+                  event: sanitizeOrchestrationEventForClient(event),
                 })),
               );
 
@@ -979,7 +983,7 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
                   kind: "snapshot" as const,
                   snapshot: {
                     snapshotSequence,
-                    thread: threadDetail.value,
+                    thread: sanitizeThreadForClient(threadDetail.value),
                   },
                 }),
                 liveStream,
