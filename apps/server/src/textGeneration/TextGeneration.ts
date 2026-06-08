@@ -1,11 +1,13 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import type { ChatAttachment, ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import { TextGenerationError } from "@t3tools/contracts";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
+import { ServerConfig } from "../config.ts";
 
 export type TextGenerationProvider = "codex" | "claudeAgent" | "cursor" | "grok" | "opencode";
 
@@ -197,29 +199,38 @@ const resolveInstance = (
 
 export const makeTextGenerationFromRegistry = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+  options?: { readonly textGenerationCwd?: string | undefined },
 ): TextGeneration["Service"] =>
   TextGeneration.of({
     generateCommitMessage: (input) =>
       resolveInstance(registry, "generateCommitMessage", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateCommitMessage(input)),
+        Effect.flatMap((textGeneration) =>
+          textGeneration.generateCommitMessage(withTextGenerationCwd(input, options)),
+        ),
       ),
     generatePrContent: (input) =>
       resolveInstance(registry, "generatePrContent", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input)),
+        Effect.flatMap((textGeneration) =>
+          textGeneration.generatePrContent(withTextGenerationCwd(input, options)),
+        ),
       ),
     generateBranchName: (input) =>
       resolveInstance(registry, "generateBranchName", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateBranchName(input)),
+        Effect.flatMap((textGeneration) =>
+          textGeneration.generateBranchName(withTextGenerationCwd(input, options)),
+        ),
       ),
     generateThreadTitle: (input) =>
       resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
+        Effect.flatMap((textGeneration) =>
+          textGeneration.generateThreadTitle(withTextGenerationCwd(input, options)),
+        ),
       ),
     generateToolCallSummary: (input) =>
       resolveInstance(registry, "generateToolCallSummary", input.modelSelection.instanceId).pipe(
         Effect.flatMap((textGeneration) =>
           textGeneration.generateToolCallSummary
-            ? textGeneration.generateToolCallSummary(input)
+            ? textGeneration.generateToolCallSummary(withTextGenerationCwd(input, options))
             : Effect.fail(
                 new TextGenerationError({
                   operation: "generateToolCallSummary",
@@ -233,7 +244,7 @@ export const makeTextGenerationFromRegistry = (
         Effect.flatMap((textGeneration) => {
           const generateToolCallSummaries = textGeneration.generateToolCallSummaries;
           if (generateToolCallSummaries) {
-            return generateToolCallSummaries(input);
+            return generateToolCallSummaries(withTextGenerationCwd(input, options));
           }
 
           const generateToolCallSummary = textGeneration.generateToolCallSummary;
@@ -248,7 +259,7 @@ export const makeTextGenerationFromRegistry = (
 
           return Effect.forEach(input.items, (item) =>
             generateToolCallSummary({
-              cwd: input.cwd,
+              cwd: resolveTextGenerationCwd(input.cwd, options),
               modelSelection: input.modelSelection,
               toolName: item.toolName,
               toolType: item.toolType,
@@ -261,9 +272,27 @@ export const makeTextGenerationFromRegistry = (
       ),
   });
 
+function resolveTextGenerationCwd(
+  fallbackCwd: string,
+  options: { readonly textGenerationCwd?: string | undefined } | undefined,
+): string {
+  return options?.textGenerationCwd ?? fallbackCwd;
+}
+
+function withTextGenerationCwd<T extends { readonly cwd: string }>(
+  input: T,
+  options: { readonly textGenerationCwd?: string | undefined } | undefined,
+): T {
+  const cwd = resolveTextGenerationCwd(input.cwd, options);
+  return cwd === input.cwd ? input : { ...input, cwd };
+}
+
 export const make = Effect.gen(function* () {
   const registry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
-  return makeTextGenerationFromRegistry(registry);
+  const config = Option.getOrUndefined(yield* Effect.serviceOption(ServerConfig));
+  return makeTextGenerationFromRegistry(registry, {
+    textGenerationCwd: config?.textGenerationCwd,
+  });
 });
 
 export const layer = Layer.effect(TextGeneration, make);

@@ -22,6 +22,7 @@ import {
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -59,7 +60,8 @@ const BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_TTL = Duration.minutes(120);
 const BUFFERED_PROPOSED_PLAN_BY_ID_CACHE_CAPACITY = 10_000;
 const BUFFERED_PROPOSED_PLAN_BY_ID_TTL = Duration.minutes(120);
 const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
-const TOOL_SUMMARY_BATCH_WINDOW = Duration.millis(1_500);
+const TOOL_SUMMARY_BATCH_WINDOW = Duration.seconds(2);
+const TOOL_SUMMARY_BATCH_MAX_AGE = Duration.seconds(10);
 const TOOL_SUMMARY_BATCH_MAX_ITEMS = 8;
 const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.T3CODE_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
 
@@ -96,7 +98,14 @@ interface PendingToolCallSummary {
 
 interface PendingToolSummaryBatchState {
   readonly scheduled: boolean;
+  readonly firstEnqueuedAt: number | null;
+  readonly lastEnqueuedAt: number | null;
   readonly items: ReadonlyArray<PendingToolCallSummary>;
+}
+
+interface EnqueueToolSummaryResult {
+  readonly shouldSchedule: boolean;
+  readonly batch: ReadonlyArray<PendingToolCallSummary>;
 }
 
 function toTurnId(value: TurnId | string | undefined): TurnId | undefined {
@@ -845,6 +854,8 @@ const make = Effect.gen(function* () {
 
   const pendingToolSummariesRef = yield* Ref.make<PendingToolSummaryBatchState>({
     scheduled: false,
+    firstEnqueuedAt: null,
+    lastEnqueuedAt: null,
     items: [],
   });
 
@@ -975,16 +986,76 @@ const make = Effect.gen(function* () {
     );
   });
 
+  const toolSummaryProcessWorker = yield* makeDrainableWorker(processToolSummaryBatch);
+
   const flushToolSummaryBatch = Effect.fn("flushToolSummaryBatch")(function* () {
-    yield* Effect.sleep(TOOL_SUMMARY_BATCH_WINDOW);
-    const batch = yield* Ref.modify(pendingToolSummariesRef, (state) => [
-      state.items,
-      { scheduled: false, items: [] },
-    ]);
-    if (batch.length === 0) {
+    while (true) {
+      const state = yield* Ref.get(pendingToolSummariesRef);
+      if (
+        state.items.length === 0 ||
+        state.firstEnqueuedAt === null ||
+        state.lastEnqueuedAt === null
+      ) {
+        yield* Ref.set(pendingToolSummariesRef, {
+          scheduled: false,
+          firstEnqueuedAt: null,
+          lastEnqueuedAt: null,
+          items: [],
+        });
+        return;
+      }
+
+      const now = yield* Clock.currentTimeMillis;
+      const debounceDueAt = state.lastEnqueuedAt + Duration.toMillis(TOOL_SUMMARY_BATCH_WINDOW);
+      const maxAgeDueAt = state.firstEnqueuedAt + Duration.toMillis(TOOL_SUMMARY_BATCH_MAX_AGE);
+      const dueAt = Math.min(debounceDueAt, maxAgeDueAt);
+      const remainingMs = dueAt - now;
+      if (remainingMs > 0) {
+        yield* Effect.sleep(Duration.millis(remainingMs));
+        continue;
+      }
+
+      const batch = yield* Ref.modify(pendingToolSummariesRef, (current) => {
+        if (
+          current.items.length === 0 ||
+          current.firstEnqueuedAt === null ||
+          current.lastEnqueuedAt === null
+        ) {
+          return [
+            [],
+            {
+              scheduled: false,
+              firstEnqueuedAt: null,
+              lastEnqueuedAt: null,
+              items: [],
+            },
+          ] as const;
+        }
+
+        const currentDebounceDueAt =
+          current.lastEnqueuedAt + Duration.toMillis(TOOL_SUMMARY_BATCH_WINDOW);
+        const currentMaxAgeDueAt =
+          current.firstEnqueuedAt + Duration.toMillis(TOOL_SUMMARY_BATCH_MAX_AGE);
+        if (now < Math.min(currentDebounceDueAt, currentMaxAgeDueAt)) {
+          return [[], current] as const;
+        }
+
+        return [
+          current.items,
+          {
+            scheduled: false,
+            firstEnqueuedAt: null,
+            lastEnqueuedAt: null,
+            items: [],
+          },
+        ] as const;
+      });
+      if (batch.length === 0) {
+        continue;
+      }
+      yield* toolSummaryProcessWorker.enqueue(batch);
       return;
     }
-    yield* processToolSummaryBatch(batch);
   });
 
   const toolSummaryBatchWorker = yield* makeDrainableWorker(() =>
@@ -998,20 +1069,51 @@ const make = Effect.gen(function* () {
   );
 
   const enqueueToolSummary = (request: PendingToolCallSummary) =>
-    Ref.modify(pendingToolSummariesRef, (state) => {
-      const shouldSchedule = !state.scheduled;
-      return [
-        shouldSchedule,
-        {
-          scheduled: true,
-          items: [...state.items, request],
-        },
-      ] as const;
-    }).pipe(
-      Effect.flatMap((shouldSchedule) =>
-        shouldSchedule ? toolSummaryBatchWorker.enqueue(undefined) : Effect.void,
-      ),
-    );
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const enqueueResult = yield* Ref.modify(pendingToolSummariesRef, (state) => {
+        const nextItems = [...state.items, request];
+        const shouldSchedule = !state.scheduled;
+        if (nextItems.length >= TOOL_SUMMARY_BATCH_MAX_ITEMS) {
+          const result: EnqueueToolSummaryResult = {
+            shouldSchedule: false,
+            batch: nextItems,
+          };
+          return [
+            result,
+            {
+              scheduled: false,
+              firstEnqueuedAt: null,
+              lastEnqueuedAt: null,
+              items: [],
+            },
+          ] as const;
+        }
+
+        const result: EnqueueToolSummaryResult = {
+          shouldSchedule,
+          batch: [],
+        };
+        return [
+          result,
+          {
+            scheduled: true,
+            firstEnqueuedAt: state.firstEnqueuedAt ?? now,
+            lastEnqueuedAt: now,
+            items: nextItems,
+          },
+        ] as const;
+      });
+
+      if (enqueueResult.batch.length > 0) {
+        yield* toolSummaryProcessWorker.enqueue(enqueueResult.batch);
+        return;
+      }
+
+      if (enqueueResult.shouldSchedule) {
+        yield* toolSummaryBatchWorker.enqueue(undefined);
+      }
+    });
 
   const summarizeProviderToolCall = Effect.fn("summarizeProviderToolCall")(function* (input: {
     readonly event: ProviderRuntimeEvent;
@@ -2106,7 +2208,10 @@ const make = Effect.gen(function* () {
 
   return {
     start,
-    drain: worker.drain.pipe(Effect.andThen(toolSummaryBatchWorker.drain)),
+    drain: worker.drain.pipe(
+      Effect.andThen(toolSummaryBatchWorker.drain),
+      Effect.andThen(toolSummaryProcessWorker.drain),
+    ),
   } satisfies ProviderRuntimeIngestionShape;
 });
 
