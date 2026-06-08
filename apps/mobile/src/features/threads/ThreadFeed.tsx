@@ -24,6 +24,13 @@ import {
 } from "react-native";
 import { TouchableOpacity } from "react-native-gesture-handler";
 import ImageViewing from "react-native-image-viewing";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../lib/useThemeColor";
 
@@ -81,6 +88,7 @@ function buildActivityRows(
     readonly summary: string;
     readonly detail: string | null;
     readonly status: string | null;
+    readonly toolSummaryStatus?: "pending" | "complete";
   }>,
 ) {
   return activities.map<{
@@ -89,16 +97,26 @@ function buildActivityRows(
     summary: string;
     detail: string | null;
     status: string | null;
+    toolSummaryStatus?: "pending" | "complete";
   }>((activity) => ({
     id: activity.id,
     createdAt: activity.createdAt,
     summary: activity.summary,
     detail: compactActivityDetail(activity.detail),
     status: activity.status,
+    ...(activity.toolSummaryStatus ? { toolSummaryStatus: activity.toolSummaryStatus } : {}),
   }));
 }
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
+const AnimatedNativeText = Animated.createAnimatedComponent(NativeText);
+const AnimatedView = Animated.createAnimatedComponent(View);
+const WORK_LOG_TEXT_STYLE = {
+  fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace",
+  fontSize: 12,
+  lineHeight: 18,
+} as const;
+const TOOL_SUMMARY_SHIMMER_WIDTH = 52;
 
 function toMarkdownThemeColor(value: ColorValue): string {
   return value as string;
@@ -122,6 +140,179 @@ interface ReviewCommentColors {
   readonly text: ColorValue;
   readonly mutedText: ColorValue;
   readonly codeBackground: ColorValue;
+}
+
+type ActivityRow = ReturnType<typeof buildActivityRows>[number];
+
+function WorkLogRow(props: {
+  readonly row: ActivityRow;
+  readonly index: number;
+  readonly copiedRowId: string | null;
+  readonly iconSubtleColor: string | ColorValue;
+  readonly onCopyWorkRow: (rowId: string, value: string) => void;
+}) {
+  const colorScheme = useColorScheme();
+  const isToolSummaryPending = props.row.toolSummaryStatus === "pending";
+  const previousToolSummaryStatusRef = useRef(props.row.toolSummaryStatus);
+  const { width: windowWidth } = useWindowDimensions();
+  const [textWidth, setTextWidth] = useState(0);
+  const shimmerProgress = useSharedValue(0);
+  const revealProgress = useSharedValue(0);
+  const displayText = props.row.detail
+    ? `${props.row.summary} - ${props.row.detail}`
+    : props.row.summary;
+  const baseTextColor = colorScheme === "dark" ? "#a3a3a3" : "#525252";
+  const glintColor = colorScheme === "dark" ? "rgba(255,255,255,0.72)" : "rgba(23,23,23,0.46)";
+  const textStyle = {
+    color: baseTextColor,
+    ...WORK_LOG_TEXT_STYLE,
+  } as const;
+  const shimmerTravelDistance =
+    Math.max(textWidth, Math.min(windowWidth, 320)) + TOOL_SUMMARY_SHIMMER_WIDTH * 2;
+  const overlayTextWidth = Math.max(textWidth, windowWidth);
+
+  useEffect(() => {
+    if (!isToolSummaryPending) {
+      shimmerProgress.value = 0;
+      return;
+    }
+    shimmerProgress.value = 0;
+    shimmerProgress.value = withRepeat(
+      withTiming(1, { duration: 1650, easing: Easing.linear }),
+      -1,
+      false,
+    );
+  }, [isToolSummaryPending, shimmerProgress]);
+
+  useEffect(() => {
+    const previousStatus = previousToolSummaryStatusRef.current;
+    const currentStatus = props.row.toolSummaryStatus;
+    previousToolSummaryStatusRef.current = currentStatus;
+
+    if (previousStatus === "pending" && currentStatus === "complete") {
+      revealProgress.value = 0.75;
+      revealProgress.value = withTiming(0, {
+        duration: 640,
+        easing: Easing.out(Easing.cubic),
+      });
+      return;
+    }
+
+    if (currentStatus !== "complete") {
+      revealProgress.value = 0;
+    }
+  }, [props.row.toolSummaryStatus, revealProgress]);
+
+  const shimmerStyle = useAnimatedStyle(() => ({
+    opacity: isToolSummaryPending ? 0.44 : 0,
+    transform: [
+      {
+        translateX: shimmerProgress.value * shimmerTravelDistance - TOOL_SUMMARY_SHIMMER_WIDTH,
+      },
+    ],
+  }));
+  const shimmerTextStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: TOOL_SUMMARY_SHIMMER_WIDTH - shimmerProgress.value * shimmerTravelDistance,
+      },
+    ],
+  }));
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: revealProgress.value,
+  }));
+
+  return (
+    <View
+      className={cn(
+        "flex-row items-center gap-2 rounded-lg px-1 py-1",
+        props.index > 0 && "border-t border-neutral-200/80 dark:border-white/[0.06]",
+      )}
+    >
+      <View className="items-center justify-center pt-0.5">
+        <SymbolView name="terminal" size={13} tintColor={props.iconSubtleColor} type="monochrome" />
+      </View>
+      <ScrollView
+        horizontal
+        nestedScrollEnabled
+        directionalLockEnabled
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        className="flex-1"
+        contentContainerStyle={{ paddingRight: 12 }}
+        style={{ flex: 1 }}
+      >
+        <View className="overflow-hidden">
+          <NativeText
+            numberOfLines={1}
+            onLayout={(event) => {
+              const nextTextWidth = Math.ceil(event.nativeEvent.layout.width);
+              setTextWidth((currentTextWidth) =>
+                currentTextWidth === nextTextWidth ? currentTextWidth : nextTextWidth,
+              );
+            }}
+            onLongPress={() => {
+              const copyValue = props.row.detail ?? props.row.summary;
+              props.onCopyWorkRow(props.row.id, copyValue);
+            }}
+            style={textStyle}
+          >
+            {displayText}
+          </NativeText>
+          <AnimatedView
+            pointerEvents="none"
+            style={[
+              {
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                top: 0,
+                width: TOOL_SUMMARY_SHIMMER_WIDTH,
+                overflow: "hidden",
+              },
+              shimmerStyle,
+            ]}
+          >
+            <AnimatedNativeText
+              numberOfLines={1}
+              style={[
+                {
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  width: overlayTextWidth,
+                  color: glintColor,
+                  ...WORK_LOG_TEXT_STYLE,
+                },
+                shimmerTextStyle,
+              ]}
+            >
+              {displayText}
+            </AnimatedNativeText>
+          </AnimatedView>
+          <AnimatedNativeText
+            numberOfLines={1}
+            pointerEvents="none"
+            style={[
+              {
+                ...StyleSheet.absoluteFill,
+                color: glintColor,
+                ...WORK_LOG_TEXT_STYLE,
+              },
+              revealStyle,
+            ]}
+          >
+            {displayText}
+          </AnimatedNativeText>
+        </View>
+      </ScrollView>
+      {props.copiedRowId === props.row.id ? (
+        <Text className="shrink-0 font-t3-medium text-[10px] uppercase tracking-[0.8px] text-emerald-600 dark:text-emerald-400">
+          Copied
+        </Text>
+      ) : null}
+    </View>
+  );
 }
 
 function useReviewCommentColors(): ReviewCommentColors {
@@ -561,45 +752,14 @@ function renderFeedEntry(
         </View>
       ) : null}
       {visibleRows.map((row, index) => (
-        <View
+        <WorkLogRow
           key={row.id}
-          className={cn(
-            "flex-row items-center gap-2 rounded-lg px-1 py-1",
-            index > 0 && "border-t border-neutral-200/80 dark:border-white/[0.06]",
-          )}
-        >
-          <View className="items-center justify-center pt-0.5">
-            <SymbolView name="terminal" size={13} tintColor={iconSubtleColor} type="monochrome" />
-          </View>
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            directionalLockEnabled
-            showsHorizontalScrollIndicator={false}
-            bounces={false}
-            className="flex-1"
-            contentContainerStyle={{ paddingRight: 12 }}
-            style={{ flex: 1 }}
-          >
-            <Text
-              className="text-[12px] leading-[18px] text-neutral-600 dark:text-neutral-400"
-              onLongPress={() => {
-                const copyValue = row.detail ?? row.summary;
-                props.onCopyWorkRow(row.id, copyValue);
-              }}
-              style={{
-                fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace",
-              }}
-            >
-              {row.detail ? `${row.summary} - ${row.detail}` : row.summary}
-            </Text>
-          </ScrollView>
-          {props.copiedRowId === row.id ? (
-            <Text className="shrink-0 font-t3-medium text-[10px] uppercase tracking-[0.8px] text-emerald-600 dark:text-emerald-400">
-              Copied
-            </Text>
-          ) : null}
-        </View>
+          row={row}
+          index={index}
+          copiedRowId={props.copiedRowId}
+          iconSubtleColor={iconSubtleColor}
+          onCopyWorkRow={props.onCopyWorkRow}
+        />
       ))}
     </View>
   );
