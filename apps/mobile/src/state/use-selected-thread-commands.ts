@@ -7,7 +7,9 @@ import {
   type RuntimeMode,
 } from "@t3tools/contracts";
 
+import { scopedThreadKey } from "../lib/scopedEntities";
 import { uuidv4 } from "../lib/uuid";
+import { setComposerDraftProperties } from "./use-composer-drafts";
 import { environmentRuntimeManager } from "./use-environment-runtime";
 import { getEnvironmentClient } from "./environment-session-registry";
 import { useRemoteEnvironmentState } from "./use-remote-environment-registry";
@@ -63,6 +65,10 @@ export function useSelectedThreadCommands(input: {
         return;
       }
 
+      setComposerDraftProperties(scopedThreadKey(selectedThread.environmentId, selectedThread.id), {
+        modelSelection,
+      });
+
       const client = getEnvironmentClient(selectedThread.environmentId);
       if (!client) {
         return;
@@ -83,6 +89,10 @@ export function useSelectedThreadCommands(input: {
       if (!selectedThread) {
         return;
       }
+
+      setComposerDraftProperties(scopedThreadKey(selectedThread.environmentId, selectedThread.id), {
+        runtimeMode,
+      });
 
       const client = getEnvironmentClient(selectedThread.environmentId);
       if (!client) {
@@ -105,6 +115,10 @@ export function useSelectedThreadCommands(input: {
       if (!selectedThread) {
         return;
       }
+
+      setComposerDraftProperties(scopedThreadKey(selectedThread.environmentId, selectedThread.id), {
+        interactionMode,
+      });
 
       const client = getEnvironmentClient(selectedThread.environmentId);
       if (!client) {

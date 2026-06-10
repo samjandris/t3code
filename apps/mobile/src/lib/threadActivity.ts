@@ -3,8 +3,11 @@ import type {
   CommandId,
   EnvironmentId,
   MessageId,
+  ModelSelection,
   OrchestrationThread,
   OrchestrationThreadActivity,
+  ProviderInteractionMode,
+  RuntimeMode,
   TurnId,
   ToolLifecycleItemType,
   ThreadId,
@@ -40,6 +43,9 @@ export interface QueuedThreadMessage {
   readonly commandId: CommandId;
   readonly text: string;
   readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly modelSelection: ModelSelection;
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
   readonly createdAt: string;
 }
 
