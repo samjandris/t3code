@@ -1427,6 +1427,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                       />
                     }
                   >
+                    <span aria-hidden="true" className="tool-summary-glint-text">
+                      {displayText}
+                    </span>
                     <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
                     {preview && (
                       <span className="min-w-0 flex-1 cursor-default truncate text-muted-foreground transition-colors hover:text-muted-foreground/90 focus-visible:text-muted-foreground/90">
@@ -1460,6 +1463,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                       shouldRevealToolSummary && "tool-summary-reveal",
                     )}
                   >
+                    <span aria-hidden="true" className="tool-summary-glint-text">
+                      {displayText}
+                    </span>
                     <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
                     {preview && (
                       <span className="min-w-0 flex-1 truncate text-muted-foreground">
