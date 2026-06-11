@@ -1212,11 +1212,20 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<
+    TimelineWorkEntry,
+    "detail" | "command" | "changedFiles" | "toolSummaryStatus" | "itemType" | "requestKind"
+  >,
   workspaceRoot: string | undefined,
 ) {
+  if (workEntry.toolSummaryStatus === "complete" && workEntry.detail) return workEntry.detail;
   if (workEntry.command) return workEntry.command;
-  if (workEntry.detail) return workEntry.detail;
+  const hasStructuredChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
+  const isStructuredFileChange =
+    hasStructuredChangedFiles &&
+    (workEntry.itemType === "file_change" || workEntry.requestKind === "file-change");
+  if (workEntry.detail && !isStructuredFileChange) return workEntry.detail;
+  if (isStructuredFileChange) return null;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
@@ -1323,7 +1332,29 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const expandedBody = buildToolCallExpandedBody(workEntry);
   const canExpand = expandedBody !== null;
-  const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
+  const isToolSummaryPending = workEntry.toolSummaryStatus === "pending";
+  const previousToolSummaryStatusRef = useRef(workEntry.toolSummaryStatus);
+  const [shouldRevealToolSummary, setShouldRevealToolSummary] = useState(false);
+
+  useEffect(() => {
+    const previousStatus = previousToolSummaryStatusRef.current;
+    const currentStatus = workEntry.toolSummaryStatus;
+    previousToolSummaryStatusRef.current = currentStatus;
+
+    if (previousStatus === "pending" && currentStatus === "complete") {
+      setShouldRevealToolSummary(true);
+      const timeoutId = window.setTimeout(() => {
+        setShouldRevealToolSummary(false);
+      }, 700);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    if (currentStatus !== "complete") {
+      setShouldRevealToolSummary(false);
+    }
+    return undefined;
+  }, [workEntry.toolSummaryStatus]);
+
   const showFailedIndicator = workEntryIndicatesToolFailure(workEntry);
   const showDestructiveRowStyle =
     showFailedIndicator &&
@@ -1387,7 +1418,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                     onPointerDown={stopRowToggle}
                     render={
                       <p
-                        className="flex min-w-0 w-full items-center gap-2 text-xs leading-5"
+                        className={cn(
+                          "tool-summary-line flex min-w-0 w-full items-center gap-2 text-xs leading-5",
+                          isToolSummaryPending && "tool-summary-shimmer",
+                          shouldRevealToolSummary && "tool-summary-reveal",
+                        )}
                         aria-label={displayText}
                       />
                     }
@@ -1418,7 +1453,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   onClick={stopRowToggle}
                   onPointerDown={stopRowToggle}
                 >
-                  <p className="flex min-w-0 w-full items-center gap-2 text-[11px] leading-5">
+                  <p
+                    className={cn(
+                      "tool-summary-line flex min-w-0 w-full items-center gap-2 text-[11px] leading-5",
+                      isToolSummaryPending && "tool-summary-shimmer",
+                      shouldRevealToolSummary && "tool-summary-reveal",
+                    )}
+                  >
                     <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
                     {preview && (
                       <span className="min-w-0 flex-1 truncate text-muted-foreground">
@@ -1508,39 +1549,6 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           </pre>
         </div>
       ) : null}
-      {hasChangedFiles && (
-        <div
-          className="mt-1 flex flex-wrap gap-1"
-          onClick={stopRowToggle}
-          onPointerDown={stopRowToggle}
-        >
-          {workEntry.changedFiles?.slice(0, 4).map((filePath) => {
-            const displayPath = formatWorkspaceRelativePath(filePath, workspaceRoot);
-            return (
-              <Tooltip key={`${workEntry.id}:${filePath}`}>
-                <TooltipTrigger
-                  render={
-                    <span
-                      className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75"
-                      aria-label={displayPath}
-                    />
-                  }
-                >
-                  {displayPath}
-                </TooltipTrigger>
-                <TooltipPopup side="top" className="max-w-[min(40rem,calc(100vw-2rem))]">
-                  <span className="font-mono text-[11px] whitespace-nowrap">{displayPath}</span>
-                </TooltipPopup>
-              </Tooltip>
-            );
-          })}
-          {(workEntry.changedFiles?.length ?? 0) > 4 && (
-            <span className="px-1 text-[10px] text-muted-foreground/55">
-              +{(workEntry.changedFiles?.length ?? 0) - 4}
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 });
