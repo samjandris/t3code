@@ -370,6 +370,40 @@ function buildCursorDiscoveredModels(
   });
 }
 
+function hasCursorModelCapabilities(model: Pick<ServerProviderModel, "capabilities">): boolean {
+  return (model.capabilities?.optionDescriptors?.length ?? 0) > 0;
+}
+
+function preserveCursorModelCapabilities(
+  nextSnapshot: ServerProvider,
+  previousSnapshot: ServerProvider | undefined,
+): ServerProvider {
+  if (!previousSnapshot) {
+    return nextSnapshot;
+  }
+
+  const previousModelsBySlug = new Map(
+    previousSnapshot.models.map((model) => [model.slug, model] as const),
+  );
+  return {
+    ...nextSnapshot,
+    models: nextSnapshot.models.map((model) => {
+      const previousModel = previousModelsBySlug.get(model.slug);
+      if (
+        hasCursorModelCapabilities(model) ||
+        !previousModel ||
+        !hasCursorModelCapabilities(previousModel)
+      ) {
+        return model;
+      }
+      return {
+        ...model,
+        capabilities: previousModel.capabilities,
+      };
+    }),
+  };
+}
+
 function buildCursorDiscoveredModelsFromAvailableModelsResponse(
   response: typeof CursorListAvailableModelsResponse.Type,
 ): ReadonlyArray<ServerProviderModel> {
@@ -407,7 +441,10 @@ const makeCursorAcpProbeRuntime = (
             "acp",
           ],
           cwd: process.cwd(),
-          env: environment,
+          env: {
+            ...environment,
+            RAYON_NUM_THREADS: environment.RAYON_NUM_THREADS ?? "1",
+          },
         },
         cwd: process.cwd(),
         clientInfo: { name: "t3-code-provider-probe", version: "0.0.0" },
@@ -1102,13 +1139,15 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
 export const enrichCursorSnapshot = (input: {
   readonly settings: CursorSettings;
   readonly snapshot: ServerProvider;
+  readonly retainedSnapshot?: ServerProvider | undefined;
   readonly maintenanceCapabilities: ProviderMaintenanceCapabilities;
   readonly publishSnapshot: (snapshot: ServerProvider) => Effect.Effect<void>;
   readonly stampIdentity?: (snapshot: ServerProvider) => ServerProvider;
   readonly httpClient: HttpClient.HttpClient;
 }): Effect.Effect<void> => {
-  const { settings, snapshot, publishSnapshot } = input;
+  const { settings, publishSnapshot } = input;
   const stampIdentity = input.stampIdentity ?? ((value) => value);
+  const snapshot = preserveCursorModelCapabilities(input.snapshot, input.retainedSnapshot);
 
   if (!settings.enabled || snapshot.auth.status === "unauthenticated") {
     return Effect.void;
