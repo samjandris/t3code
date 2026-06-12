@@ -114,6 +114,9 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
   {
     type:
       | "thread.message-sent"
+      | "thread.meta-updated"
+      | "thread.runtime-mode-set"
+      | "thread.interaction-mode-set"
       | "thread.proposed-plan-upserted"
       | "thread.activity-appended"
       | "thread.turn-diff-completed"
@@ -123,6 +126,12 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
 > {
   return (
     event.type === "thread.message-sent" ||
+    // Mobile renders existing-thread Properties from the thread-detail stream.
+    // Keep these metadata events here so model/runtime/interaction changes are
+    // reflected immediately instead of waiting for a later full snapshot.
+    event.type === "thread.meta-updated" ||
+    event.type === "thread.runtime-mode-set" ||
+    event.type === "thread.interaction-mode-set" ||
     event.type === "thread.proposed-plan-upserted" ||
     event.type === "thread.activity-appended" ||
     event.type === "thread.turn-diff-completed" ||
