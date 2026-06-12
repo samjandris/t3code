@@ -1799,11 +1799,19 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 function workEntryPreview(
   workEntry: Pick<
     TimelineWorkEntry,
-    "detail" | "command" | "changedFiles" | "toolSummaryStatus" | "itemType" | "requestKind"
+    | "detail"
+    | "toolSummary"
+    | "command"
+    | "changedFiles"
+    | "toolSummaryStatus"
+    | "itemType"
+    | "requestKind"
   >,
   workspaceRoot: string | undefined,
 ) {
-  if (workEntry.toolSummaryStatus === "complete" && workEntry.detail) return workEntry.detail;
+  if (workEntry.toolSummaryStatus === "complete" && workEntry.toolSummary) {
+    return workEntry.toolSummary;
+  }
   if (workEntry.command) return workEntry.command;
   const hasStructuredChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const isStructuredFileChange =

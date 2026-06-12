@@ -66,6 +66,8 @@ export interface WorkLogEntry {
   turnId?: TurnId | null;
   label: string;
   detail?: string;
+  /** AI-generated one-line summary. Shown in the collapsed header only; never in the expanded body. */
+  toolSummary?: string;
   command?: string;
   rawCommand?: string;
   changedFiles?: ReadonlyArray<string>;
@@ -727,7 +729,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const requestKind = extractWorkLogRequestKind(payload);
   const toolSummaryStatus =
     activity.kind === "tool.updated" ? undefined : extractToolSummaryStatus(payload);
-  if (detail) {
+  if (detail && toolSummaryStatus === "complete") {
+    entry.toolSummary = detail;
+  } else if (detail) {
     entry.detail = detail;
   }
   if (commandPreview.command) {
@@ -782,7 +786,7 @@ function collapseDerivedWorkLogEntries(
     const matchingToolIndex = findCollapsibleToolEntryIndex(collapsed, entry);
     if (matchingToolIndex !== -1) {
       const previous = collapsed[matchingToolIndex]!;
-      collapsed[matchingToolIndex] = shouldMergeAsToolSummaryReplacement(previous, entry)
+      collapsed[matchingToolIndex] = isToolSummaryReplacementPair(previous, entry)
         ? mergeToolSummaryReplacement(previous, entry)
         : mergeDerivedWorkLogEntries(previous, entry);
       continue;
@@ -790,7 +794,7 @@ function collapseDerivedWorkLogEntries(
 
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
-      collapsed[collapsed.length - 1] = shouldMergeAsToolSummaryReplacement(previous, entry)
+      collapsed[collapsed.length - 1] = isToolSummaryReplacementPair(previous, entry)
         ? mergeToolSummaryReplacement(previous, entry)
         : mergeDerivedWorkLogEntries(previous, entry);
       continue;
@@ -880,10 +884,6 @@ function isToolLifecycleWorkLogEntry(entry: DerivedWorkLogEntry): boolean {
   return entry.activityKind === "tool.updated" || entry.activityKind === "tool.completed";
 }
 
-function isCompleteToolSummaryEntry(entry: DerivedWorkLogEntry): boolean {
-  return entry.activityKind === "tool.completed" && entry.toolSummaryStatus === "complete";
-}
-
 function isToolSummaryReplacementCandidate(entry: DerivedWorkLogEntry): boolean {
   return (
     isToolLifecycleWorkLogEntry(entry) &&
@@ -908,19 +908,6 @@ function isToolSummaryReplacementPair(
   return hasMatchingCommandWorkLogKey(previous, next);
 }
 
-function shouldMergeAsToolSummaryReplacement(
-  previous: DerivedWorkLogEntry,
-  next: DerivedWorkLogEntry,
-): boolean {
-  if (!isCompleteToolSummaryEntry(previous) && !isCompleteToolSummaryEntry(next)) {
-    return isToolSummaryReplacementPair(previous, next);
-  }
-  if (!isToolLifecycleWorkLogEntry(previous) || !isToolLifecycleWorkLogEntry(next)) {
-    return false;
-  }
-  return hasMatchingToolCallId(previous, next) || hasMatchingCommandWorkLogKey(previous, next);
-}
-
 function hasMatchingToolCallId(previous: DerivedWorkLogEntry, next: DerivedWorkLogEntry): boolean {
   return previous.toolCallId !== undefined && previous.toolCallId === next.toolCallId;
 }
@@ -941,11 +928,9 @@ function mergeToolSummaryReplacement(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): DerivedWorkLogEntry {
-  const completeEntry = previous.toolSummaryStatus === "complete" ? previous : next;
   return {
     ...mergeDerivedWorkLogEntries(previous, next),
     id: previous.id,
-    ...(completeEntry.detail ? { detail: completeEntry.detail } : {}),
     toolSummaryStatus: "complete",
   };
 }
@@ -956,6 +941,7 @@ function mergeDerivedWorkLogEntries(
 ): DerivedWorkLogEntry {
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
   const detail = next.detail ?? previous.detail;
+  const toolSummary = next.toolSummary ?? previous.toolSummary;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
@@ -970,6 +956,7 @@ function mergeDerivedWorkLogEntries(
     ...previous,
     ...next,
     ...(detail ? { detail } : {}),
+    ...(toolSummary ? { toolSummary } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
