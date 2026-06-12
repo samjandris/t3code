@@ -2,7 +2,15 @@ import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useMemo } from "react";
 
 import { EnvironmentScopedThreadShell } from "@t3tools/client-runtime";
-import { CommandId, MessageId, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
+import {
+  CommandId,
+  MessageId,
+  type EnvironmentId,
+  type ModelSelection,
+  type ProviderInteractionMode,
+  type RuntimeMode,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { deriveActiveWorkStartedAt } from "@t3tools/shared/orchestrationTiming";
 import { Atom } from "effect/unstable/reactivity";
 
@@ -19,7 +27,7 @@ import { appAtomRegistry } from "../state/atom-registry";
 import {
   appendComposerDraftAttachments,
   appendComposerDraftText,
-  clearComposerDraft,
+  clearComposerDraftContent,
   composerDraftsAtom,
   ensureComposerDraftsLoaded,
   removeComposerDraftAttachment,
@@ -35,6 +43,12 @@ import {
 import { useRemoteCatalog } from "../state/use-remote-catalog";
 import { useSelectedThreadDetail } from "../state/use-thread-detail";
 import { useThreadSelection } from "../state/use-thread-selection";
+
+interface ThreadDispatchProperties {
+  readonly modelSelection: ModelSelection;
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
+}
 
 const dispatchingQueuedMessageIdAtom = Atom.make<MessageId | null>(null).pipe(
   Atom.keepAlive,
@@ -207,6 +221,18 @@ export function useThreadComposerState() {
   const draftMessage = selectedDraft?.text ?? "";
   const draftAttachments = selectedDraft?.attachments ?? [];
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
+  const selectedThreadDispatchProperties = useMemo<ThreadDispatchProperties | null>(() => {
+    const base = selectedThread ?? selectedThreadShell;
+    if (!base) {
+      return null;
+    }
+
+    return {
+      modelSelection: selectedDraft?.modelSelection ?? base.modelSelection,
+      runtimeMode: selectedDraft?.runtimeMode ?? base.runtimeMode,
+      interactionMode: selectedDraft?.interactionMode ?? base.interactionMode,
+    };
+  }, [selectedDraft, selectedThread, selectedThreadShell]);
 
   const selectedThreadSessionActivity = useMemo(() => {
     if (!selectedThread?.session) {
@@ -260,8 +286,9 @@ export function useThreadComposerState() {
             text: queuedMessage.text,
             attachments: queuedMessage.attachments,
           },
-          runtimeMode: thread.runtimeMode,
-          interactionMode: thread.interactionMode,
+          modelSelection: queuedMessage.modelSelection,
+          runtimeMode: queuedMessage.runtimeMode,
+          interactionMode: queuedMessage.interactionMode,
           createdAt: queuedMessage.createdAt,
         });
 
@@ -295,7 +322,7 @@ export function useThreadComposerState() {
   });
 
   const onSendMessage = useCallback(() => {
-    if (!selectedThreadShell) {
+    if (!selectedThreadShell || !selectedThreadDispatchProperties) {
       return;
     }
 
@@ -315,10 +342,13 @@ export function useThreadComposerState() {
       commandId: CommandId.make(metadata.commandId),
       text,
       attachments,
+      modelSelection: selectedThreadDispatchProperties.modelSelection,
+      runtimeMode: selectedThreadDispatchProperties.runtimeMode,
+      interactionMode: selectedThreadDispatchProperties.interactionMode,
       createdAt: metadata.createdAt,
     });
-    clearComposerDraft(threadKey);
-  }, [composerDrafts, selectedThreadShell]);
+    clearComposerDraftContent(threadKey);
+  }, [composerDrafts, selectedThreadDispatchProperties, selectedThreadShell]);
 
   const onChangeDraftMessage = useCallback(
     (value: string) => {
@@ -409,6 +439,7 @@ export function useThreadComposerState() {
     activeWorkStartedAt,
     draftMessage,
     draftAttachments,
+    selectedThreadDispatchProperties,
     activeThreadBusy,
     onChangeDraftMessage,
     onPickDraftImages,
