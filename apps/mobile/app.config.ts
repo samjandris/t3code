@@ -23,22 +23,22 @@ const VARIANT_CONFIG: Record<
     appName: "T3 Code Dev",
     scheme: "t3code-dev",
     iosIcon: "./assets/icon-composer-dev.icon",
-    iosBundleIdentifier: "com.t3tools.t3code.dev",
-    androidPackage: "com.t3tools.t3code.dev",
+    iosBundleIdentifier: "com.samjandris.t3code.dev",
+    androidPackage: "com.samjandris.t3code.dev",
   },
   preview: {
     appName: "T3 Code Preview",
     scheme: "t3code-preview",
     iosIcon: "./assets/icon-composer-prod.icon",
-    iosBundleIdentifier: "com.t3tools.t3code.preview",
-    androidPackage: "com.t3tools.t3code.preview",
+    iosBundleIdentifier: "com.samjandris.t3code.preview",
+    androidPackage: "com.samjandris.t3code.preview",
   },
   production: {
     appName: "T3 Code",
     scheme: "t3code",
     iosIcon: "./assets/icon-composer-prod.icon",
-    iosBundleIdentifier: "com.t3tools.t3code",
-    androidPackage: "com.t3tools.t3code",
+    iosBundleIdentifier: "com.samjandris.t3code",
+    androidPackage: "com.samjandris.t3code",
   },
 };
 
@@ -69,7 +69,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   updates: {
     enabled: true,
-    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+    url: "https://u.expo.dev/2dad1739-3d64-4f1a-b209-eb37c106b598",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -167,10 +167,10 @@ const config: ExpoConfig = {
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
     eas: {
-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+      projectId: "2dad1739-3d64-4f1a-b209-eb37c106b598",
     },
   },
-  owner: "pingdotgg",
+  owner: "samjandris",
 };
 
 export default config;
