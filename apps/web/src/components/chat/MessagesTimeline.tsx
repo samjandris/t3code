@@ -1310,11 +1310,20 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<
+    TimelineWorkEntry,
+    "detail" | "command" | "changedFiles" | "toolSummaryStatus" | "itemType" | "requestKind"
+  >,
   workspaceRoot: string | undefined,
 ) {
+  if (workEntry.toolSummaryStatus === "complete" && workEntry.detail) return workEntry.detail;
   if (workEntry.command) return workEntry.command;
-  if (workEntry.detail) return workEntry.detail;
+  const hasStructuredChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
+  const isStructuredFileChange =
+    hasStructuredChangedFiles &&
+    (workEntry.itemType === "file_change" || workEntry.requestKind === "file-change");
+  if (workEntry.detail && !isStructuredFileChange) return workEntry.detail;
+  if (isStructuredFileChange) return null;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
@@ -1423,9 +1432,33 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       normalizeCompactToolLabel(heading).toLowerCase()
       ? null
       : rawPreview;
+  const rawCommand = workEntryRawCommand(workEntry);
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const expandedBody = buildToolCallExpandedBody(workEntry, workspaceRoot);
   const canExpand = expandedBody !== null;
+  const isToolSummaryPending = workEntry.toolSummaryStatus === "pending";
+  const previousToolSummaryStatusRef = useRef(workEntry.toolSummaryStatus);
+  const [shouldRevealToolSummary, setShouldRevealToolSummary] = useState(false);
+
+  useEffect(() => {
+    const previousStatus = previousToolSummaryStatusRef.current;
+    const currentStatus = workEntry.toolSummaryStatus;
+    previousToolSummaryStatusRef.current = currentStatus;
+
+    if (previousStatus === "pending" && currentStatus === "complete") {
+      setShouldRevealToolSummary(true);
+      const timeoutId = window.setTimeout(() => {
+        setShouldRevealToolSummary(false);
+      }, 700);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    if (currentStatus !== "complete") {
+      setShouldRevealToolSummary(false);
+    }
+    return undefined;
+  }, [workEntry.toolSummaryStatus]);
+
   const showFailedIndicator = workEntryIndicatesToolFailure(workEntry);
   const showDestructiveRowStyle =
     showFailedIndicator &&
@@ -1483,12 +1516,73 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
-            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5">
-              <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
-              {preview && (
-                <span className="min-w-0 flex-1 truncate text-muted-foreground/55">{preview}</span>
-              )}
-            </p>
+            {rawCommand ? (
+              <div className="max-w-full">
+                <Tooltip>
+                  <TooltipTrigger
+                    closeDelay={0}
+                    delay={75}
+                    onClick={stopRowToggle}
+                    onPointerDown={stopRowToggle}
+                    render={
+                      <p
+                        className={cn(
+                          "tool-summary-line flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5",
+                          isToolSummaryPending && "tool-summary-shimmer",
+                          shouldRevealToolSummary && "tool-summary-reveal",
+                        )}
+                        aria-label={displayText}
+                      />
+                    }
+                  >
+                    <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
+                    {preview && (
+                      <span className="min-w-0 flex-1 cursor-default truncate text-muted-foreground/55 transition-colors hover:text-muted-foreground/90 focus-visible:text-muted-foreground/90">
+                        {preview}
+                      </span>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipPopup
+                    align="start"
+                    className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
+                    side="top"
+                  >
+                    <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
+                      {rawCommand}
+                    </div>
+                  </TooltipPopup>
+                </Tooltip>
+              </div>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  className="block min-w-0 w-full text-left"
+                  aria-label={displayText}
+                  onClick={stopRowToggle}
+                  onPointerDown={stopRowToggle}
+                >
+                  <p
+                    className={cn(
+                      "tool-summary-line flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5",
+                      isToolSummaryPending && "tool-summary-shimmer",
+                      shouldRevealToolSummary && "tool-summary-reveal",
+                    )}
+                  >
+                    <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
+                    {preview && (
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground/55">
+                        {preview}
+                      </span>
+                    )}
+                  </p>
+                </TooltipTrigger>
+                <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
+                  <p className="whitespace-pre-wrap wrap-break-word text-xs leading-5">
+                    {displayText}
+                  </p>
+                </TooltipPopup>
+              </Tooltip>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-px text-muted-foreground/55">
             <span
