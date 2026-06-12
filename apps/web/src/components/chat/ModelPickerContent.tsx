@@ -585,7 +585,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 <ComboboxInput
                   ref={searchInputRef}
                   className="[&_input]:h-6.5 [&_input]:font-sans [&_input]:leading-6.5"
-                  inputClassName="rounded-none bg-transparent text-sm"
+                  inputClassName="rounded-none bg-transparent text-base sm:text-sm"
                   placeholder="Search models..."
                   showTrigger={false}
                   startAddon={
