@@ -1,7 +1,7 @@
 import { ArchiveIcon, ArchiveX, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { useAtomValue } from "@effect/atom-react";
+import { useCallback, useContext, useMemo, useRef, useState } from "react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   defaultInstanceIdForDriver,
   type DesktopUpdateChannel,
@@ -50,6 +50,7 @@ import {
 import { ensureLocalApi, readLocalApi } from "../../localApi";
 import {
   primaryServerObservabilityAtom,
+  primaryServerProviderRefreshOverrideAtom,
   primaryServerProvidersAtom,
   serverEnvironment,
 } from "../../state/server";
@@ -939,6 +940,7 @@ export function GeneralSettingsPanel() {
 }
 
 export function ProviderSettingsPanel() {
+  const atomRegistry = useContext(RegistryContext);
   const settings = useSettings();
   const updateSettings = useUpdateSettings();
   const serverProviders = useAtomValue(primaryServerProvidersAtom);
@@ -999,11 +1001,16 @@ export function ProviderSettingsPanel() {
       });
       refreshingRef.current = false;
       setIsRefreshingProviders(false);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      if (result._tag === "Success") {
+        atomRegistry.set(primaryServerProviderRefreshOverrideAtom, {
+          environmentId: primaryEnvironment.environmentId,
+          providers: result.value.providers,
+        });
+      } else if (!isAtomCommandInterrupted(result)) {
         console.warn("Failed to refresh providers", squashAtomCommandFailure(result));
       }
     })();
-  }, [primaryEnvironment, refreshServerProviders]);
+  }, [atomRegistry, primaryEnvironment, refreshServerProviders]);
 
   const runProviderUpdate = useCallback(
     async (candidate: ProviderUpdateCandidate) => {
