@@ -9,7 +9,7 @@ import {
   type RuntimeMode,
 } from "@t3tools/contracts";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
-import { Pressable, ScrollView, Text as RNText, View } from "react-native";
+import { Keyboard, Pressable, ScrollView, Text as RNText, View } from "react-native";
 import { useWorkspaceState } from "../../state/workspace";
 import { useThemeColor } from "../../lib/useThemeColor";
 import { useEnvironmentQuery } from "../../state/query";
@@ -51,6 +51,7 @@ import { useSelectedThreadRequests } from "../../state/use-selected-thread-reque
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useThreadComposerState } from "../../state/use-thread-composer-state";
 import { threadEnvironment } from "../../state/threads";
+import { setComposerDraftProperties } from "../../state/use-composer-drafts";
 import { projectThreadContentPresentation } from "./threadContentPresentation";
 
 function firstRouteParam(value: string | string[] | undefined): string | null {
@@ -104,6 +105,19 @@ export function ThreadRouteScreen() {
   const routeConnectionState =
     routeEnvironmentRuntime?.connectionState ?? (environmentId ? "available" : connectionState);
   const routeConnectionError = routeEnvironmentRuntime?.connectionError ?? null;
+  const selectedThreadKey = selectedThread
+    ? scopedThreadKey(selectedThread.environmentId, selectedThread.id)
+    : null;
+  const effectiveSelectedThread = useMemo(
+    () =>
+      selectedThread && composer.selectedThreadDispatchProperties
+        ? {
+            ...selectedThread,
+            ...composer.selectedThreadDispatchProperties,
+          }
+        : selectedThread,
+    [composer.selectedThreadDispatchProperties, selectedThread],
+  );
 
   /* ─── Native header theming ──────────────────────────────────────── */
   const iconColor = String(useThemeColor("--color-icon"));
@@ -150,6 +164,12 @@ export function ThreadRouteScreen() {
   const gitActionProgress = useGitActionProgress(gitActionProgressTarget);
 
   const handleOpenDrawer = useCallback(() => {
+    // Work around current drawer/keyboard interaction: if the composer owns
+    // focus, iOS keeps the keyboard raised under the transparent drawer modal,
+    // clipping the drawer and leaving the thread feed with a stale keyboard gap
+    // after close. Remove this once upstream modal presentation dismisses or
+    // isolates the keyboard automatically.
+    Keyboard.dismiss();
     setDrawerVisible(true);
   }, []);
 
@@ -158,9 +178,13 @@ export function ThreadRouteScreen() {
   }, [router]);
   const handleUpdateThreadModelSelection = useCallback(
     (modelSelection: ModelSelection) => {
-      if (!selectedThread) {
+      if (!selectedThread || !selectedThreadKey) {
         return;
       }
+      setComposerDraftProperties(selectedThreadKey, {
+        ...(composer.selectedThreadDispatchProperties ?? selectedThread),
+        modelSelection,
+      });
       return updateThreadMetadata({
         environmentId: selectedThread.environmentId,
         input: {
@@ -169,13 +193,22 @@ export function ThreadRouteScreen() {
         },
       });
     },
-    [selectedThread, updateThreadMetadata],
+    [
+      composer.selectedThreadDispatchProperties,
+      selectedThread,
+      selectedThreadKey,
+      updateThreadMetadata,
+    ],
   );
   const handleUpdateThreadRuntimeMode = useCallback(
     (runtimeMode: RuntimeMode) => {
-      if (!selectedThread) {
+      if (!selectedThread || !selectedThreadKey) {
         return;
       }
+      setComposerDraftProperties(selectedThreadKey, {
+        ...(composer.selectedThreadDispatchProperties ?? selectedThread),
+        runtimeMode,
+      });
       return setThreadRuntimeMode({
         environmentId: selectedThread.environmentId,
         input: {
@@ -184,13 +217,22 @@ export function ThreadRouteScreen() {
         },
       });
     },
-    [selectedThread, setThreadRuntimeMode],
+    [
+      composer.selectedThreadDispatchProperties,
+      selectedThread,
+      selectedThreadKey,
+      setThreadRuntimeMode,
+    ],
   );
   const handleUpdateThreadInteractionMode = useCallback(
     (interactionMode: ProviderInteractionMode) => {
-      if (!selectedThread) {
+      if (!selectedThread || !selectedThreadKey) {
         return;
       }
+      setComposerDraftProperties(selectedThreadKey, {
+        ...(composer.selectedThreadDispatchProperties ?? selectedThread),
+        interactionMode,
+      });
       return setThreadInteractionMode({
         environmentId: selectedThread.environmentId,
         input: {
@@ -199,7 +241,12 @@ export function ThreadRouteScreen() {
         },
       });
     },
-    [selectedThread, setThreadInteractionMode],
+    [
+      composer.selectedThreadDispatchProperties,
+      selectedThread,
+      selectedThreadKey,
+      setThreadInteractionMode,
+    ],
   );
   const handleStopThread = useCallback(() => {
     if (
@@ -353,7 +400,6 @@ export function ThreadRouteScreen() {
     );
   }
 
-  const selectedThreadKey = scopedThreadKey(selectedThread.environmentId, selectedThread.id);
   const contentPresentation = projectThreadContentPresentation({
     hasDetail: selectedThreadDetail !== null,
     detailError: Option.getOrNull(selectedThreadDetailState.error),
@@ -433,7 +479,7 @@ export function ThreadRouteScreen() {
 
       <View className="flex-1 bg-screen">
         <ThreadDetailScreen
-          selectedThread={selectedThread}
+          selectedThread={effectiveSelectedThread ?? selectedThread}
           contentPresentation={contentPresentation}
           screenTone={connectionTone(routeConnectionState)}
           connectionError={routeConnectionError}

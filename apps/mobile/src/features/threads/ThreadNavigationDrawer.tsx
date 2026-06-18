@@ -170,7 +170,6 @@ export function ThreadNavigationDrawer(props: {
             </View>
 
             <ThreadNavigationDrawerContent
-              bottomInset={Math.max(insets.bottom, 18)}
               borderSubtleColor={borderSubtleColor}
               selectedThreadKey={props.selectedThreadKey}
               onClose={props.onClose}
@@ -184,7 +183,6 @@ export function ThreadNavigationDrawer(props: {
 }
 
 function ThreadNavigationDrawerContent(props: {
-  readonly bottomInset: number;
   readonly borderSubtleColor: ColorValue;
   readonly selectedThreadKey: string | null;
   readonly onClose: () => void;
@@ -215,7 +213,7 @@ function ThreadNavigationDrawerContent(props: {
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentInset={{ bottom: props.bottomInset + 12 }}
+      contentInset={{ bottom: 12 }}
       contentContainerStyle={{
         gap: 20,
         paddingHorizontal: 14,

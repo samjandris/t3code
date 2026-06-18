@@ -1,7 +1,15 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useMemo } from "react";
 
-import { CommandId, MessageId, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
+import {
+  CommandId,
+  MessageId,
+  type EnvironmentId,
+  type ModelSelection,
+  type ProviderInteractionMode,
+  type RuntimeMode,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { deriveActiveWorkStartedAt } from "@t3tools/shared/orchestrationTiming";
 
 import { makeQueuedMessageMetadata } from "../lib/commandMetadata";
@@ -17,7 +25,7 @@ import { appAtomRegistry } from "../state/atom-registry";
 import {
   appendComposerDraftAttachments,
   appendComposerDraftText,
-  clearComposerDraft,
+  clearComposerDraftContent,
   composerDraftsAtom,
   ensureComposerDraftsLoaded,
   removeComposerDraftAttachment,
@@ -30,6 +38,12 @@ import { useThreadSelection } from "../state/use-thread-selection";
 import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { useThreadOutboxMessages } from "./use-thread-outbox";
 import { dispatchingQueuedMessageIdAtom } from "./use-thread-outbox-drain";
+
+interface ThreadDispatchProperties {
+  readonly modelSelection: ModelSelection;
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
+}
 
 export function appendReviewCommentToDraft(input: {
   readonly environmentId: EnvironmentId;
@@ -97,6 +111,18 @@ export function useThreadComposerState() {
   const draftMessage = selectedDraft?.text ?? "";
   const draftAttachments = selectedDraft?.attachments ?? [];
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
+  const selectedThreadDispatchProperties = useMemo<ThreadDispatchProperties | null>(() => {
+    const base = selectedThreadDetail ?? selectedThreadShell;
+    if (!base) {
+      return null;
+    }
+
+    return {
+      modelSelection: selectedDraft?.modelSelection ?? base.modelSelection,
+      runtimeMode: selectedDraft?.runtimeMode ?? base.runtimeMode,
+      interactionMode: selectedDraft?.interactionMode ?? base.interactionMode ?? "default",
+    };
+  }, [selectedDraft, selectedThreadDetail, selectedThreadShell]);
 
   const selectedThreadSessionActivity = useMemo(() => {
     const selectedThread = selectedThreadDetail ?? selectedThreadShell;
@@ -158,7 +184,7 @@ export function useThreadComposerState() {
         attachments,
         createdAt: metadata.createdAt,
       });
-      clearComposerDraft(threadKey);
+      clearComposerDraftContent(threadKey);
     } catch (error) {
       setPendingConnectionError(
         error instanceof Error ? error.message : "Failed to save the queued message.",
@@ -255,6 +281,7 @@ export function useThreadComposerState() {
     activeWorkStartedAt,
     draftMessage,
     draftAttachments,
+    selectedThreadDispatchProperties,
     activeThreadBusy,
     onChangeDraftMessage,
     onPickDraftImages,
