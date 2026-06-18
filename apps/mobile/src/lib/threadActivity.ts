@@ -3,12 +3,15 @@ import type {
   CommandId,
   EnvironmentId,
   MessageId,
+  ModelSelection,
   OrchestrationLatestTurn,
   OrchestrationThread,
   OrchestrationThreadActivity,
+  ProviderInteractionMode,
+  RuntimeMode,
+  TurnId,
   ToolLifecycleItemType,
   ThreadId,
-  TurnId,
   UserInputQuestion,
 } from "@t3tools/contracts";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
@@ -42,6 +45,9 @@ export interface QueuedThreadMessage {
   readonly commandId: CommandId;
   readonly text: string;
   readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly modelSelection: ModelSelection;
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
   readonly createdAt: string;
 }
 

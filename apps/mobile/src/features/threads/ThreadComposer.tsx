@@ -26,29 +26,26 @@ import {
   type ComposerEditorHandle,
   type ComposerEditorSelection,
 } from "../../components/ComposerEditor";
-import {
-  ComposerToolbarButton,
-  ComposerToolbarRow,
-  ComposerToolbarScroller,
-  ComposerToolbarTrigger,
-} from "../../components/ComposerToolbarTrigger";
-import { ControlPill, ControlPillMenu } from "../../components/ControlPill";
+import { ControlPill } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import { buildModelOptions } from "../../lib/modelOptions";
+import {
+  buildModelTraitMenuActions,
+  getModelTraitDescriptors,
+  updateModelSelectionTrait,
+} from "../../lib/modelTraits";
 import type { RemoteClientConnectionState } from "../../lib/connection";
 import {
   insertRankedSearchResult,
   normalizeSearchQuery,
   scoreQueryMatch,
 } from "@t3tools/shared/searchRanking";
-import {
-  getModelSelectionBooleanOptionValue,
-  getModelSelectionStringOptionValue,
-} from "@t3tools/shared/model";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
-import { CLAUDE_AGENT_EFFORT_OPTIONS } from "./claudeEffortOptions";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
+import { MobileComposerOptionsSheet } from "./MobileComposerOptionsSheet";
+import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
+import { useMobileModelFavorites } from "./useMobileModelFavorites";
 
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
@@ -61,6 +58,13 @@ export const COMPOSER_COLLAPSED_CHROME = 60;
  * Used by the parent to compute the larger feed bottom inset when the composer is focused.
  */
 export const COMPOSER_EXPANDED_CHROME = 174;
+
+/**
+ * Height of the expanded-only toolbar below the text surface.
+ * Used by the feed inset because KeyboardAvoidingLegendList only accounts for
+ * keyboard height; the floating toolbar remains an additional overlay.
+ */
+export const COMPOSER_EXPANDED_TOOLBAR_CHROME = 54;
 
 export interface ThreadComposerProps {
   readonly draftMessage: string;
@@ -79,6 +83,7 @@ export interface ThreadComposerProps {
   readonly onPickDraftImages: () => Promise<void>;
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
+  readonly onRefresh: () => Promise<void>;
   readonly onStopThread: () => Promise<void>;
   readonly onSendMessage: () => void;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => Promise<void>;
@@ -126,22 +131,6 @@ function ComposerSurface(props: {
   );
 }
 
-function withModelSelectionOption(
-  selection: ModelSelection,
-  id: string,
-  value: string | boolean | undefined,
-): ModelSelection {
-  const options = (selection.options ?? []).filter((option) => option.id !== id);
-  return {
-    ...selection,
-    options: value === undefined ? options : [...options, { id, value }],
-  };
-}
-
-function formatTitleCase(value: string): string {
-  return value.length === 0 ? value : `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
-}
-
 export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposerProps) {
   const isDarkMode = useColorScheme() === "dark";
   const foregroundColor = useThemeColor("--color-foreground");
@@ -152,6 +141,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const { onExpandedChange } = props;
 
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const [optionsSheetVisible, setOptionsSheetVisible] = useState(false);
+  const { favorites: modelFavorites, updateFavorites: updateModelFavorites } =
+    useMobileModelFavorites();
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
   const isExpanded = isFocused;
   const canSend = props.connectionState === "ready" && hasContent;
@@ -189,8 +182,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const currentModelSelection = props.selectedThread.modelSelection;
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const currentInteractionMode = props.selectedThread.interactionMode ?? "default";
-  const toolbarFadeOpaque = isDarkMode ? "rgba(0,0,0,0.95)" : "rgba(255,255,255,0.95)";
-  const toolbarFadeTransparent = isDarkMode ? "rgba(0,0,0,0)" : "rgba(255,255,255,0)";
   const selectedProviderStatus = useMemo(() => {
     if (!props.serverConfig) return null;
     return (
@@ -199,19 +190,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       ) ?? null
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
-
-  // Extract current model options (effort, fastMode, contextWindow)
-  const selectedProviderDriver = selectedProviderStatus?.driver ?? null;
-  const currentEffort =
-    selectedProviderDriver === "claudeAgent"
-      ? (getModelSelectionStringOptionValue(currentModelSelection, "effort") ?? "high")
-      : "high";
-  const currentFastMode =
-    getModelSelectionBooleanOptionValue(currentModelSelection, "fastMode") ?? false;
-  const currentContextWindow =
-    selectedProviderDriver === "claudeAgent"
-      ? (getModelSelectionStringOptionValue(currentModelSelection, "contextWindow") ?? "1M")
-      : "1M";
+  const currentModelDriver = selectedProviderStatus?.driver ?? currentModelSelection.instanceId;
+  const modelProvider = currentModelDriver;
   // ── Trigger detection ────────────────────────────────────
   const [composerSelection, setComposerSelection] = useState(() => ({
     start: props.draftMessage.length,
@@ -442,80 +422,38 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   // ── Model menu ───────────────────────────────────────────
   const modelOptions = useMemo(
-    () => buildModelOptions(props.serverConfig, currentModelSelection),
-    [props.serverConfig, currentModelSelection],
-  );
-  const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
-  const currentModelOption =
-    modelOptions.find(
-      (option) =>
-        option.selection.instanceId === currentModelSelection.instanceId &&
-        option.selection.model === currentModelSelection.model,
-    ) ?? null;
-  const configurationLabel = useMemo(() => {
-    const parts = [
-      formatTitleCase(currentEffort),
-      currentFastMode ? "Fast" : null,
-      currentContextWindow !== "1M" ? currentContextWindow : null,
-    ].filter((part): part is string => Boolean(part));
-    return parts.length > 0 ? parts.join(" · ") : "Configuration";
-  }, [currentContextWindow, currentEffort, currentFastMode]);
-  const modelMenuActions = useMemo(
     () =>
-      providerGroups.map((group) => ({
-        id: `provider:${group.providerKey}`,
-        title: group.providerLabel,
-        subtitle: group.models.find(
-          (model) =>
-            model.selection.instanceId === currentModelSelection.instanceId &&
-            model.selection.model === currentModelSelection.model,
-        )?.label,
-        subactions: group.models.map((option) => ({
-          id: `model:${option.key}`,
-          title: option.label,
-          state:
-            option.selection.instanceId === currentModelSelection.instanceId &&
-            option.selection.model === currentModelSelection.model
-              ? ("on" as const)
-              : undefined,
-        })),
-      })),
-    [providerGroups, currentModelSelection],
+      buildModelOptions(props.serverConfig, currentModelSelection).filter(
+        (option) => option.providerDriver === currentModelDriver,
+      ),
+    [props.serverConfig, currentModelSelection, currentModelDriver],
+  );
+  const currentModelOption = useMemo(
+    () =>
+      modelOptions.find(
+        (option) =>
+          option.selection.instanceId === currentModelSelection.instanceId &&
+          option.selection.model === currentModelSelection.model,
+      ) ?? null,
+    [currentModelSelection.instanceId, currentModelSelection.model, modelOptions],
+  );
+  const modelTraitDescriptors = useMemo(
+    () =>
+      getModelTraitDescriptors({
+        option: currentModelOption,
+        selections: currentModelSelection.options,
+      }),
+    [currentModelOption, currentModelSelection.options],
+  );
+  const modelTraitActions = useMemo(
+    () => buildModelTraitMenuActions(modelTraitDescriptors),
+    [modelTraitDescriptors],
   );
 
   // ── Options menu ─────────────────────────────────────────
   const optionsMenuActions = useMemo(
     () => [
-      {
-        id: "options-effort",
-        title: "Effort",
-        subtitle: `${currentEffort.charAt(0).toUpperCase()}${currentEffort.slice(1)}`,
-        subactions: CLAUDE_AGENT_EFFORT_OPTIONS.map((level) => ({
-          id: `options:effort:${level}`,
-          title: `${level}${level === "high" ? " (default)" : ""}`,
-          state: currentEffort === level ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-fast-mode",
-        title: "Fast Mode",
-        subtitle: currentFastMode ? "On" : "Off",
-        subactions: ([false, true] as const).map((value) => ({
-          id: `options:fast-mode:${value ? "on" : "off"}`,
-          title: value ? "On" : "Off",
-          state: currentFastMode === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-context-window",
-        title: "Context Window",
-        subtitle: currentContextWindow,
-        subactions: (["200k", "1M"] as const).map((value) => ({
-          id: `options:context-window:${value}`,
-          title: `${value}${value === "1M" ? " (default)" : ""}`,
-          state: currentContextWindow === value ? ("on" as const) : undefined,
-        })),
-      },
+      ...modelTraitActions,
       {
         id: "options-runtime",
         title: "Runtime",
@@ -555,58 +493,20 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         }),
       },
     ],
-    [
-      currentEffort,
-      currentFastMode,
-      currentContextWindow,
-      currentRuntimeMode,
-      currentInteractionMode,
-    ],
+    [modelTraitActions, currentRuntimeMode, currentInteractionMode],
   );
 
   // ── Menu handlers ────────────────────────────────────────
-  function handleModelMenuAction(event: string) {
-    if (!event.startsWith("model:")) {
-      return;
-    }
-    const modelKey = event.slice("model:".length);
-    const option = modelOptions.find((o) => o.key === modelKey);
-    if (option) {
-      void props.onUpdateModelSelection(option.selection);
-    }
-  }
-
   function handleOptionsMenuAction(event: string) {
-    if (event.startsWith("options:effort:")) {
-      const effort = event.slice("options:effort:".length);
-      const updated: ModelSelection =
-        selectedProviderDriver === "claudeAgent"
-          ? withModelSelectionOption(
-              currentModelSelection,
-              "effort",
-              effort as typeof currentEffort,
-            )
-          : currentModelSelection;
-      void props.onUpdateModelSelection(updated);
-      return;
-    }
-    if (event.startsWith("options:fast-mode:")) {
-      const fastMode = event.endsWith(":on");
-      const nextFast = fastMode || undefined;
-      if (selectedProviderDriver === "opencode") {
-        return;
+    if (event.startsWith("options:trait:")) {
+      const updated = updateModelSelectionTrait({
+        selection: currentModelSelection,
+        descriptors: modelTraitDescriptors,
+        event,
+      });
+      if (updated) {
+        void props.onUpdateModelSelection(updated);
       }
-      const updated = withModelSelectionOption(currentModelSelection, "fastMode", nextFast);
-      void props.onUpdateModelSelection(updated);
-      return;
-    }
-    if (event.startsWith("options:context-window:")) {
-      const contextWindow = event.slice("options:context-window:".length);
-      const updated: ModelSelection =
-        selectedProviderDriver === "claudeAgent"
-          ? withModelSelectionOption(currentModelSelection, "contextWindow", contextWindow)
-          : currentModelSelection;
-      void props.onUpdateModelSelection(updated);
       return;
     }
     if (event.startsWith("options:runtime:")) {
@@ -773,56 +673,37 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
         {/* Toolbar row — matches draft page layout (expanded only) */}
         {isExpanded ? (
-          <ComposerToolbarRow paddingBottom={8} paddingHorizontal={0} paddingTop={8}>
-            <ComposerToolbarScroller
-              fadeOpaque={toolbarFadeOpaque}
-              fadeTransparent={toolbarFadeTransparent}
-            >
-              <ComposerToolbarButton
-                icon="plus"
-                onPress={() => void props.onPickDraftImages()}
-                showChevron={false}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingTop: 10,
+              gap: 8,
+            }}
+          >
+            <ControlPill icon="plus" onPress={() => void props.onPickDraftImages()} />
+            <ControlPill
+              iconNode={<ProviderIcon provider={modelProvider} size={16} />}
+              onPress={() => setModelPickerVisible(true)}
+            />
+            <ControlPill icon="slider.horizontal.3" onPress={() => setOptionsSheetVisible(true)} />
+            <ControlPill icon="arrow.clockwise" onPress={() => void props.onRefresh()} />
+            {showStopAction ? (
+              <ControlPill
+                icon="stop.fill"
+                variant="danger"
+                onPress={() => void props.onStopThread()}
               />
-              <ControlPillMenu
-                actions={modelMenuActions}
-                onPressAction={({ nativeEvent }) => handleModelMenuAction(nativeEvent.event)}
-              >
-                <ComposerToolbarTrigger
-                  accessibilityLabel="Model"
-                  iconNode={
-                    <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
-                  }
-                  label={currentModelOption?.label ?? currentModelSelection.model}
-                />
-              </ControlPillMenu>
-              <ControlPillMenu
-                actions={optionsMenuActions}
-                onPressAction={({ nativeEvent }) => handleOptionsMenuAction(nativeEvent.event)}
-              >
-                <ComposerToolbarTrigger
-                  accessibilityLabel="Configuration"
-                  icon="slider.horizontal.3"
-                  label={configurationLabel}
-                />
-              </ControlPillMenu>
-              {showStopAction ? (
-                <ComposerToolbarButton
-                  icon="stop.fill"
-                  variant="danger"
-                  onPress={() => void props.onStopThread()}
-                  showChevron={false}
-                />
-              ) : null}
-            </ComposerToolbarScroller>
-            <ComposerToolbarButton
-              accessibilityLabel={sendLabel}
+            ) : null}
+            <ControlPill
               icon="arrow.up"
+              label={sendLabel}
               variant="primary"
               disabled={!canSend}
               onPress={handleSend}
-              showChevron={false}
             />
-          </ComposerToolbarRow>
+          </View>
         ) : null}
 
         {/* Queue count */}
@@ -848,6 +729,21 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         onRequestClose={closePreview}
         swipeToCloseEnabled
         doubleTapToZoomEnabled
+      />
+      <MobileModelPickerSheet
+        visible={modelPickerVisible}
+        modelOptions={modelOptions}
+        selectedModel={currentModelSelection}
+        favorites={modelFavorites}
+        onClose={() => setModelPickerVisible(false)}
+        onSelectModel={(selection) => void props.onUpdateModelSelection(selection)}
+        onFavoritesChange={updateModelFavorites}
+      />
+      <MobileComposerOptionsSheet
+        visible={optionsSheetVisible}
+        actions={optionsMenuActions}
+        onClose={() => setOptionsSheetVisible(false)}
+        onSelectAction={handleOptionsMenuAction}
       />
     </View>
   );

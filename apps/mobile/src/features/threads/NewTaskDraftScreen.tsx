@@ -1,57 +1,33 @@
-import { Stack, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { InteractionManager, View, useColorScheme } from "react-native";
-import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { InteractionManager, View } from "react-native";
+import { KeyboardStickyView, useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../lib/useThemeColor";
 
 import { EnvironmentId, type ModelSelection } from "@t3tools/contracts";
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
-import {
-  ComposerToolbarButton,
-  ComposerToolbarRow,
-  ComposerToolbarScroller,
-  ComposerToolbarTrigger,
-} from "../../components/ComposerToolbarTrigger";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
-import { ControlPillMenu } from "../../components/ControlPill";
+import { ControlPill, ControlPillMenu } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 
 import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/composerImages";
+import { modelOptionKey } from "../../lib/modelOptions";
+import {
+  buildModelTraitMenuActions,
+  getModelTraitDescriptors,
+  updateModelSelectionTrait,
+} from "../../lib/modelTraits";
 import { buildThreadRoutePath } from "../../lib/routes";
 import { useRemoteCatalog } from "../../state/use-remote-catalog";
-import { CLAUDE_AGENT_EFFORT_OPTIONS } from "./claudeEffortOptions";
-import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
+import { MobileComposerOptionsSheet } from "./MobileComposerOptionsSheet";
+import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
+import { MobileWorkspaceSheet } from "./MobileWorkspaceSheet";
+import { NewTaskSheetHeader } from "./NewTaskSheetHeader";
+import { useNewTaskFlow } from "./new-task-flow-provider";
 import { useProjectActions } from "./use-project-actions";
-
-function withModelSelectionOption(
-  selection: ModelSelection,
-  id: string,
-  value: string | boolean | undefined,
-): ModelSelection {
-  const options = (selection.options ?? []).filter((option) => option.id !== id);
-  return {
-    ...selection,
-    options: value === undefined ? options : [...options, { id, value }],
-  };
-}
-
-function formatTitleCase(value: string): string {
-  return value.length === 0 ? value : `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
-}
-
-function formatWorkspaceLabel(input: {
-  readonly workspaceMode: string;
-  readonly currentBranchName: string | null;
-  readonly selectedBranchName: string | null;
-}): string {
-  const branchName = input.selectedBranchName ?? input.currentBranchName;
-  if (input.workspaceMode === "worktree") {
-    return branchName ? `New worktree · ${branchName}` : "New worktree";
-  }
-  return branchName ? `Current · ${branchName}` : "Current checkout";
-}
+import { useMobileModelFavorites } from "./useMobileModelFavorites";
 
 export function NewTaskDraftScreen(props: {
   readonly initialProjectRef?: {
@@ -64,15 +40,17 @@ export function NewTaskDraftScreen(props: {
   const flow = useNewTaskFlow();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
   const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
   const controlsBottomPadding = isKeyboardVisible ? 8 : Math.max(insets.bottom, 10);
   const { logicalProjects, selectedProject, setProject } = flow;
   const promptInputRef = useRef<ComposerEditorHandle>(null);
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const [optionsSheetVisible, setOptionsSheetVisible] = useState(false);
+  const [workspaceSheetVisible, setWorkspaceSheetVisible] = useState(false);
+  const { favorites: modelFavorites, updateFavorites: updateModelFavorites } =
+    useMobileModelFavorites();
 
   const borderColor = useThemeColor("--color-border");
-  const sheetFadeOpaque = colorScheme === "dark" ? "rgba(14,14,14,0.98)" : "rgba(242,242,247,0.98)";
-  const sheetFadeTransparent = colorScheme === "dark" ? "rgba(14,14,14,0)" : "rgba(242,242,247,0)";
 
   useEffect(() => {
     if (props.initialProjectRef?.environmentId && props.initialProjectRef?.projectId) {
@@ -145,63 +123,25 @@ export function NewTaskDraftScreen(props: {
     [flow.environments, flow.selectedEnvironmentId],
   );
 
-  const modelMenuActions = useMemo(
+  const modelTraitDescriptors = useMemo(
     () =>
-      flow.providerGroups.map((group) => ({
-        id: `provider:${group.providerKey}`,
-        title: group.providerLabel,
-        subtitle: group.models.find(
-          (model) =>
-            flow.selectedModel &&
-            model.selection.instanceId === flow.selectedModel.instanceId &&
-            model.selection.model === flow.selectedModel.model,
-        )?.label,
-        subactions: group.models.map((option) => ({
-          id: `model:${option.key}`,
-          title: option.label,
-          state:
-            flow.selectedModel &&
-            option.selection.instanceId === flow.selectedModel.instanceId &&
-            option.selection.model === flow.selectedModel.model
-              ? ("on" as const)
-              : undefined,
-        })),
-      })),
-    [flow.providerGroups, flow.selectedModel],
+      getModelTraitDescriptors({
+        option: flow.selectedModelOption,
+        selections:
+          flow.selectedModelOptions.length > 0
+            ? flow.selectedModelOptions
+            : flow.selectedModel?.options,
+      }),
+    [flow.selectedModel?.options, flow.selectedModelOption, flow.selectedModelOptions],
+  );
+  const modelTraitActions = useMemo(
+    () => buildModelTraitMenuActions(modelTraitDescriptors),
+    [modelTraitDescriptors],
   );
 
   const optionsMenuActions = useMemo(
     () => [
-      {
-        id: "options-effort",
-        title: "Effort",
-        subtitle: `${flow.effort.charAt(0).toUpperCase()}${flow.effort.slice(1)}`,
-        subactions: CLAUDE_AGENT_EFFORT_OPTIONS.map((level) => ({
-          id: `options:effort:${level}`,
-          title: `${level}${level === "high" ? " (default)" : ""}`,
-          state: flow.effort === level ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-fast-mode",
-        title: "Fast Mode",
-        subtitle: flow.fastMode ? "On" : "Off",
-        subactions: ([false, true] as const).map((value) => ({
-          id: `options:fast-mode:${value ? "on" : "off"}`,
-          title: value ? "On" : "Off",
-          state: flow.fastMode === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "options-context-window",
-        title: "Context Window",
-        subtitle: flow.contextWindow,
-        subactions: (["200k", "1M"] as const).map((value) => ({
-          id: `options:context-window:${value}`,
-          title: `${value}${value === "1M" ? " (default)" : ""}`,
-          state: flow.contextWindow === value ? ("on" as const) : undefined,
-        })),
-      },
+      ...modelTraitActions,
       {
         id: "options-runtime",
         title: "Runtime",
@@ -241,94 +181,8 @@ export function NewTaskDraftScreen(props: {
         }),
       },
     ],
-    [flow.contextWindow, flow.effort, flow.fastMode, flow.interactionMode, flow.runtimeMode],
+    [modelTraitActions, flow.interactionMode, flow.runtimeMode],
   );
-
-  const workspaceMenuActions = useMemo(() => {
-    const branchActions =
-      flow.availableBranches.length === 0
-        ? [
-            {
-              id: "workspace:branch:none",
-              title: flow.branchesLoading ? "Loading branches…" : "No branches available",
-              attributes: { disabled: true },
-            },
-          ]
-        : flow.availableBranches.slice(0, 12).map((branch) => {
-            const badge = branchBadgeLabel({
-              branch,
-              project: flow.selectedProject,
-            });
-
-            return {
-              id: `workspace:branch:${branch.name}`,
-              title: branch.name,
-              subtitle: badge ? badge.toUpperCase() : undefined,
-              state: flow.selectedBranchName === branch.name ? ("on" as const) : undefined,
-            };
-          });
-
-    return [
-      {
-        id: "workspace:mode",
-        title: "Mode",
-        subtitle: flow.workspaceMode === "local" ? "Current checkout" : "New worktree",
-        subactions: (["local", "worktree"] as const).map((value) => ({
-          id: `workspace:mode:${value}`,
-          title: value === "local" ? "Current checkout" : "New worktree",
-          state: flow.workspaceMode === value ? ("on" as const) : undefined,
-        })),
-      },
-      {
-        id: "workspace:branch",
-        title: "Branch",
-        subtitle: flow.selectedBranchName ?? "Choose branch",
-        subactions: branchActions,
-      },
-    ];
-  }, [
-    flow.availableBranches,
-    flow.branchesLoading,
-    flow.selectedBranchName,
-    flow.selectedProject,
-    flow.workspaceMode,
-  ]);
-
-  const selectedEnvironmentLabel =
-    flow.environments.find(
-      (environment) => environment.environmentId === flow.selectedEnvironmentId,
-    )?.environmentLabel ?? "Environment";
-  const currentBranchName =
-    flow.availableBranches.find((branch) => branch.current)?.name ??
-    flow.availableBranches.find((branch) => branch.isDefault)?.name ??
-    null;
-  const configurationLabel = useMemo(() => {
-    const parts = [
-      formatTitleCase(flow.effort),
-      flow.fastMode ? "Fast" : null,
-      flow.contextWindow !== "1M" ? flow.contextWindow : null,
-    ].filter((part): part is string => Boolean(part));
-    return parts.length > 0 ? parts.join(" · ") : "Configuration";
-  }, [flow.contextWindow, flow.effort, flow.fastMode]);
-  const workspaceLabel = useMemo(
-    () =>
-      formatWorkspaceLabel({
-        currentBranchName,
-        selectedBranchName: flow.selectedBranchName,
-        workspaceMode: flow.workspaceMode,
-      }),
-    [currentBranchName, flow.selectedBranchName, flow.workspaceMode],
-  );
-  function handleModelMenuAction(event: string) {
-    if (!event.startsWith("model:")) {
-      return;
-    }
-    // Defer state update so the native menu dismiss animation completes
-    // before re-rendering the menu actions (prevents submenu jump).
-    setTimeout(() => {
-      flow.setSelectedModelKey(event.slice("model:".length));
-    }, 150);
-  }
 
   function handleEnvironmentMenuAction(event: string) {
     if (!event.startsWith("environment:")) {
@@ -338,16 +192,18 @@ export function NewTaskDraftScreen(props: {
   }
 
   function handleOptionsMenuAction(event: string) {
-    if (event.startsWith("options:effort:")) {
-      flow.setEffort(event.slice("options:effort:".length) as typeof flow.effort);
-      return;
-    }
-    if (event.startsWith("options:fast-mode:")) {
-      flow.setFastMode(event.endsWith(":on"));
-      return;
-    }
-    if (event.startsWith("options:context-window:")) {
-      flow.setContextWindow(event.slice("options:context-window:".length));
+    if (event.startsWith("options:trait:") && flow.selectedModel) {
+      const updated = updateModelSelectionTrait({
+        selection: {
+          ...flow.selectedModel,
+          ...(flow.selectedModelOptions.length > 0 ? { options: flow.selectedModelOptions } : {}),
+        },
+        descriptors: modelTraitDescriptors,
+        event,
+      });
+      if (updated) {
+        flow.setSelectedModelOptions(updated.options ?? []);
+      }
       return;
     }
     if (event.startsWith("options:runtime:")) {
@@ -360,22 +216,6 @@ export function NewTaskDraftScreen(props: {
       flow.setInteractionMode(
         event.slice("options:interaction:".length) as Parameters<typeof flow.setInteractionMode>[0],
       );
-    }
-  }
-
-  function handleWorkspaceMenuAction(event: string) {
-    if (event.startsWith("workspace:mode:")) {
-      flow.setWorkspaceMode(
-        event.slice("workspace:mode:".length) as Parameters<typeof flow.setWorkspaceMode>[0],
-      );
-      return;
-    }
-    if (event.startsWith("workspace:branch:")) {
-      const branchName = event.slice("workspace:branch:".length);
-      const branch = flow.availableBranches.find((candidate) => candidate.name === branchName);
-      if (branch) {
-        flow.selectBranch(branch);
-      }
     }
   }
 
@@ -417,19 +257,9 @@ export function NewTaskDraftScreen(props: {
     flow.setSubmitting(true);
     try {
       const modelWithOptions: ModelSelection =
-        flow.selectedModelOption?.providerDriver === "claudeAgent"
-          ? withModelSelectionOption(
-              withModelSelectionOption(
-                withModelSelectionOption(flow.selectedModel, "effort", flow.effort),
-                "fastMode",
-                flow.fastMode || undefined,
-              ),
-              "contextWindow",
-              flow.contextWindow,
-            )
-          : flow.selectedModelOption?.providerDriver === "codex"
-            ? withModelSelectionOption(flow.selectedModel, "fastMode", flow.fastMode || undefined)
-            : flow.selectedModel;
+        flow.selectedModelOptions.length > 0
+          ? { ...flow.selectedModel, options: flow.selectedModelOptions }
+          : flow.selectedModel;
 
       const createdThread = await onCreateThreadWithOptions({
         project: flow.selectedProject,
@@ -444,8 +274,6 @@ export function NewTaskDraftScreen(props: {
       });
 
       if (createdThread) {
-        flow.setPrompt("");
-        flow.clearAttachments();
         router.replace(buildThreadRoutePath(createdThread));
       }
     } finally {
@@ -456,32 +284,39 @@ export function NewTaskDraftScreen(props: {
   if (!selectedProject) {
     return (
       <View className="flex-1 bg-sheet">
-        <Stack.Screen options={{ title: "Loading task" }} />
+        <NewTaskSheetHeader title="Loading task" />
       </View>
     );
   }
 
   return (
     <View className="flex-1 bg-sheet">
-      <Stack.Screen options={{ title: selectedProject.title }} />
+      <NewTaskSheetHeader
+        title={selectedProject.title}
+        control={
+          flow.logicalProjects.length > 1
+            ? { icon: "chevron.left", onPress: () => router.back() }
+            : undefined
+        }
+      />
 
-      <KeyboardAvoidingView automaticOffset behavior="padding" style={{ flex: 1 }}>
-        <View style={{ flex: 1, minHeight: 0, paddingHorizontal: 20, paddingTop: 8 }}>
-          <ComposerEditor
-            ref={promptInputRef}
-            autoFocus
-            multiline
-            scrollEnabled
-            value={flow.prompt}
-            skills={flow.selectedProviderSkills}
-            onChangeText={flow.setPrompt}
-            onPasteImages={(uris) => void handleNativePasteImages(uris)}
-            placeholder={`Describe a coding task in ${selectedProject.title}`}
-            style={{ flex: 1, minHeight: 0 }}
-            textStyle={{ fontSize: 18, lineHeight: 28 }}
-          />
-        </View>
+      <View style={{ flex: 1, minHeight: 0, paddingHorizontal: 20, paddingTop: 8 }}>
+        <ComposerEditor
+          ref={promptInputRef}
+          autoFocus
+          multiline
+          scrollEnabled
+          value={flow.prompt}
+          skills={flow.selectedProviderSkills}
+          onChangeText={flow.setPrompt}
+          onPasteImages={(uris) => void handleNativePasteImages(uris)}
+          placeholder={`Describe a coding task in ${selectedProject.title}`}
+          style={{ flex: 1, minHeight: 0 }}
+          textStyle={{ fontSize: 18, lineHeight: 28 }}
+        />
+      </View>
 
+      <KeyboardStickyView>
         <View
           style={{
             borderTopWidth: 1,
@@ -499,65 +334,30 @@ export function NewTaskDraftScreen(props: {
               />
             </View>
           ) : null}
-          <ComposerToolbarRow paddingBottom={controlsBottomPadding} paddingHorizontal={6}>
-            <ComposerToolbarScroller
-              fadeOpaque={sheetFadeOpaque}
-              fadeTransparent={sheetFadeTransparent}
+          <View className="flex-row items-center justify-between gap-2 px-4 pt-2">
+            <ControlPill icon="plus" onPress={() => void handlePickImages()} />
+            <ControlPill
+              iconNode={
+                <ProviderIcon provider={flow.selectedModelOption?.providerDriver} size={16} />
+              }
+              onPress={() => setModelPickerVisible(true)}
+            />
+            <ControlPill icon="slider.horizontal.3" onPress={() => setOptionsSheetVisible(true)} />
+            <ControlPillMenu
+              actions={environmentMenuActions}
+              onPressAction={({ nativeEvent }) => handleEnvironmentMenuAction(nativeEvent.event)}
             >
-              <ComposerToolbarButton
-                icon="plus"
-                onPress={() => void handlePickImages()}
-                showChevron={false}
-              />
-              <ControlPillMenu
-                actions={modelMenuActions}
-                onPressAction={({ nativeEvent }) => handleModelMenuAction(nativeEvent.event)}
-              >
-                <ComposerToolbarTrigger
-                  accessibilityLabel="Model"
-                  iconNode={
-                    <ProviderIcon provider={flow.selectedModelOption?.providerDriver} size={16} />
-                  }
-                  label={flow.selectedModelOption?.label ?? "Model"}
-                />
-              </ControlPillMenu>
-              <ControlPillMenu
-                actions={optionsMenuActions}
-                onPressAction={({ nativeEvent }) => handleOptionsMenuAction(nativeEvent.event)}
-              >
-                <ComposerToolbarTrigger
-                  accessibilityLabel="Configuration"
-                  icon="slider.horizontal.3"
-                  label={configurationLabel}
-                />
-              </ControlPillMenu>
-              <ControlPillMenu
-                actions={environmentMenuActions}
-                onPressAction={({ nativeEvent }) => handleEnvironmentMenuAction(nativeEvent.event)}
-              >
-                <ComposerToolbarTrigger
-                  accessibilityLabel="Environment"
-                  icon="desktopcomputer"
-                  label={selectedEnvironmentLabel}
-                />
-              </ControlPillMenu>
-              <ControlPillMenu
-                actions={workspaceMenuActions}
-                onPressAction={({ nativeEvent }) => handleWorkspaceMenuAction(nativeEvent.event)}
-              >
-                <ComposerToolbarTrigger
-                  accessibilityLabel="Workspace"
-                  icon="point.topleft.down.curvedto.point.bottomright.up"
-                  label={workspaceLabel}
-                />
-              </ControlPillMenu>
-            </ComposerToolbarScroller>
-            <ComposerToolbarButton
-              accessibilityLabel={flow.submitting ? "Starting task" : "Start task"}
+              <ControlPill icon="desktopcomputer" />
+            </ControlPillMenu>
+            <ControlPill
+              icon="point.topleft.down.curvedto.point.bottomright.up"
+              onPress={() => setWorkspaceSheetVisible(true)}
+            />
+            <ControlPill
               icon="arrow.up"
+              label={flow.submitting ? "Starting" : "Start"}
               onPress={() => void handleStart()}
               variant="primary"
-              showChevron={false}
               disabled={
                 !flow.selectedProject ||
                 !flow.selectedModel ||
@@ -566,9 +366,37 @@ export function NewTaskDraftScreen(props: {
                 (flow.workspaceMode === "worktree" && !flow.selectedBranchName)
               }
             />
-          </ComposerToolbarRow>
+          </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardStickyView>
+      <MobileModelPickerSheet
+        visible={modelPickerVisible}
+        modelOptions={flow.modelOptions}
+        selectedModel={flow.selectedModel}
+        favorites={modelFavorites}
+        onClose={() => setModelPickerVisible(false)}
+        onSelectModel={(selection) => flow.setSelectedModelKey(modelOptionKey(selection))}
+        onFavoritesChange={updateModelFavorites}
+      />
+      <MobileComposerOptionsSheet
+        visible={optionsSheetVisible}
+        actions={optionsMenuActions}
+        onClose={() => setOptionsSheetVisible(false)}
+        onSelectAction={handleOptionsMenuAction}
+      />
+      <MobileWorkspaceSheet
+        visible={workspaceSheetVisible}
+        workspaceMode={flow.workspaceMode}
+        selectedBranchName={flow.selectedBranchName}
+        branchQuery={flow.branchQuery}
+        branchesLoading={flow.branchesLoading}
+        branches={flow.filteredBranches}
+        selectedProject={flow.selectedProject}
+        onClose={() => setWorkspaceSheetVisible(false)}
+        onSelectWorkspaceMode={flow.setWorkspaceMode}
+        onChangeBranchQuery={flow.setBranchQuery}
+        onSelectBranch={flow.selectBranch}
+      />
     </View>
   );
 }

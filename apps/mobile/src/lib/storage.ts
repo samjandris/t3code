@@ -27,7 +27,17 @@ export interface CachedShellSnapshot {
 export interface MobilePreferences {
   readonly liveActivitiesEnabled?: boolean;
   readonly terminalFontSize?: number;
+  readonly modelFavorites?: ReadonlyArray<{
+    readonly provider: string;
+    readonly model: string;
+  }>;
 }
+
+type MutableMobilePreferences = {
+  liveActivitiesEnabled?: boolean;
+  terminalFontSize?: number;
+  modelFavorites?: NonNullable<MobilePreferences["modelFavorites"]>;
+};
 
 const CachedShellSnapshotSchema = Schema.Struct({
   schemaVersion: Schema.Literal(SHELL_SNAPSHOT_CACHE_SCHEMA_VERSION),
@@ -56,6 +66,36 @@ async function readJsonStorageItem<T>(key: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeModelFavorites(value: unknown): NonNullable<MobilePreferences["modelFavorites"]> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const favorites: Array<{ provider: string; model: string }> = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const provider = typeof entry.provider === "string" ? entry.provider.trim() : "";
+    const model = typeof entry.model === "string" ? entry.model.trim() : "";
+    if (!provider || !model) {
+      continue;
+    }
+    const key = `${provider}:${model}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    favorites.push({ provider, model });
+  }
+  return favorites;
 }
 
 function cachedShellSnapshotFileName(environmentId: EnvironmentId): string {
@@ -170,21 +210,23 @@ export async function clearSavedConnection(environmentId: EnvironmentId): Promis
 }
 
 export async function loadPreferences(): Promise<MobilePreferences> {
-  const parsed = await readJsonStorageItem<MobilePreferences>(PREFERENCES_KEY);
-  if (!parsed || typeof parsed !== "object") {
+  const parsed = await readJsonStorageItem<unknown>(PREFERENCES_KEY);
+  if (!isRecord(parsed)) {
     return {};
   }
 
-  const preferences: {
-    liveActivitiesEnabled?: boolean;
-    terminalFontSize?: number;
-  } = {};
+  const preferences: MutableMobilePreferences = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
     preferences.liveActivitiesEnabled = parsed.liveActivitiesEnabled;
   }
   if (typeof parsed.terminalFontSize === "number") {
     preferences.terminalFontSize = parsed.terminalFontSize;
+  }
+
+  const modelFavorites = normalizeModelFavorites(parsed.modelFavorites);
+  if (modelFavorites.length > 0) {
+    preferences.modelFavorites = modelFavorites;
   }
 
   return preferences;
