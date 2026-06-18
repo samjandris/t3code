@@ -24,6 +24,7 @@ import { cn } from "~/lib/utils";
 import { TooltipProvider } from "../ui/tooltip";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { useIsMobile } from "../../hooks/useMediaQuery";
 
 type ModelPickerItem = {
   slug: string;
@@ -114,6 +115,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     [providedKeybindings],
   );
   const updateSettings = useUpdateSettings();
+  const isMobile = useIsMobile();
 
   const focusSearchInput = useCallback(() => {
     searchInputRef.current?.focus({ preventScroll: true });
@@ -130,6 +132,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   );
 
   useLayoutEffect(() => {
+    if (isMobile) {
+      return;
+    }
     focusSearchInput();
     const frame = window.requestAnimationFrame(() => {
       focusSearchInput();
@@ -141,7 +146,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timeout);
     };
-  }, [focusSearchInput]);
+  }, [focusSearchInput, isMobile]);
 
   // Create a Set for efficient lookup. Favorites are keyed by
   // `${instanceId}:${slug}`; the storage schema widened from ProviderDriverKind
@@ -576,7 +581,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 <ComboboxInput
                   ref={searchInputRef}
                   className="[&_input]:h-6.5 [&_input]:font-sans [&_input]:leading-6.5"
-                  inputClassName="rounded-none bg-transparent text-sm"
+                  inputClassName="rounded-none bg-transparent text-base sm:text-sm"
                   placeholder="Search models..."
                   showTrigger={false}
                   startAddon={
