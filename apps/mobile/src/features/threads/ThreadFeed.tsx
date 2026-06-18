@@ -28,6 +28,13 @@ import {
 } from "react-native";
 import { TouchableOpacity } from "react-native-gesture-handler";
 import ImageViewing from "react-native-image-viewing";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../lib/useThemeColor";
 import {
@@ -145,6 +152,14 @@ function buildActivityRows(
 }
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
+const AnimatedNativeText = Animated.createAnimatedComponent(NativeText);
+const AnimatedView = Animated.createAnimatedComponent(View);
+const WORK_LOG_TEXT_STYLE = {
+  fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace",
+  fontSize: 12,
+  lineHeight: 18,
+} as const;
+const TOOL_SUMMARY_SHIMMER_WIDTH = 52;
 
 const MARKDOWN_COLORS = {
   light: {
@@ -263,6 +278,217 @@ const MarkdownExternalLink = memo(function MarkdownExternalLink(props: {
     </NativeText>
   );
 });
+
+type ActivityRow = ReturnType<typeof buildActivityRows>[number];
+
+function WorkLogRow(props: {
+  readonly row: ActivityRow;
+  readonly index: number;
+  readonly copiedRowId: string | null;
+  readonly iconSubtleColor: string | ColorValue;
+  readonly expanded: boolean;
+  readonly onCopyWorkRow: (rowId: string, value: string) => void;
+  readonly onToggleWorkRow: (rowId: string) => void;
+}) {
+  const colorScheme = useColorScheme();
+  const isToolSummaryPending = props.row.toolSummaryStatus === "pending";
+  const previousToolSummaryStatusRef = useRef(props.row.toolSummaryStatus);
+  const { width: windowWidth } = useWindowDimensions();
+  const [textWidth, setTextWidth] = useState(0);
+  const shimmerProgress = useSharedValue(0);
+  const revealProgress = useSharedValue(0);
+  const displayText = props.row.detail
+    ? `${props.row.summary} - ${props.row.detail}`
+    : props.row.summary;
+  const baseTextColor = colorScheme === "dark" ? "#a3a3a3" : "#525252";
+  const glintColor = colorScheme === "dark" ? "rgba(255,255,255,0.72)" : "rgba(23,23,23,0.46)";
+  const textStyle = {
+    color: baseTextColor,
+    ...WORK_LOG_TEXT_STYLE,
+  } as const;
+  const shimmerTravelDistance =
+    Math.max(textWidth, Math.min(windowWidth, 320)) + TOOL_SUMMARY_SHIMMER_WIDTH * 2;
+  const overlayTextWidth = Math.max(textWidth, windowWidth);
+
+  useEffect(() => {
+    if (!isToolSummaryPending) {
+      shimmerProgress.value = 0;
+      return;
+    }
+    shimmerProgress.value = 0;
+    shimmerProgress.value = withRepeat(
+      withTiming(1, { duration: 1650, easing: Easing.linear }),
+      -1,
+      false,
+    );
+  }, [isToolSummaryPending, shimmerProgress]);
+
+  useEffect(() => {
+    const previousStatus = previousToolSummaryStatusRef.current;
+    const currentStatus = props.row.toolSummaryStatus;
+    previousToolSummaryStatusRef.current = currentStatus;
+
+    if (previousStatus === "pending" && currentStatus === "complete") {
+      revealProgress.value = 0.75;
+      revealProgress.value = withTiming(0, {
+        duration: 640,
+        easing: Easing.out(Easing.cubic),
+      });
+      return;
+    }
+
+    if (currentStatus !== "complete") {
+      revealProgress.value = 0;
+    }
+  }, [props.row.toolSummaryStatus, revealProgress]);
+
+  const shimmerStyle = useAnimatedStyle(() => ({
+    opacity: isToolSummaryPending ? 0.44 : 0,
+    transform: [
+      {
+        translateX: shimmerProgress.value * shimmerTravelDistance - TOOL_SUMMARY_SHIMMER_WIDTH,
+      },
+    ],
+  }));
+  const shimmerTextStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: TOOL_SUMMARY_SHIMMER_WIDTH - shimmerProgress.value * shimmerTravelDistance,
+      },
+    ],
+  }));
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: revealProgress.value,
+  }));
+
+  return (
+    <Pressable
+      accessibilityRole={props.row.fullDetail ? "button" : undefined}
+      accessibilityState={props.row.fullDetail ? { expanded: props.expanded } : undefined}
+      onPress={() => {
+        if (props.row.fullDetail) {
+          props.onToggleWorkRow(props.row.id);
+        }
+      }}
+      onLongPress={() => props.onCopyWorkRow(props.row.id, props.row.copyText)}
+      className={cn(
+        "rounded-lg px-2 py-1.5",
+        props.index > 0 && "border-t border-neutral-200/80 dark:border-white/[0.06]",
+      )}
+    >
+      <View className="flex-row items-center gap-2">
+        <View className="w-4 items-center justify-center">
+          <SymbolView
+            name={
+              props.row.status === "failure"
+                ? "xmark"
+                : props.row.status === "success"
+                  ? "checkmark"
+                  : props.row.status === "neutral"
+                    ? "minus"
+                    : "terminal"
+            }
+            size={props.row.status ? 11 : 13}
+            tintColor={props.row.status === "failure" ? "#e11d48" : props.iconSubtleColor}
+            type="monochrome"
+          />
+        </View>
+        <View className="min-w-0 flex-1 overflow-hidden">
+          <NativeText
+            onLayout={(event) => {
+              const nextTextWidth = Math.ceil(event.nativeEvent.layout.width);
+              setTextWidth((currentTextWidth) =>
+                currentTextWidth === nextTextWidth ? currentTextWidth : nextTextWidth,
+              );
+            }}
+            style={textStyle}
+            numberOfLines={props.expanded ? undefined : 1}
+          >
+            {displayText}
+          </NativeText>
+          <AnimatedView
+            pointerEvents="none"
+            numberOfLines={1}
+            style={[
+              {
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                top: 0,
+                width: TOOL_SUMMARY_SHIMMER_WIDTH,
+                overflow: "hidden",
+              },
+              shimmerStyle,
+            ]}
+          >
+            <AnimatedNativeText
+              numberOfLines={1}
+              style={[
+                {
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  width: overlayTextWidth,
+                  color: glintColor,
+                  ...WORK_LOG_TEXT_STYLE,
+                },
+                shimmerTextStyle,
+              ]}
+            >
+              {displayText}
+            </AnimatedNativeText>
+          </AnimatedView>
+          <AnimatedNativeText
+            pointerEvents="none"
+            numberOfLines={1}
+            style={[
+              {
+                ...StyleSheet.absoluteFill,
+                color: glintColor,
+                ...WORK_LOG_TEXT_STYLE,
+              },
+              revealStyle,
+            ]}
+          >
+            {displayText}
+          </AnimatedNativeText>
+        </View>
+        {props.row.fullDetail ? (
+          <SymbolView
+            name={props.expanded ? "chevron.up" : "chevron.down"}
+            size={11}
+            tintColor={props.iconSubtleColor}
+            type="monochrome"
+          />
+        ) : null}
+        {props.copiedRowId === props.row.id ? (
+          <Text className="shrink-0 font-t3-medium text-[10px] text-emerald-600 dark:text-emerald-400">
+            Copied
+          </Text>
+        ) : null}
+      </View>
+      {props.row.fullDetail && props.expanded ? (
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          directionalLockEnabled
+          showsHorizontalScrollIndicator
+          bounces={false}
+          className="mt-2 rounded-lg bg-neutral-100 dark:bg-black/20"
+          contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 8 }}
+        >
+          <Text
+            selectable
+            className="text-[11px] leading-[17px] text-neutral-600 dark:text-neutral-400"
+            style={{ fontFamily: "ui-monospace" }}
+          >
+            {props.row.fullDetail}
+          </Text>
+        </ScrollView>
+      ) : null}
+    </Pressable>
+  );
+}
 
 function useReviewCommentColors(): ReviewCommentColors {
   const colorScheme = useColorScheme();
@@ -909,80 +1135,16 @@ function renderFeedEntry(
         ) : null}
       </View>
       {visibleRows.map((row, index) => (
-        <Pressable
+        <WorkLogRow
           key={row.id}
-          accessibilityRole={row.fullDetail ? "button" : undefined}
-          accessibilityState={
-            row.fullDetail ? { expanded: props.expandedWorkRows[row.id] ?? false } : undefined
-          }
-          onPress={() => {
-            if (row.fullDetail) {
-              props.onToggleWorkRow(row.id);
-            }
-          }}
-          onLongPress={() => props.onCopyWorkRow(row.id, row.copyText)}
-          className={cn(
-            "rounded-lg px-2 py-1.5",
-            index > 0 && "border-t border-neutral-200/80 dark:border-white/[0.06]",
-          )}
-        >
-          <View className="flex-row items-center gap-2">
-            <View className="w-4 items-center justify-center">
-              <SymbolView
-                name={
-                  row.status === "failure"
-                    ? "xmark"
-                    : row.status === "success"
-                      ? "checkmark"
-                      : row.status === "neutral"
-                        ? "minus"
-                        : "terminal"
-                }
-                size={row.status ? 11 : 13}
-                tintColor={row.status === "failure" ? "#e11d48" : iconSubtleColor}
-                type="monochrome"
-              />
-            </View>
-            <Text
-              className="min-w-0 flex-1 text-[12px] leading-[18px] text-neutral-700 dark:text-neutral-300"
-              numberOfLines={props.expandedWorkRows[row.id] ? undefined : 1}
-            >
-              {row.detail ? `${row.summary} - ${row.detail}` : row.summary}
-            </Text>
-            {row.fullDetail ? (
-              <SymbolView
-                name={props.expandedWorkRows[row.id] ? "chevron.up" : "chevron.down"}
-                size={11}
-                tintColor={iconSubtleColor}
-                type="monochrome"
-              />
-            ) : null}
-            {props.copiedRowId === row.id ? (
-              <Text className="shrink-0 font-t3-medium text-[10px] text-emerald-600 dark:text-emerald-400">
-                Copied
-              </Text>
-            ) : null}
-          </View>
-          {row.fullDetail && props.expandedWorkRows[row.id] ? (
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              directionalLockEnabled
-              showsHorizontalScrollIndicator
-              bounces={false}
-              className="mt-2 rounded-lg bg-neutral-100 dark:bg-black/20"
-              contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 8 }}
-            >
-              <Text
-                selectable
-                className="text-[11px] leading-[17px] text-neutral-600 dark:text-neutral-400"
-                style={{ fontFamily: "ui-monospace" }}
-              >
-                {row.fullDetail}
-              </Text>
-            </ScrollView>
-          ) : null}
-        </Pressable>
+          row={row}
+          index={index}
+          copiedRowId={props.copiedRowId}
+          iconSubtleColor={iconSubtleColor}
+          expanded={props.expandedWorkRows[row.id] ?? false}
+          onCopyWorkRow={props.onCopyWorkRow}
+          onToggleWorkRow={props.onToggleWorkRow}
+        />
       ))}
     </View>
   );

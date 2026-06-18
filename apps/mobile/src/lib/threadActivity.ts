@@ -42,6 +42,7 @@ export interface ThreadFeedActivity {
   readonly copyText: string;
   readonly toolLike: boolean;
   readonly status: "success" | "failure" | "neutral" | null;
+  readonly toolSummaryStatus?: "pending" | "complete";
 }
 
 type WorkLogToolLifecycleStatus = "inProgress" | "completed" | "failed" | "declined" | "stopped";
@@ -60,6 +61,8 @@ interface WorkLogEntry {
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
+  toolSummaryStatus?: "pending" | "complete";
+  toolCallId?: string;
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -263,6 +266,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
+  const toolCallId = extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
@@ -278,6 +282,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
+  const toolSummaryStatus =
+    activity.kind === "tool.updated" ? undefined : extractToolSummaryStatus(payload);
   if (
     !taskDetailAsLabel &&
     payload &&
@@ -314,6 +320,12 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (toolLifecycleStatus) {
     entry.toolLifecycleStatus = toolLifecycleStatus;
   }
+  if (toolSummaryStatus) {
+    entry.toolSummaryStatus = toolSummaryStatus;
+  }
+  if (toolCallId) {
+    entry.toolCallId = toolCallId;
+  }
   const collapseKey = deriveToolLifecycleCollapseKey(entry);
   if (collapseKey) {
     entry.collapseKey = collapseKey;
@@ -326,14 +338,63 @@ function collapseDerivedWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
   for (const entry of entries) {
+    const matchingToolIndex = findCollapsibleToolEntryIndex(collapsed, entry);
+    if (matchingToolIndex !== -1) {
+      const previous = collapsed[matchingToolIndex]!;
+      collapsed[matchingToolIndex] = shouldMergeAsToolSummaryReplacement(previous, entry)
+        ? mergeToolSummaryReplacement(previous, entry)
+        : mergeDerivedWorkLogEntries(previous, entry);
+      continue;
+    }
+
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
-      collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
+      collapsed[collapsed.length - 1] = shouldMergeAsToolSummaryReplacement(previous, entry)
+        ? mergeToolSummaryReplacement(previous, entry)
+        : mergeDerivedWorkLogEntries(previous, entry);
       continue;
     }
     collapsed.push(entry);
   }
   return collapsed;
+}
+
+function findCollapsibleToolEntryIndex(
+  entries: ReadonlyArray<DerivedWorkLogEntry>,
+  next: DerivedWorkLogEntry,
+): number {
+  if (!isToolLifecycleWorkLogEntry(next)) {
+    return -1;
+  }
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry && shouldCollapseNonAdjacentToolLifecycleEntries(entry, next)) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function shouldCollapseNonAdjacentToolLifecycleEntries(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  if (!isToolLifecycleWorkLogEntry(previous) || !isToolLifecycleWorkLogEntry(next)) {
+    return false;
+  }
+  if (isToolSummaryReplacementPair(previous, next)) {
+    return true;
+  }
+  if (hasMatchingToolCallId(previous, next)) {
+    return true;
+  }
+  return (
+    previous.activityKind === "tool.updated" &&
+    next.activityKind === "tool.completed" &&
+    hasMatchingCommandWorkLogKey(previous, next)
+  );
 }
 
 function shouldCollapseToolLifecycleEntries(
@@ -346,10 +407,106 @@ function shouldCollapseToolLifecycleEntries(
   if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
     return false;
   }
+  if (isToolSummaryReplacementPair(previous, next)) {
+    return true;
+  }
+  if (hasMatchingToolCallId(previous, next)) {
+    return true;
+  }
   if (previous.activityKind === "tool.completed") {
     return false;
   }
-  return previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey;
+  if (previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey) {
+    return true;
+  }
+  if (
+    previous.activityKind === "tool.updated" &&
+    next.activityKind === "tool.completed" &&
+    hasMatchingCommandWorkLogKey(previous, next)
+  ) {
+    return true;
+  }
+  return (
+    previous.toolCallId !== undefined &&
+    next.toolCallId === undefined &&
+    previous.itemType === next.itemType &&
+    normalizeCompactToolLabel(previous.toolTitle ?? previous.label) ===
+      normalizeCompactToolLabel(next.toolTitle ?? next.label)
+  );
+}
+
+function isToolLifecycleWorkLogEntry(entry: DerivedWorkLogEntry): boolean {
+  return entry.activityKind === "tool.updated" || entry.activityKind === "tool.completed";
+}
+
+function isCompleteToolSummaryEntry(entry: DerivedWorkLogEntry): boolean {
+  return entry.activityKind === "tool.completed" && entry.toolSummaryStatus === "complete";
+}
+
+function isToolSummaryReplacementCandidate(entry: DerivedWorkLogEntry): boolean {
+  return (
+    isToolLifecycleWorkLogEntry(entry) &&
+    (entry.toolSummaryStatus === "pending" || entry.toolSummaryStatus === "complete")
+  );
+}
+
+function isToolSummaryReplacementPair(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  if (
+    !isToolSummaryReplacementCandidate(previous) ||
+    !isToolSummaryReplacementCandidate(next) ||
+    previous.toolSummaryStatus === next.toolSummaryStatus
+  ) {
+    return false;
+  }
+  if (hasMatchingToolCallId(previous, next)) {
+    return true;
+  }
+  return hasMatchingCommandWorkLogKey(previous, next);
+}
+
+function shouldMergeAsToolSummaryReplacement(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  if (!isCompleteToolSummaryEntry(previous) && !isCompleteToolSummaryEntry(next)) {
+    return isToolSummaryReplacementPair(previous, next);
+  }
+  if (!isToolLifecycleWorkLogEntry(previous) || !isToolLifecycleWorkLogEntry(next)) {
+    return false;
+  }
+  return hasMatchingToolCallId(previous, next) || hasMatchingCommandWorkLogKey(previous, next);
+}
+
+function hasMatchingToolCallId(previous: DerivedWorkLogEntry, next: DerivedWorkLogEntry): boolean {
+  return previous.toolCallId !== undefined && previous.toolCallId === next.toolCallId;
+}
+
+function hasMatchingCommandWorkLogKey(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): boolean {
+  if (previous.itemType !== "command_execution" || next.itemType !== "command_execution") {
+    return false;
+  }
+  const previousCommand = normalizePreviewForComparison(previous.command);
+  const nextCommand = normalizePreviewForComparison(next.command);
+  return previousCommand !== null && previousCommand === nextCommand;
+}
+
+function mergeToolSummaryReplacement(
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+): DerivedWorkLogEntry {
+  const completeEntry = previous.toolSummaryStatus === "complete" ? previous : next;
+  return {
+    ...mergeDerivedWorkLogEntries(previous, next),
+    id: previous.id,
+    ...(completeEntry.detail ? { detail: completeEntry.detail } : {}),
+    toolSummaryStatus: "complete",
+  };
 }
 
 function mergeDerivedWorkLogEntries(
@@ -363,8 +520,10 @@ function mergeDerivedWorkLogEntries(
   const toolTitle = next.toolTitle ?? previous.toolTitle;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
+  const toolSummaryStatus = next.toolSummaryStatus ?? previous.toolSummaryStatus;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
+  const toolCallId = next.toolCallId ?? previous.toolCallId;
   return {
     ...previous,
     ...next,
@@ -375,8 +534,10 @@ function mergeDerivedWorkLogEntries(
     ...(toolTitle ? { toolTitle } : {}),
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
+    ...(toolSummaryStatus ? { toolSummaryStatus } : {}),
     ...(collapseKey ? { collapseKey } : {}),
     ...(toolLifecycleStatus ? { toolLifecycleStatus } : {}),
+    ...(toolCallId ? { toolCallId } : {}),
   };
 }
 
@@ -394,6 +555,9 @@ function mergeChangedFiles(
 function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | undefined {
   if (entry.activityKind !== "tool.updated" && entry.activityKind !== "tool.completed") {
     return undefined;
+  }
+  if (entry.toolCallId) {
+    return `tool:${entry.toolCallId}`;
   }
   const normalizedLabel = normalizeCompactToolLabel(entry.toolTitle ?? entry.label);
   const detail = entry.detail?.trim() ?? "";
@@ -481,10 +645,18 @@ function workEntryStatus(entry: WorkLogEntry): ThreadFeedActivity["status"] {
 }
 
 function workEntryPreview(
-  workEntry: Pick<WorkLogEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<
+    WorkLogEntry,
+    "detail" | "command" | "changedFiles" | "toolSummaryStatus" | "itemType" | "requestKind"
+  >,
 ): string | null {
+  if (workEntry.toolSummaryStatus === "complete" && workEntry.detail) return workEntry.detail;
   if (workEntry.command) return workEntry.command;
-  if (workEntry.detail) return workEntry.detail;
+  const hasStructuredChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
+  const isStructuredFileChange =
+    hasStructuredChangedFiles &&
+    (workEntry.itemType === "file_change" || workEntry.requestKind === "file-change");
+  if (workEntry.detail && !isStructuredFileChange) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
@@ -673,15 +845,22 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   rawCommand: string | null;
 } {
   const data = asRecord(payload?.data);
+  const state = asRecord(data?.state);
   const item = asRecord(data?.item);
   const itemResult = asRecord(item?.result);
   const itemInput = asRecord(item?.input);
+  const dataInput = asRecord(data?.input);
+  const stateInput = asRecord(state?.input);
   const itemType = asTrimmedString(payload?.itemType);
   const detail = asTrimmedString(payload?.detail);
   const candidates: unknown[] = [
     item?.command,
     itemInput?.command,
     itemResult?.command,
+    dataInput?.command,
+    dataInput?.cmd,
+    stateInput?.command,
+    stateInput?.cmd,
     data?.command,
     itemType === "command_execution" && detail ? stripTrailingExitCode(detail).output : null,
   ];
@@ -764,6 +943,30 @@ function extractWorkLogRequestKind(
     return payload.requestKind;
   }
   return requestKindFromRequestType(payload?.requestType) ?? undefined;
+}
+
+function extractToolSummaryStatus(
+  payload: Record<string, unknown> | null,
+): WorkLogEntry["toolSummaryStatus"] | undefined {
+  if (payload?.summarizationStatus === "pending" || payload?.summarizationStatus === "complete") {
+    return payload.summarizationStatus;
+  }
+  return undefined;
+}
+
+function extractToolCallId(payload: Record<string, unknown> | null): string | null {
+  const data = asRecord(payload?.data);
+  return asTrimmedString(data?.toolCallId) ?? asTrimmedString(data?.toolUseId);
+}
+
+function normalizePreviewForComparison(value: string | null | undefined): string | null {
+  const normalized = asTrimmedString(value);
+  if (!normalized) {
+    return null;
+  }
+  return (
+    stripTrailingExitCode(normalized).output?.replace(/\s+/g, " ").trim().toLowerCase() ?? null
+  );
 }
 
 function pushChangedFile(target: string[], seen: Set<string>, value: unknown) {
@@ -1250,6 +1453,7 @@ export function buildThreadFeed(
                 .join("\n"),
               toolLike: workLogEntryIsToolLike(entry),
               status: workEntryStatus(entry),
+              ...(entry.toolSummaryStatus ? { toolSummaryStatus: entry.toolSummaryStatus } : {}),
             },
           };
         }),
