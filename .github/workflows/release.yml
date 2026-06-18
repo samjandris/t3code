@@ -219,11 +219,19 @@ jobs:
         name: Read production relay tracing config
         shell: bash
         run: |
-          vp run --filter t3code-relay deploy \
+          set -euo pipefail
+
+          config_path="$RUNNER_TEMP/relay-client-tracing.env"
+          if vp run --filter t3code-relay deploy \
             --stage prod \
             --read-state \
             --github-output \
-            --github-env-file "$RUNNER_TEMP/relay-client-tracing.env"
+            --github-env-file "$config_path"; then
+            exit 0
+          fi
+
+          echo "T3 Connect relay state is unavailable; continuing without relay client tracing config."
+          : > "$config_path"
 
       - name: Upload relay client tracing config
         uses: actions/upload-artifact@v7
