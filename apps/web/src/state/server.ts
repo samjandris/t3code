@@ -40,15 +40,6 @@ const EMPTY_PRIMARY_SERVER_STATE: PrimaryServerState = {
   welcome: null,
 };
 
-interface ProviderRefreshOverride {
-  readonly environmentId: string;
-  readonly providers: ReadonlyArray<ServerProvider>;
-}
-
-export const primaryServerProviderRefreshOverrideAtom = Atom.make<ProviderRefreshOverride | null>(
-  null,
-).pipe(Atom.withLabel("web-primary-server-provider-refresh-override"));
-
 export const primaryServerStateAtom = Atom.make((get): PrimaryServerState => {
   const environmentId = get(primaryEnvironmentIdAtom);
   if (environmentId === null) {
@@ -60,20 +51,9 @@ export const primaryServerStateAtom = Atom.make((get): PrimaryServerState => {
     AsyncResult.value(get(serverEnvironment.configProjection(target))),
   );
   const welcome = Option.getOrNull(AsyncResult.value(get(serverEnvironment.welcome(target))));
-  const config = get(serverEnvironment.configValueAtom(environmentId));
-  const providerRefreshOverride = get(primaryServerProviderRefreshOverrideAtom);
-  const configWithProviderOverride =
-    config &&
-    providerRefreshOverride !== null &&
-    providerRefreshOverride.environmentId === environmentId
-      ? {
-          ...config,
-          providers: providerRefreshOverride.providers,
-        }
-      : config;
 
   return {
-    config: configWithProviderOverride,
+    config: get(serverEnvironment.configValueAtom(environmentId)),
     latestEvent: configProjection?.latestEvent ?? null,
     welcome,
   };
