@@ -39,7 +39,6 @@ export function SelectableMarkdownText({
   const chunks = useMemo(() => {
     const document = parseMarkdownWithOptions(markdown, {
       gfm: true,
-      html: true,
       math: false,
     });
     return nativeMarkdownDocumentChunks(document).map((chunk) =>
