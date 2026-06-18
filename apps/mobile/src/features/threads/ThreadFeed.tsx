@@ -381,7 +381,6 @@ function WorkLogRow(props: {
           </NativeText>
           <AnimatedView
             pointerEvents="none"
-            numberOfLines={1}
             style={[
               {
                 position: "absolute",
