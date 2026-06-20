@@ -84,8 +84,10 @@ export interface ToolCallSummaryGenerationResult {
   summary: string;
 }
 
-export interface ToolCallSummariesGenerationItem
-  extends Omit<ToolCallSummaryGenerationInput, "cwd" | "modelSelection"> {
+export interface ToolCallSummariesGenerationItem extends Omit<
+  ToolCallSummaryGenerationInput,
+  "cwd" | "modelSelection"
+> {
   id: string;
 }
 
