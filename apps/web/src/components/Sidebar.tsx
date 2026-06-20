@@ -2832,7 +2832,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   );
   const { isMobile, setOpenMobile } = useSidebar();
   const handleSearchClick = useCallback(
-    (_event: React.MouseEvent<HTMLButtonElement>) => {
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+
       if (isMobile) {
         window.requestAnimationFrame(() => {
           setOpenMobile(false);
