@@ -99,38 +99,9 @@ describe("ssh command", () => {
     }),
   );
 
-  it.effect("resolves the remote t3 package spec from the desktop release channel", () =>
+  it.effect("always resolves the remote t3 package spec to latest", () =>
     Effect.sync(() => {
-      assert.equal(
-        resolveRemoteT3CliPackageSpec({
-          appVersion: "0.0.17",
-          updateChannel: "latest",
-        }),
-        "t3@0.0.17",
-      );
-      assert.equal(
-        resolveRemoteT3CliPackageSpec({
-          appVersion: "0.0.17-nightly.20260415.44",
-          updateChannel: "nightly",
-        }),
-        "t3@0.0.17-nightly.20260415.44",
-      );
-      assert.equal(
-        resolveRemoteT3CliPackageSpec({
-          appVersion: "0.0.0-dev",
-          updateChannel: "nightly",
-          isDevelopment: true,
-        }),
-        "t3@nightly",
-      );
-      assert.equal(
-        resolveRemoteT3CliPackageSpec({
-          appVersion: "0.0.0-dev",
-          updateChannel: "latest",
-          isDevelopment: true,
-        }),
-        "t3@nightly",
-      );
+      assert.equal(resolveRemoteT3CliPackageSpec(), "t3@latest");
     }),
   );
 
