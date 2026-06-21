@@ -271,7 +271,7 @@ function ThreadWorkLogRow(props: {
               numberOfLines={1}
               style={[
                 {
-                  ...StyleSheet.absoluteFillObject,
+                  ...StyleSheet.absoluteFill,
                   color: glintColor,
                   fontFamily: "DMSans_500Medium",
                   fontSize: WORK_LOG_FONT_SIZE,
