@@ -1,12 +1,11 @@
 import * as Haptics from "expo-haptics";
 import { SymbolView, type SFSymbol } from "expo-symbols";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutAnimation,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text as NativeText,
   useColorScheme,
   useWindowDimensions,
   View,
@@ -15,7 +14,6 @@ import {
 import Animated, {
   Easing,
   useAnimatedProps,
-  useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -26,7 +24,6 @@ import { AppText as Text } from "../../components/AppText";
 import { cn } from "../../lib/cn";
 import type { ThreadFeedActivity } from "../../lib/threadActivity";
 
-const AnimatedNativeText = Animated.createAnimatedComponent(NativeText);
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const TOOL_SUMMARY_SHIMMER_WIDTH = 52;
 const WORK_LOG_FONT_SIZE = 12;
@@ -109,11 +106,9 @@ function ThreadWorkLogRow(props: {
 }) {
   const colorScheme = useColorScheme();
   const isToolSummaryPending = props.row.toolSummaryStatus === "pending";
-  const previousToolSummaryStatusRef = useRef(props.row.toolSummaryStatus);
   const { width: windowWidth } = useWindowDimensions();
-  const [textWidth, setTextWidth] = useState(0);
+  const [detailTextWidth, setDetailTextWidth] = useState(0);
   const shimmerProgress = useSharedValue(0);
-  const revealProgress = useSharedValue(0);
   const canExpand = props.row.fullDetail !== null;
   const displayText = props.row.detail
     ? `${props.row.summary} ${props.row.detail}`
@@ -121,8 +116,8 @@ function ThreadWorkLogRow(props: {
   const iconIsDestructive = props.row.icon === "alert" || props.row.icon === "warning";
   const glintColor = colorScheme === "dark" ? "rgba(255,255,255,0.72)" : "rgba(23,23,23,0.46)";
   const shimmerTravelDistance =
-    Math.max(textWidth, Math.min(windowWidth, 320)) + TOOL_SUMMARY_SHIMMER_WIDTH * 2;
-  const overlayTextWidth = Math.max(textWidth, windowWidth);
+    Math.max(detailTextWidth, Math.min(windowWidth, 320)) + TOOL_SUMMARY_SHIMMER_WIDTH * 2;
+  const overlayTextWidth = Math.max(detailTextWidth, windowWidth);
   const svgId = useMemo(() => props.row.id.replace(/[^a-zA-Z0-9_-]/g, "-"), [props.row.id]);
   const shimmerGradientId = `tool-summary-shimmer-gradient-${svgId}`;
   const shimmerMaskId = `tool-summary-shimmer-mask-${svgId}`;
@@ -140,30 +135,8 @@ function ThreadWorkLogRow(props: {
     );
   }, [isToolSummaryPending, shimmerProgress]);
 
-  useEffect(() => {
-    const previousStatus = previousToolSummaryStatusRef.current;
-    const currentStatus = props.row.toolSummaryStatus;
-    previousToolSummaryStatusRef.current = currentStatus;
-
-    if (previousStatus === "pending" && currentStatus === "complete") {
-      revealProgress.value = 0.65;
-      revealProgress.value = withTiming(0, {
-        duration: 640,
-        easing: Easing.out(Easing.cubic),
-      });
-      return;
-    }
-
-    if (currentStatus !== "complete") {
-      revealProgress.value = 0;
-    }
-  }, [props.row.toolSummaryStatus, revealProgress]);
-
   const shimmerProps = useAnimatedProps(() => ({
     x: shimmerProgress.value * shimmerTravelDistance - TOOL_SUMMARY_SHIMMER_WIDTH,
-  }));
-  const revealStyle = useAnimatedStyle(() => ({
-    opacity: revealProgress.value,
   }));
 
   return (
@@ -200,87 +173,77 @@ function ThreadWorkLogRow(props: {
             />
           </View>
 
-          <View className="min-w-0 flex-1 overflow-hidden">
+          <View className="min-w-0 flex-1 flex-row items-center gap-1.5 overflow-hidden">
             <Text
-              className="text-xs leading-5 text-foreground"
+              className={cn(
+                "shrink-0 font-t3-medium text-xs leading-5 text-foreground",
+                iconIsDestructive && "text-rose-600 dark:text-rose-400",
+              )}
               numberOfLines={1}
-              onLayout={(event) => {
-                const nextTextWidth = Math.ceil(event.nativeEvent.layout.width);
-                setTextWidth((currentTextWidth) =>
-                  currentTextWidth === nextTextWidth ? currentTextWidth : nextTextWidth,
-                );
-              }}
             >
-              <Text
-                className={cn(
-                  "font-t3-medium text-foreground",
-                  iconIsDestructive && "text-rose-600 dark:text-rose-400",
-                )}
-              >
-                {props.row.summary}
-              </Text>
-              {props.row.detail ? (
-                <Text className="text-foreground-muted opacity-60"> {props.row.detail}</Text>
-              ) : null}
+              {props.row.summary}
             </Text>
-            {isToolSummaryPending && textWidth > 0 ? (
-              <Svg
-                pointerEvents="none"
-                style={StyleSheet.absoluteFill}
-                width={overlayTextWidth}
-                height={WORK_LOG_LINE_HEIGHT}
+            {props.row.detail ? (
+              <View
+                className="min-w-0 flex-1 overflow-hidden"
+                style={{ height: WORK_LOG_LINE_HEIGHT }}
               >
-                <Defs>
-                  <LinearGradient id={shimmerGradientId} x1="0" x2="1" y1="0" y2="0">
-                    <Stop offset="0" stopColor={glintColor} stopOpacity="0" />
-                    <Stop offset="0.48" stopColor={glintColor} stopOpacity="0.72" />
-                    <Stop offset="1" stopColor={glintColor} stopOpacity="0" />
-                  </LinearGradient>
-                  <Mask
-                    id={shimmerMaskId}
-                    x="0"
-                    y="0"
+                <Text
+                  className="text-xs leading-5 text-foreground-muted opacity-60"
+                  numberOfLines={1}
+                  onLayout={(event) => {
+                    const nextTextWidth = Math.ceil(event.nativeEvent.layout.width);
+                    setDetailTextWidth((currentTextWidth) =>
+                      currentTextWidth === nextTextWidth ? currentTextWidth : nextTextWidth,
+                    );
+                  }}
+                >
+                  {props.row.detail}
+                </Text>
+                {isToolSummaryPending && detailTextWidth > 0 ? (
+                  <Svg
+                    pointerEvents="none"
+                    style={StyleSheet.absoluteFill}
                     width={overlayTextWidth}
                     height={WORK_LOG_LINE_HEIGHT}
-                    maskUnits="userSpaceOnUse"
                   >
-                    <SvgText
-                      fill="#fff"
-                      fontFamily="DMSans_500Medium"
-                      fontSize={WORK_LOG_FONT_SIZE}
-                      x="0"
-                      y={TOOL_SUMMARY_SHIMMER_BASELINE}
-                    >
-                      {displayText}
-                    </SvgText>
-                  </Mask>
-                </Defs>
-                <AnimatedRect
-                  animatedProps={shimmerProps}
-                  y="0"
-                  width={TOOL_SUMMARY_SHIMMER_WIDTH}
-                  height={WORK_LOG_LINE_HEIGHT}
-                  fill={`url(#${shimmerGradientId})`}
-                  mask={`url(#${shimmerMaskId})`}
-                />
-              </Svg>
+                    <Defs>
+                      <LinearGradient id={shimmerGradientId} x1="0" x2="1" y1="0" y2="0">
+                        <Stop offset="0" stopColor={glintColor} stopOpacity="0" />
+                        <Stop offset="0.48" stopColor={glintColor} stopOpacity="0.72" />
+                        <Stop offset="1" stopColor={glintColor} stopOpacity="0" />
+                      </LinearGradient>
+                      <Mask
+                        id={shimmerMaskId}
+                        x="0"
+                        y="0"
+                        width={overlayTextWidth}
+                        height={WORK_LOG_LINE_HEIGHT}
+                        maskUnits="userSpaceOnUse"
+                      >
+                        <SvgText
+                          fill="#fff"
+                          fontFamily="DMSans_400Regular"
+                          fontSize={WORK_LOG_FONT_SIZE}
+                          x="0"
+                          y={TOOL_SUMMARY_SHIMMER_BASELINE}
+                        >
+                          {props.row.detail}
+                        </SvgText>
+                      </Mask>
+                    </Defs>
+                    <AnimatedRect
+                      animatedProps={shimmerProps}
+                      y="0"
+                      width={TOOL_SUMMARY_SHIMMER_WIDTH}
+                      height={WORK_LOG_LINE_HEIGHT}
+                      fill={`url(#${shimmerGradientId})`}
+                      mask={`url(#${shimmerMaskId})`}
+                    />
+                  </Svg>
+                ) : null}
+              </View>
             ) : null}
-            <AnimatedNativeText
-              pointerEvents="none"
-              numberOfLines={1}
-              style={[
-                {
-                  ...StyleSheet.absoluteFill,
-                  color: glintColor,
-                  fontFamily: "DMSans_500Medium",
-                  fontSize: WORK_LOG_FONT_SIZE,
-                  lineHeight: WORK_LOG_LINE_HEIGHT,
-                },
-                revealStyle,
-              ]}
-            >
-              {displayText}
-            </AnimatedNativeText>
           </View>
 
           <View className="shrink-0 flex-row items-center gap-px">
