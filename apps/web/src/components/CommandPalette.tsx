@@ -334,6 +334,7 @@ interface CommandPaletteUiState {
 
 type CommandPaletteUiAction =
   | { readonly _tag: "SetOpen"; readonly open: boolean }
+  | { readonly _tag: "Open" }
   | { readonly _tag: "Toggle" }
   | { readonly _tag: "OpenAddProject" }
   | { readonly _tag: "ClearOpenIntent" };
@@ -348,6 +349,8 @@ function reduceCommandPaletteUiState(
         open: action.open,
         openIntent: action.open ? state.openIntent : null,
       };
+    case "Open":
+      return { open: true, openIntent: null };
     case "Toggle":
       return { open: !state.open, openIntent: null };
     case "OpenAddProject":
@@ -363,6 +366,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     openIntent: null,
   });
   const setOpen = useCallback((open: boolean) => dispatch({ _tag: "SetOpen", open }), []);
+  const open = useCallback(() => dispatch({ _tag: "Open" }), []);
   const toggleOpen = useCallback(() => dispatch({ _tag: "Toggle" }), []);
   const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
@@ -400,7 +404,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   }, [keybindings, terminalOpen, toggleOpen]);
 
   return (
-    <OpenAddProjectCommandPaletteProvider openAddProject={openAddProject}>
+    <OpenAddProjectCommandPaletteProvider open={open} openAddProject={openAddProject}>
       <ComposerHandleContext value={composerHandleRef}>
         <CommandDialog open={state.open} onOpenChange={setOpen}>
           {children}
