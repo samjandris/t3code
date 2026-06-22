@@ -449,6 +449,12 @@ fi
 if command -v t3 >/dev/null 2>&1; then
   exec t3 "$@"
 fi
+if [ -n @@T3_FALLBACK_PACKAGE_SPEC@@ ] && command -v npm >/dev/null 2>&1 && ! npm view @@T3_PACKAGE_SPEC@@ version >/dev/null 2>&1; then
+  if command -v npx >/dev/null 2>&1; then
+    exec npx --yes @@T3_FALLBACK_PACKAGE_SPEC@@ "$@"
+  fi
+  exec npm exec --yes @@T3_FALLBACK_PACKAGE_SPEC@@ -- "$@"
+fi
 if command -v npx >/dev/null 2>&1; then
   exec npx --yes @@T3_PACKAGE_SPEC@@ "$@"
 fi
@@ -655,11 +661,16 @@ fi
 `;
 
 export function buildRemoteT3RunnerScript(input?: RemoteT3RunnerOptions): string {
-  const packageSpec = shellSingleQuote(input?.packageSpec?.trim() || "t3@latest");
+  const rawPackageSpec = input?.packageSpec?.trim() || "t3@latest";
+  const packageSpec = shellSingleQuote(rawPackageSpec);
+  const fallbackPackageSpec = shellSingleQuote(
+    /^t3@\d+\.\d+\.\d+-nightly\./u.test(rawPackageSpec) ? "t3@nightly" : "",
+  );
   const nodeScriptPath = input?.nodeScriptPath?.trim() || "";
   return stripTrailingNewlines(
     applyScriptPlaceholders(REMOTE_RUNNER_SCRIPT, {
       T3_PACKAGE_SPEC: packageSpec,
+      T3_FALLBACK_PACKAGE_SPEC: fallbackPackageSpec,
       T3_NODE_SCRIPT_PATH: shellSingleQuote(nodeScriptPath),
       T3_NODE_ENV_SCRIPT: buildRemoteNodeEnvScript(input),
     }),
