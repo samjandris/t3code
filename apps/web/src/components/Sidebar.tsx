@@ -2918,23 +2918,15 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     [updateSettings],
   );
   const { isMobile, setOpenMobile } = useSidebar();
-  const setCommandPaletteOpen = useCommandPaletteStore((store) => store.setOpen);
   const handleSearchClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (!isMobile) {
-        setCommandPaletteOpen(true);
-        return;
+    (_event: React.MouseEvent<HTMLButtonElement>) => {
+      if (isMobile) {
+        window.requestAnimationFrame(() => {
+          setOpenMobile(false);
+        });
       }
-
-      setOpenMobile(false);
-      window.requestAnimationFrame(() => {
-        setCommandPaletteOpen(true);
-      });
     },
-    [isMobile, setCommandPaletteOpen, setOpenMobile],
+    [isMobile, setOpenMobile],
   );
 
   return (
@@ -2942,12 +2934,16 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <SidebarGroup className="px-2 pt-2 pb-1">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              type="button"
-              size="sm"
-              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:ring-0"
-              data-testid="command-palette-trigger"
-              onClick={handleSearchClick}
+            <CommandDialogTrigger
+              render={
+                <SidebarMenuButton
+                  type="button"
+                  size="sm"
+                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:ring-0"
+                  data-testid="command-palette-trigger"
+                  onClick={handleSearchClick}
+                />
+              }
             >
               <SearchIcon className="size-3.5 text-muted-foreground/70" />
               <span className="flex-1 truncate text-left text-xs">Search</span>
@@ -2956,7 +2952,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                   {commandPaletteShortcutLabel}
                 </Kbd>
               ) : null}
-            </SidebarMenuButton>
+            </CommandDialogTrigger>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroup>
