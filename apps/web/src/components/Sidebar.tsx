@@ -181,7 +181,7 @@ import {
   useSidebar,
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
-import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
+import { useOpenAddProjectCommandPalette, useOpenCommandPalette } from "../commandPaletteContext";
 import {
   getSidebarThreadIdsToPrewarm,
   resolveAdjacentThreadId,
@@ -202,7 +202,6 @@ import { sortThreads } from "../lib/threadSort";
 import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
-import { CommandDialogTrigger } from "./ui/command";
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import {
@@ -2918,17 +2917,23 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     [updateSettings],
   );
   const { isMobile, setOpenMobile } = useSidebar();
+  const openCommandPalette = useOpenCommandPalette();
   const handleSearchClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
       event.stopPropagation();
 
-      if (isMobile) {
-        window.requestAnimationFrame(() => {
-          setOpenMobile(false);
-        });
+      if (!isMobile) {
+        openCommandPalette();
+        return;
       }
+
+      setOpenMobile(false);
+      window.setTimeout(() => {
+        openCommandPalette();
+      }, 0);
     },
-    [isMobile, setOpenMobile],
+    [isMobile, openCommandPalette, setOpenMobile],
   );
 
   return (
@@ -2936,16 +2941,12 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <SidebarGroup className="px-2 pt-2 pb-1">
         <SidebarMenu>
           <SidebarMenuItem>
-            <CommandDialogTrigger
-              render={
-                <SidebarMenuButton
-                  type="button"
-                  size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:ring-0"
-                  data-testid="command-palette-trigger"
-                  onClick={handleSearchClick}
-                />
-              }
+            <SidebarMenuButton
+              type="button"
+              size="sm"
+              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:ring-0"
+              data-testid="command-palette-trigger"
+              onClick={handleSearchClick}
             >
               <SearchIcon className="size-3.5 text-muted-foreground/70" />
               <span className="flex-1 truncate text-left text-xs">Search</span>
@@ -2954,7 +2955,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                   {commandPaletteShortcutLabel}
                 </Kbd>
               ) : null}
-            </CommandDialogTrigger>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroup>
