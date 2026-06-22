@@ -1,8 +1,9 @@
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SecureStore from "expo-secure-store";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, OrchestrationShellSnapshot } from "@t3tools/contracts";
 
 import {
   isRelayManagedConnection,
@@ -56,11 +57,40 @@ export class MobileStorageEncodeError extends Schema.TaggedErrorClass<MobileStor
     return `Failed to encode mobile storage value for key ${this.key}.`;
   }
 }
+const SHELL_SNAPSHOT_CACHE_SCHEMA_VERSION = 1;
+const SHELL_SNAPSHOT_CACHE_DIRECTORY = "shell-snapshots";
 
-export interface Preferences {
+export interface CachedShellSnapshot {
+  readonly schemaVersion: typeof SHELL_SNAPSHOT_CACHE_SCHEMA_VERSION;
+  readonly environmentId: EnvironmentId;
+  readonly snapshotReceivedAt: string;
+  readonly snapshot: OrchestrationShellSnapshot;
+}
+
+export interface MobilePreferences {
   readonly liveActivitiesEnabled?: boolean;
   readonly terminalFontSize?: number;
+  readonly modelFavorites?: ReadonlyArray<{
+    readonly provider: string;
+    readonly model: string;
+  }>;
 }
+
+export type Preferences = MobilePreferences;
+
+type MutableMobilePreferences = {
+  liveActivitiesEnabled?: boolean;
+  terminalFontSize?: number;
+  modelFavorites?: NonNullable<MobilePreferences["modelFavorites"]>;
+};
+
+const CachedShellSnapshotSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(SHELL_SNAPSHOT_CACHE_SCHEMA_VERSION),
+  environmentId: EnvironmentId,
+  snapshotReceivedAt: Schema.String,
+  snapshot: OrchestrationShellSnapshot,
+});
+const decodeCachedShellSnapshot = Schema.decodeUnknownOption(CachedShellSnapshotSchema);
 
 async function readStorageItem(key: MobileStorageKeyValue): Promise<string | null> {
   try {
@@ -105,6 +135,107 @@ async function writeJsonStorageItem(key: MobileStorageKeyValue, value: unknown) 
   await writeStorageItem(key, encoded);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeModelFavorites(value: unknown): NonNullable<MobilePreferences["modelFavorites"]> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const favorites: Array<{ provider: string; model: string }> = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const provider = typeof entry.provider === "string" ? entry.provider.trim() : "";
+    const model = typeof entry.model === "string" ? entry.model.trim() : "";
+    if (!provider || !model) {
+      continue;
+    }
+    const key = `${provider}:${model}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    favorites.push({ provider, model });
+  }
+  return favorites;
+}
+
+function cachedShellSnapshotFileName(environmentId: EnvironmentId): string {
+  return `${encodeURIComponent(environmentId)}.json`;
+}
+
+async function getShellSnapshotCacheDirectory() {
+  const { Directory, Paths } = await import("expo-file-system");
+  const directory = new Directory(Paths.document, SHELL_SNAPSHOT_CACHE_DIRECTORY);
+  directory.create({ idempotent: true, intermediates: true });
+  return directory;
+}
+
+export async function loadCachedShellSnapshot(
+  environmentId: EnvironmentId,
+): Promise<CachedShellSnapshot | null> {
+  try {
+    const { File } = await import("expo-file-system");
+    const directory = await getShellSnapshotCacheDirectory();
+    const file = new File(directory, cachedShellSnapshotFileName(environmentId));
+    if (!file.exists) {
+      return null;
+    }
+
+    const parsed = JSON.parse(await file.text()) as unknown;
+    const decoded = decodeCachedShellSnapshot(parsed);
+    if (Option.isNone(decoded) || decoded.value.environmentId !== environmentId) {
+      return null;
+    }
+
+    return decoded.value;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveCachedShellSnapshot(
+  environmentId: EnvironmentId,
+  snapshot: OrchestrationShellSnapshot,
+): Promise<void> {
+  try {
+    const { File } = await import("expo-file-system");
+    const directory = await getShellSnapshotCacheDirectory();
+    const file = new File(directory, cachedShellSnapshotFileName(environmentId));
+    const document: CachedShellSnapshot = {
+      schemaVersion: SHELL_SNAPSHOT_CACHE_SCHEMA_VERSION,
+      environmentId,
+      snapshotReceivedAt: new Date().toISOString(),
+      snapshot,
+    };
+
+    if (!file.exists) {
+      file.create({ intermediates: true, overwrite: true });
+    }
+    file.write(JSON.stringify(document));
+  } catch {
+    // Cache persistence is best-effort and should never block live data.
+  }
+}
+
+export async function clearCachedShellSnapshot(environmentId: EnvironmentId): Promise<void> {
+  try {
+    const { File } = await import("expo-file-system");
+    const directory = await getShellSnapshotCacheDirectory();
+    const file = new File(directory, cachedShellSnapshotFileName(environmentId));
+    if (file.exists) {
+      file.delete();
+    }
+  } catch {
+    // Ignore cache cleanup failures.
+  }
+}
+
 export async function loadSavedConnections(): Promise<ReadonlyArray<SavedRemoteConnection>> {
   const parsed = await readJsonStorageItem<{
     readonly connections?: ReadonlyArray<SavedRemoteConnection>;
@@ -145,16 +276,13 @@ export async function clearSavedConnection(environmentId: EnvironmentId): Promis
   await writeJsonStorageItem(CONNECTIONS_KEY, { connections: next });
 }
 
-export async function loadPreferences(): Promise<Preferences> {
-  const parsed = await readJsonStorageItem<Preferences>(PREFERENCES_KEY);
-  if (!parsed || typeof parsed !== "object") {
+export async function loadPreferences(): Promise<MobilePreferences> {
+  const parsed = await readJsonStorageItem<unknown>(PREFERENCES_KEY);
+  if (!isRecord(parsed)) {
     return {};
   }
 
-  const preferences: {
-    liveActivitiesEnabled?: boolean;
-    terminalFontSize?: number;
-  } = {};
+  const preferences: MutableMobilePreferences = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
     preferences.liveActivitiesEnabled = parsed.liveActivitiesEnabled;
@@ -163,12 +291,19 @@ export async function loadPreferences(): Promise<Preferences> {
     preferences.terminalFontSize = parsed.terminalFontSize;
   }
 
+  const modelFavorites = normalizeModelFavorites(parsed.modelFavorites);
+  if (modelFavorites.length > 0) {
+    preferences.modelFavorites = modelFavorites;
+  }
+
   return preferences;
 }
 
-export async function savePreferencesPatch(patch: Partial<Preferences>): Promise<Preferences> {
+export async function savePreferencesPatch(
+  patch: Partial<MobilePreferences>,
+): Promise<MobilePreferences> {
   const current = await loadPreferences();
-  const next: Preferences = {
+  const next: MobilePreferences = {
     ...current,
     ...patch,
   };
