@@ -1,11 +1,7 @@
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, InteractionManager, View } from "react-native";
-import {
-  KeyboardAvoidingView,
-  KeyboardStickyView,
-  useKeyboardState,
-} from "react-native-keyboard-controller";
+import { Alert, InteractionManager, View, useColorScheme } from "react-native";
+import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../lib/useThemeColor";
 
@@ -16,8 +12,14 @@ import {
 import { EnvironmentId } from "@t3tools/contracts";
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
+import {
+  ComposerToolbarButton,
+  ComposerToolbarRow,
+  ComposerToolbarScroller,
+  ComposerToolbarTrigger,
+} from "../../components/ComposerToolbarTrigger";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
-import { ControlPill, ControlPillMenu } from "../../components/ControlPill";
+import { ControlPillMenu } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 
 import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/composerImages";
@@ -35,10 +37,21 @@ import { useProjects } from "../../state/entities";
 import { MobileComposerOptionsSheet } from "./MobileComposerOptionsSheet";
 import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
 import { MobileWorkspaceSheet } from "./MobileWorkspaceSheet";
-import { NewTaskSheetHeader } from "./NewTaskSheetHeader";
 import { useNewTaskFlow } from "./new-task-flow-provider";
 import { useCreateProjectThread } from "./use-project-actions";
 import { useMobileModelFavorites } from "./useMobileModelFavorites";
+
+function formatWorkspaceLabel(input: {
+  readonly workspaceMode: string;
+  readonly currentBranchName: string | null;
+  readonly selectedBranchName: string | null;
+}): string {
+  const branchName = input.selectedBranchName ?? input.currentBranchName;
+  if (input.workspaceMode === "worktree") {
+    return branchName ? `New worktree · ${branchName}` : "New worktree";
+  }
+  return branchName ? `Current · ${branchName}` : "Current checkout";
+}
 
 export function NewTaskDraftScreen(props: {
   readonly initialProjectRef?: {
@@ -51,6 +64,7 @@ export function NewTaskDraftScreen(props: {
   const flow = useNewTaskFlow();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
   const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
   const controlsBottomPadding = isKeyboardVisible ? 8 : Math.max(insets.bottom, 10);
   const { logicalProjects, selectedProject, setProject } = flow;
@@ -63,6 +77,8 @@ export function NewTaskDraftScreen(props: {
     useMobileModelFavorites();
 
   const borderColor = useThemeColor("--color-border");
+  const sheetFadeOpaque = colorScheme === "dark" ? "rgba(14,14,14,0.98)" : "rgba(242,242,247,0.98)";
+  const sheetFadeTransparent = colorScheme === "dark" ? "rgba(14,14,14,0)" : "rgba(242,242,247,0)";
 
   useEffect(() => {
     if (props.initialProjectRef?.environmentId && props.initialProjectRef?.projectId) {
@@ -204,6 +220,23 @@ export function NewTaskDraftScreen(props: {
     ],
     [modelTraitActions, flow.interactionMode, flow.runtimeMode],
   );
+  const selectedEnvironmentLabel =
+    flow.environments.find(
+      (environment) => environment.environmentId === flow.selectedEnvironmentId,
+    )?.environmentLabel ?? "Environment";
+  const currentBranchName =
+    flow.availableBranches.find((branch) => branch.current)?.name ??
+    flow.availableBranches.find((branch) => branch.isDefault)?.name ??
+    null;
+  const workspaceLabel = useMemo(
+    () =>
+      formatWorkspaceLabel({
+        currentBranchName,
+        selectedBranchName: flow.selectedBranchName,
+        workspaceMode: flow.workspaceMode,
+      }),
+    [currentBranchName, flow.selectedBranchName, flow.workspaceMode],
+  );
 
   function handleEnvironmentMenuAction(event: string) {
     if (!event.startsWith("environment:")) {
@@ -320,21 +353,14 @@ export function NewTaskDraftScreen(props: {
   if (!selectedProject) {
     return (
       <View className="flex-1 bg-sheet">
-        <NewTaskSheetHeader title="Loading task" />
+        <Stack.Screen options={{ title: "Loading task" }} />
       </View>
     );
   }
 
   return (
     <View className="flex-1 bg-sheet">
-      <NewTaskSheetHeader
-        title={selectedProject.title}
-        control={
-          flow.logicalProjects.length > 1
-            ? { icon: "chevron.left", onPress: () => router.back() }
-            : undefined
-        }
-      />
+      <Stack.Screen options={{ title: selectedProject.title }} />
 
       <KeyboardAvoidingView automaticOffset behavior="padding" style={{ flex: 1 }}>
         <View style={{ flex: 1, minHeight: 0, paddingHorizontal: 20, paddingTop: 8 }}>
@@ -352,9 +378,7 @@ export function NewTaskDraftScreen(props: {
             textStyle={MOBILE_TYPOGRAPHY.composer}
           />
         </View>
-      </KeyboardAvoidingView>
 
-      <KeyboardStickyView>
         <View
           style={{
             borderTopWidth: 1,
@@ -372,28 +396,50 @@ export function NewTaskDraftScreen(props: {
               />
             </View>
           ) : null}
-          <View className="flex-row items-center justify-between gap-2 px-4 pt-2">
-            <ControlPill icon="plus" onPress={() => void handlePickImages()} />
-            <ControlPill
-              iconNode={
-                <ProviderIcon provider={flow.selectedModelOption?.providerDriver} size={16} />
-              }
-              onPress={() => setModelPickerVisible(true)}
-            />
-            <ControlPill icon="slider.horizontal.3" onPress={() => setOptionsSheetVisible(true)} />
-            <ControlPillMenu
-              actions={environmentMenuActions}
-              onPressAction={({ nativeEvent }) => handleEnvironmentMenuAction(nativeEvent.event)}
+          <ComposerToolbarRow paddingBottom={controlsBottomPadding} paddingHorizontal={6}>
+            <ComposerToolbarScroller
+              fadeOpaque={sheetFadeOpaque}
+              fadeTransparent={sheetFadeTransparent}
             >
-              <ControlPill icon="desktopcomputer" />
-            </ControlPillMenu>
-            <ControlPill
-              icon="point.topleft.down.curvedto.point.bottomright.up"
-              onPress={() => setWorkspaceSheetVisible(true)}
-            />
-            <ControlPill
+              <ComposerToolbarButton
+                icon="plus"
+                onPress={() => void handlePickImages()}
+                showChevron={false}
+              />
+              <ComposerToolbarTrigger
+                accessibilityLabel="Model"
+                iconNode={
+                  <ProviderIcon provider={flow.selectedModelOption?.providerDriver} size={16} />
+                }
+                label={flow.selectedModelOption?.label ?? "Model"}
+                onPress={() => setModelPickerVisible(true)}
+              />
+              <ComposerToolbarTrigger
+                accessibilityLabel="Configuration"
+                icon="slider.horizontal.3"
+                label="Properties"
+                onPress={() => setOptionsSheetVisible(true)}
+              />
+              <ControlPillMenu
+                actions={environmentMenuActions}
+                onPressAction={({ nativeEvent }) => handleEnvironmentMenuAction(nativeEvent.event)}
+              >
+                <ComposerToolbarTrigger
+                  accessibilityLabel="Environment"
+                  icon="desktopcomputer"
+                  label={selectedEnvironmentLabel}
+                />
+              </ControlPillMenu>
+              <ComposerToolbarTrigger
+                accessibilityLabel="Workspace"
+                icon="point.topleft.down.curvedto.point.bottomright.up"
+                label={workspaceLabel}
+                onPress={() => setWorkspaceSheetVisible(true)}
+              />
+            </ComposerToolbarScroller>
+            <ComposerToolbarButton
+              accessibilityLabel={flow.submitting ? "Starting task" : "Start task"}
               icon="arrow.up"
-              label={flow.submitting ? "Starting" : "Start"}
               onPress={() => void handleStart()}
               variant="primary"
               disabled={
@@ -403,10 +449,11 @@ export function NewTaskDraftScreen(props: {
                 flow.submitting ||
                 (flow.workspaceMode === "worktree" && !flow.selectedBranchName)
               }
+              showChevron={false}
             />
-          </View>
+          </ComposerToolbarRow>
         </View>
-      </KeyboardStickyView>
+      </KeyboardAvoidingView>
       <MobileModelPickerSheet
         visible={modelPickerVisible}
         modelOptions={flow.modelOptions}
