@@ -23,12 +23,15 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummariesPrompt,
+  buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
+  sanitizeToolCallSummary,
 } from "./TextGenerationUtils.ts";
 import * as OpenCodeRuntime from "../provider/opencodeRuntime.ts";
 
@@ -39,6 +42,8 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
+  "generateToolCallSummary",
+  "generateToolCallSummaries",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -253,7 +258,9 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries";
   }) =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
@@ -611,10 +618,55 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  const generateToolCallSummary: TextGeneration.TextGeneration["Service"]["generateToolCallSummary"] =
+    Effect.fn("OpenCodeTextGeneration.generateToolCallSummary")(function* (input) {
+      const { prompt, outputSchema } = buildToolCallSummaryPrompt({
+        toolName: input.toolName,
+        toolType: input.toolType,
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.detail ? { detail: input.detail } : {}),
+        payload: input.payload,
+      });
+      const generated = yield* runOpenCodeJson({
+        operation: "generateToolCallSummary",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        summary: sanitizeToolCallSummary(generated.summary),
+      };
+    });
+
+  const generateToolCallSummaries: TextGeneration.TextGeneration["Service"]["generateToolCallSummaries"] =
+    Effect.fn("OpenCodeTextGeneration.generateToolCallSummaries")(function* (input) {
+      const { prompt, outputSchema } = buildToolCallSummariesPrompt({
+        items: input.items,
+      });
+      const generated = yield* runOpenCodeJson({
+        operation: "generateToolCallSummaries",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        summaries: generated.summaries.map((item) => ({
+          id: item.id,
+          summary: sanitizeToolCallSummary(item.summary),
+        })),
+      };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateToolCallSummary,
+    generateToolCallSummaries,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
