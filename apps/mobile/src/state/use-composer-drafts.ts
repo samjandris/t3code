@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { useEffect } from "react";
 import { Atom } from "effect/unstable/reactivity";
 
+import type { ModelSelection, ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import { appAtomRegistry } from "./atom-registry";
 
@@ -29,6 +30,9 @@ export class ComposerDraftPersistenceError extends Schema.TaggedErrorClass<Compo
 export interface ComposerDraft {
   readonly text: string;
   readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly modelSelection?: ModelSelection;
+  readonly runtimeMode?: RuntimeMode;
+  readonly interactionMode?: ProviderInteractionMode;
 }
 
 interface PersistedComposerDrafts {
@@ -56,11 +60,20 @@ function normalizeDraft(draft: ComposerDraft | undefined): ComposerDraft {
   return {
     text: draft.text,
     attachments: draft.attachments,
+    ...(draft.modelSelection !== undefined ? { modelSelection: draft.modelSelection } : {}),
+    ...(draft.runtimeMode !== undefined ? { runtimeMode: draft.runtimeMode } : {}),
+    ...(draft.interactionMode !== undefined ? { interactionMode: draft.interactionMode } : {}),
   };
 }
 
 function isEmptyDraft(draft: ComposerDraft): boolean {
-  return draft.text.length === 0 && draft.attachments.length === 0;
+  return (
+    draft.text.length === 0 &&
+    draft.attachments.length === 0 &&
+    draft.modelSelection === undefined &&
+    draft.runtimeMode === undefined &&
+    draft.interactionMode === undefined
+  );
 }
 
 async function getComposerDraftsFile() {
@@ -282,14 +295,39 @@ export function removeComposerDraftAttachment(draftKey: string, imageId: string)
   });
 }
 
-export function clearComposerDraft(draftKey: string): void {
+export function setComposerDraftProperties(
+  draftKey: string,
+  properties: Pick<ComposerDraft, "modelSelection" | "runtimeMode" | "interactionMode">,
+): void {
+  updateComposerDrafts((current) => ({
+    ...current,
+    [draftKey]: {
+      ...normalizeDraft(current[draftKey]),
+      ...properties,
+    },
+  }));
+}
+
+export function clearComposerDraftContent(draftKey: string): void {
   updateComposerDrafts((current) => {
-    if (!current[draftKey]) {
+    const existing = current[draftKey];
+    if (!existing) {
       return current;
     }
-    const next = { ...current };
-    delete next[draftKey];
-    return next;
+    const draft = {
+      ...normalizeDraft(existing),
+      text: "",
+      attachments: [],
+    };
+    if (isEmptyDraft(draft)) {
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    }
+    return {
+      ...current,
+      [draftKey]: draft,
+    };
   });
 }
 
