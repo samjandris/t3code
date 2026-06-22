@@ -17,6 +17,7 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -107,6 +108,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
       const processEnv = mergeProviderInstanceEnvironment(environment);
+      const retainedCapabilitySnapshotRef = yield* Ref.make<ServerProvider | undefined>(undefined);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -149,14 +151,21 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         // Model catalog and capabilities come exclusively from Cursor's
         // list_available_models extension method during provider checks.
         enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
-          enrichCursorSnapshot({
-            settings: settings.provider,
-            snapshot: currentSnapshot,
-            maintenanceCapabilities,
-            enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-            publishSnapshot,
-            stampIdentity,
-            httpClient,
+          Effect.gen(function* () {
+            const retainedSnapshot = yield* Ref.get(retainedCapabilitySnapshotRef);
+            yield* enrichCursorSnapshot({
+              settings: settings.provider,
+              snapshot: currentSnapshot,
+              retainedSnapshot,
+              maintenanceCapabilities,
+              enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+              publishSnapshot: (nextSnapshot) =>
+                Ref.set(retainedCapabilitySnapshotRef, nextSnapshot).pipe(
+                  Effect.andThen(publishSnapshot(nextSnapshot)),
+                ),
+              stampIdentity,
+              httpClient,
+            });
           }),
         refreshInterval: SNAPSHOT_REFRESH_INTERVAL,
       }).pipe(
