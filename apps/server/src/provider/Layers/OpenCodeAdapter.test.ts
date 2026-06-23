@@ -54,6 +54,7 @@ const runtimeMock = {
   state: {
     startCalls: [] as string[],
     sessionCreateUrls: [] as string[],
+    sessionCreateDirectories: [] as Array<string | undefined>,
     authHeaders: [] as Array<string | null>,
     abortCalls: [] as string[],
     closeCalls: [] as string[],
@@ -67,6 +68,7 @@ const runtimeMock = {
   reset() {
     this.state.startCalls.length = 0;
     this.state.sessionCreateUrls.length = 0;
+    this.state.sessionCreateDirectories.length = 0;
     this.state.authHeaders.length = 0;
     this.state.abortCalls.length = 0;
     this.state.closeCalls.length = 0;
@@ -122,8 +124,9 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
   createOpenCodeSdkClient: ({ baseUrl, serverPassword }) =>
     ({
       session: {
-        create: async () => {
+        create: async (input?: { directory?: string }) => {
           runtimeMock.state.sessionCreateUrls.push(baseUrl);
+          runtimeMock.state.sessionCreateDirectories.push(input?.directory);
           runtimeMock.state.authHeaders.push(
             serverPassword ? `Basic ${btoa(`opencode:${serverPassword}`)}` : null,
           );
@@ -245,6 +248,43 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       assert.deepEqual(runtimeMock.state.authHeaders, [
         `Basic ${btoa("opencode:secret-password")}`,
       ]);
+    }),
+  );
+
+  it.effect("binds session creation and the first prompt to the requested cwd", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-opencode-first-prompt-cwd");
+      const cwd = "/workspace/thread-worktree";
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        cwd,
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "Review [AGENTS.md](AGENTS.md)",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+
+      assert.deepEqual(runtimeMock.state.sessionCreateDirectories, [cwd]);
+      assert.deepEqual(runtimeMock.state.promptCalls, [
+        {
+          sessionID: "http://127.0.0.1:9999/session",
+          directory: cwd,
+          model: {
+            providerID: "openai",
+            modelID: "gpt-5",
+          },
+          parts: [{ type: "text", text: "Review [AGENTS.md](AGENTS.md)" }],
+        },
+      ]);
+      yield* adapter.stopSession(threadId);
     }),
   );
 
@@ -431,6 +471,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
 
       assert.deepEqual(runtimeMock.state.promptCalls.at(-1), {
         sessionID: "http://127.0.0.1:9999/session",
+        directory: process.cwd(),
         model: {
           providerID: "anthropic",
           modelID: "claude-sonnet-4-5",
@@ -475,6 +516,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
 
       assert.deepEqual(runtimeMock.state.promptCalls.at(-1), {
         sessionID: "http://127.0.0.1:9999/session",
+        directory: process.cwd(),
         model: {
           providerID: "anthropic",
           modelID: "claude-sonnet-4-5",

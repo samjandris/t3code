@@ -413,7 +413,10 @@ const stopOpenCodeContext = Effect.fn("stopOpenCodeContext")(function* (
   // handles (event-pump fiber, server-exit fiber, event-subscribe fetch),
   // but we still want to tell OpenCode that this session is done.
   yield* runOpenCodeSdk("session.abort", () =>
-    context.client.session.abort({ sessionID: context.openCodeSessionId }),
+    context.client.session.abort({
+      sessionID: context.openCodeSessionId,
+      directory: context.directory,
+    }),
   ).pipe(Effect.ignore({ log: true }));
 
   // Closing the session scope interrupts every fiber forked into it and
@@ -569,7 +572,10 @@ export function makeOpenCodeAdapter(
       // delegate to it because our `getAndSet` above already flipped the
       // one-shot guard, so the call would no-op.
       yield* runOpenCodeSdk("session.abort", () =>
-        context.client.session.abort({ sessionID: context.openCodeSessionId }),
+        context.client.session.abort({
+          sessionID: context.openCodeSessionId,
+          directory: context.directory,
+        }),
       ).pipe(Effect.ignore({ log: true }));
       yield* Scope.close(context.sessionScope, Exit.void);
     });
@@ -975,9 +981,12 @@ export function makeOpenCodeAdapter(
       // automatically when the scope closes — no bookkeeping required.
       yield* Effect.flatMap(
         runOpenCodeSdk("event.subscribe", () =>
-          context.client.event.subscribe(undefined, {
-            signal: eventsAbortController.signal,
-          }),
+          context.client.event.subscribe(
+            { directory: context.directory },
+            {
+              signal: eventsAbortController.signal,
+            },
+          ),
         ),
         (subscription) =>
           Stream.fromAsyncIterable(
@@ -1053,8 +1062,13 @@ export function makeOpenCodeAdapter(
                 directory,
                 ...(server.external && serverPassword ? { serverPassword } : {}),
               });
+              // OpenCode persists the directory resolved by session.create, and
+              // first-turn file references are resolved inside promptAsync
+              // before the background run starts. Pass it on each operation
+              // instead of relying only on the client's ambient header.
               const openCodeSession = yield* runOpenCodeSdk("session.create", () =>
                 client.session.create({
+                  directory,
                   title: `T3 Code ${input.threadId}`,
                   permission: buildOpenCodePermissionRules(input.runtimeMode),
                 }),
@@ -1089,6 +1103,7 @@ export function makeOpenCodeAdapter(
           yield* runOpenCodeSdk("session.abort", () =>
             started.client.session.abort({
               sessionID: started.openCodeSession.id,
+              directory,
             }),
           ).pipe(Effect.ignore);
           yield* Scope.close(started.sessionScope, Exit.void).pipe(Effect.ignore);
@@ -1218,6 +1233,7 @@ export function makeOpenCodeAdapter(
       yield* runOpenCodeSdk("session.promptAsync", () =>
         context.client.session.promptAsync({
           sessionID: context.openCodeSessionId,
+          directory: context.directory,
           model: parsedModel,
           ...(context.activeAgent ? { agent: context.activeAgent } : {}),
           ...(context.activeVariant ? { variant: context.activeVariant } : {}),
@@ -1267,7 +1283,10 @@ export function makeOpenCodeAdapter(
       function* (threadId, turnId) {
         const context = ensureSessionContext(sessions, threadId);
         yield* runOpenCodeSdk("session.abort", () =>
-          context.client.session.abort({ sessionID: context.openCodeSessionId }),
+          context.client.session.abort({
+            sessionID: context.openCodeSessionId,
+            directory: context.directory,
+          }),
         ).pipe(Effect.mapError(toRequestError));
         if (turnId ?? context.activeTurnId) {
           yield* emit({
@@ -1299,6 +1318,7 @@ export function makeOpenCodeAdapter(
       yield* runOpenCodeSdk("permission.reply", () =>
         context.client.permission.reply({
           requestID: requestId,
+          directory: context.directory,
           reply: toOpenCodePermissionReply(decision),
         }),
       ).pipe(Effect.mapError(toRequestError));
@@ -1320,6 +1340,7 @@ export function makeOpenCodeAdapter(
       yield* runOpenCodeSdk("question.reply", () =>
         context.client.question.reply({
           requestID: requestId,
+          directory: context.directory,
           answers: toOpenCodeQuestionAnswers(request, answers),
         }),
       ).pipe(Effect.mapError(toRequestError));
@@ -1363,6 +1384,7 @@ export function makeOpenCodeAdapter(
         const messages = yield* runOpenCodeSdk("session.messages", () =>
           context.client.session.messages({
             sessionID: context.openCodeSessionId,
+            directory: context.directory,
           }),
         ).pipe(Effect.mapError(toRequestError));
 
@@ -1389,6 +1411,7 @@ export function makeOpenCodeAdapter(
         const messages = yield* runOpenCodeSdk("session.messages", () =>
           context.client.session.messages({
             sessionID: context.openCodeSessionId,
+            directory: context.directory,
           }),
         ).pipe(Effect.mapError(toRequestError));
 
@@ -1400,6 +1423,7 @@ export function makeOpenCodeAdapter(
         yield* runOpenCodeSdk("session.revert", () =>
           context.client.session.revert({
             sessionID: context.openCodeSessionId,
+            directory: context.directory,
             ...(target ? { messageID: target.info.id } : {}),
           }),
         ).pipe(Effect.mapError(toRequestError));
