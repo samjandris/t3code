@@ -233,7 +233,7 @@
   }
 }
 
-  @keyframes tool-summary-shimmer {
+@keyframes tool-summary-shimmer {
   0% {
     background-position: 180% 0;
   }

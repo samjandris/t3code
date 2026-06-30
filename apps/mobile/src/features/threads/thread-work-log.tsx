@@ -332,20 +332,20 @@ export function ThreadWorkLog(props: {
 
       <View className="gap-px">
         {rows.map((row) => {
-           const expanded = props.expandedRows[row.id] ?? false;
+          const expanded = props.expandedRows[row.id] ?? false;
 
-           return (
-             <ThreadWorkLogRow
-               key={row.id}
-               row={row}
+          return (
+            <ThreadWorkLogRow
+              key={row.id}
+              row={row}
               expanded={expanded}
               copied={props.copiedRowId === row.id}
               iconSubtleColor={props.iconSubtleColor}
               pressedBackground={pressedBackground}
               onCopyRow={props.onCopyRow}
-               onToggleRow={props.onToggleRow}
-             />
-           );
+              onToggleRow={props.onToggleRow}
+            />
+          );
         })}
       </View>
     </View>
