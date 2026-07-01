@@ -7,6 +7,7 @@ import {
 } from "../../pendingUserInput";
 import { CheckIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
+import Markdown from "react-markdown";
 
 interface PendingUserInputPanelProps {
   pendingUserInputs: PendingUserInput[];
@@ -164,7 +165,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           </span>
         ) : null}
       </div>
-      <p className="text-sm text-foreground/90">{activeQuestion.question}</p>
+      <p className="mt-1.5 text-sm text-foreground/90">
+        <Markdown>{activeQuestion.question}</Markdown>
+      </p>
       {activeQuestion.multiSelect ? (
         <p className="mt-1 text-xs text-muted-foreground/65">Select one or more options.</p>
       ) : null}
@@ -208,19 +211,17 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             </>
           );
           return (
-            <div
+            <button
               key={`${activeQuestion.id}:${option.label}`}
-              role="button"
-              tabIndex={isResponding ? -1 : 0}
-              aria-disabled={isResponding}
+              type="button"
+              disabled={isResponding}
               onClick={() => {
-                if (isResponding) return;
                 handleOptionSelection(activeQuestion.id, option.label);
               }}
               className={className}
             >
               {content}
-            </div>
+            </button>
           );
         })}
       </div>
