@@ -1,11 +1,32 @@
 import * as Haptics from "expo-haptics";
 import { SymbolView, type SFSymbol } from "expo-symbols";
-import { LayoutAnimation, Pressable, ScrollView, useColorScheme, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  LayoutAnimation,
+  Pressable,
+  ScrollView,
+  Text as NativeText,
+  useColorScheme,
+  useWindowDimensions,
+  View,
+  type ColorValue,
+} from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 
 import { AppText as Text } from "../../components/AppText";
 import { cn } from "../../lib/cn";
 import type { ThreadFeedActivity } from "../../lib/threadActivity";
 
+const AnimatedNativeText = Animated.createAnimatedComponent(NativeText);
+const AnimatedView = Animated.createAnimatedComponent(View);
+const TOOL_SUMMARY_SHIMMER_WIDTH = 52;
+const WORK_LOG_LINE_HEIGHT = 20;
 const WORK_LOG_LAYOUT_ANIMATION = {
   duration: 180,
   create: {
@@ -68,11 +89,224 @@ function workRowSymbolName(icon: ThreadFeedActivity["icon"]): SFSymbol {
   }
 }
 
+type ThreadWorkLogRowActivity = ThreadFeedActivity & {
+  readonly detail: string | null;
+};
+
+function ThreadWorkLogRow(props: {
+  readonly row: ThreadWorkLogRowActivity;
+  readonly expanded: boolean;
+  readonly copied: boolean;
+  readonly iconSubtleColor: ColorValue;
+  readonly pressedBackground: string;
+  readonly onCopyRow: (rowId: string, value: string) => void;
+  readonly onToggleRow: (rowId: string) => void;
+}) {
+  const colorScheme = useColorScheme();
+  const isToolSummaryPending = props.row.toolSummaryStatus === "pending";
+  const { width: windowWidth } = useWindowDimensions();
+  const [detailTextWidth, setDetailTextWidth] = useState(0);
+  const shimmerProgress = useSharedValue(0);
+  const canExpand = props.row.fullDetail !== null;
+  const displayText = props.row.detail
+    ? `${props.row.summary} ${props.row.detail}`
+    : props.row.summary;
+  const iconIsDestructive = props.row.icon === "alert" || props.row.icon === "warning";
+  const glintColor = colorScheme === "dark" ? "rgba(255,255,255,0.72)" : "rgba(23,23,23,0.46)";
+  const shimmerTravelDistance =
+    Math.max(detailTextWidth, Math.min(windowWidth, 320)) + TOOL_SUMMARY_SHIMMER_WIDTH * 2;
+  const overlayTextWidth = Math.max(detailTextWidth, windowWidth);
+
+  useEffect(() => {
+    if (!isToolSummaryPending) {
+      shimmerProgress.value = 0;
+      return;
+    }
+    shimmerProgress.value = 0;
+    shimmerProgress.value = withRepeat(
+      withTiming(1, { duration: 1650, easing: Easing.linear }),
+      -1,
+      false,
+    );
+  }, [isToolSummaryPending, shimmerProgress]);
+
+  const shimmerWindowStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: shimmerProgress.value * shimmerTravelDistance - TOOL_SUMMARY_SHIMMER_WIDTH,
+      },
+    ],
+  }));
+  const shimmerTextStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: TOOL_SUMMARY_SHIMMER_WIDTH - shimmerProgress.value * shimmerTravelDistance,
+      },
+    ],
+  }));
+
+  return (
+    <View>
+      <Pressable
+        accessibilityRole={canExpand ? "button" : undefined}
+        accessibilityLabel={displayText}
+        accessibilityHint={
+          canExpand ? "Double tap to show full details. Long press to copy." : "Long press to copy."
+        }
+        accessibilityState={canExpand ? { expanded: props.expanded } : undefined}
+        hitSlop={4}
+        onPress={() => {
+          if (canExpand) {
+            triggerDisclosureFeedback();
+            props.onToggleRow(props.row.id);
+          }
+        }}
+        onLongPress={() => props.onCopyRow(props.row.id, props.row.copyText)}
+        style={({ pressed }) => ({
+          backgroundColor: pressed ? props.pressedBackground : "transparent",
+          overflow: "hidden",
+        })}
+        className="rounded-md px-0.5 py-0.5"
+      >
+        <View className="min-h-9 flex-row items-center gap-1.5">
+          <View className="h-5 w-5 shrink-0 items-center justify-center">
+            <SymbolView
+              name={workRowSymbolName(props.row.icon)}
+              size={14}
+              weight="medium"
+              tintColor={iconIsDestructive ? "#e11d48" : props.iconSubtleColor}
+              type="monochrome"
+            />
+          </View>
+
+          <View className="min-w-0 flex-1 flex-row items-center gap-1.5 overflow-hidden">
+            <Text
+              className={cn(
+                "shrink-0 font-t3-medium text-xs leading-5 text-foreground",
+                iconIsDestructive && "text-rose-600 dark:text-rose-400",
+              )}
+              numberOfLines={1}
+            >
+              {props.row.summary}
+            </Text>
+            {props.row.detail ? (
+              <View
+                className="min-w-0 flex-1 overflow-hidden"
+                style={{ height: WORK_LOG_LINE_HEIGHT }}
+              >
+                <Text
+                  className="text-xs leading-5 text-foreground-muted opacity-60"
+                  numberOfLines={1}
+                  onLayout={(event) => {
+                    const nextTextWidth = Math.ceil(event.nativeEvent.layout.width);
+                    setDetailTextWidth((currentTextWidth) =>
+                      currentTextWidth === nextTextWidth ? currentTextWidth : nextTextWidth,
+                    );
+                  }}
+                >
+                  {props.row.detail}
+                </Text>
+                {isToolSummaryPending && detailTextWidth > 0 ? (
+                  <AnimatedView
+                    pointerEvents="none"
+                    style={[
+                      {
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        top: 0,
+                        width: TOOL_SUMMARY_SHIMMER_WIDTH,
+                        overflow: "hidden",
+                      },
+                      shimmerWindowStyle,
+                    ]}
+                  >
+                    <AnimatedNativeText
+                      className="font-sans text-xs leading-5"
+                      numberOfLines={1}
+                      style={[
+                        {
+                          position: "absolute",
+                          left: 0,
+                          top: 0,
+                          width: overlayTextWidth,
+                          color: glintColor,
+                        },
+                        shimmerTextStyle,
+                      ]}
+                    >
+                      {props.row.detail}
+                    </AnimatedNativeText>
+                  </AnimatedView>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+
+          <View className="shrink-0 flex-row items-center gap-px">
+            {props.copied ? (
+              <Text className="pr-1 font-t3-medium text-3xs text-emerald-600 dark:text-emerald-400">
+                Copied
+              </Text>
+            ) : null}
+            <View className="h-4 w-4 items-center justify-center">
+              {canExpand ? (
+                <SymbolView
+                  name={props.expanded ? "chevron.up" : "chevron.down"}
+                  size={11}
+                  tintColor={props.iconSubtleColor}
+                  type="monochrome"
+                />
+              ) : null}
+            </View>
+            <View className="h-4 w-4 items-center justify-center">
+              {props.row.status ? (
+                <SymbolView
+                  name={
+                    props.row.status === "failure"
+                      ? "xmark"
+                      : props.row.status === "success"
+                        ? "checkmark"
+                        : "minus"
+                  }
+                  size={11}
+                  tintColor={props.row.status === "failure" ? "#e11d48" : props.iconSubtleColor}
+                  type="monochrome"
+                />
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </Pressable>
+
+      {props.expanded && props.row.fullDetail ? (
+        <View className="ml-7 border-l border-neutral-300/60 pb-1.5 pl-3 pt-0.5 dark:border-white/[0.12]">
+          <ScrollView
+            nestedScrollEnabled
+            directionalLockEnabled
+            showsVerticalScrollIndicator
+            style={{ maxHeight: 240 }}
+            contentContainerStyle={{ paddingRight: 8 }}
+          >
+            <Text
+              selectable
+              className="text-2xs leading-[17px] text-foreground-muted"
+              style={{ fontFamily: "ui-monospace" }}
+            >
+              {props.row.fullDetail}
+            </Text>
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function ThreadWorkLog(props: {
   readonly activities: ReadonlyArray<ThreadFeedActivity>;
   readonly copiedRowId: string | null;
   readonly expandedRows: Readonly<Record<string, boolean>>;
-  readonly iconSubtleColor: import("react-native").ColorValue;
+  readonly iconSubtleColor: ColorValue;
   readonly onCopyRow: (rowId: string, value: string) => void;
   readonly onToggleRow: (rowId: string) => void;
 }) {
@@ -99,118 +333,18 @@ export function ThreadWorkLog(props: {
       <View className="gap-px">
         {rows.map((row) => {
           const expanded = props.expandedRows[row.id] ?? false;
-          const canExpand = row.fullDetail !== null;
-          const displayText = row.detail ? `${row.summary} ${row.detail}` : row.summary;
-          const iconIsDestructive = row.icon === "alert" || row.icon === "warning";
 
           return (
-            <View key={row.id}>
-              <Pressable
-                accessibilityRole={canExpand ? "button" : undefined}
-                accessibilityLabel={displayText}
-                accessibilityHint={
-                  canExpand
-                    ? "Double tap to show full details. Long press to copy."
-                    : "Long press to copy."
-                }
-                accessibilityState={canExpand ? { expanded } : undefined}
-                hitSlop={4}
-                onPress={() => {
-                  if (canExpand) {
-                    triggerDisclosureFeedback();
-                    props.onToggleRow(row.id);
-                  }
-                }}
-                onLongPress={() => props.onCopyRow(row.id, row.copyText)}
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? pressedBackground : "transparent",
-                })}
-                className="rounded-md px-0.5 py-0"
-              >
-                <View className="min-h-8 flex-row items-center gap-1.5">
-                  <View className="h-[18px] w-5 shrink-0 items-center justify-center">
-                    <SymbolView
-                      name={workRowSymbolName(row.icon)}
-                      size={13}
-                      weight="medium"
-                      tintColor={iconIsDestructive ? "#e11d48" : props.iconSubtleColor}
-                      type="monochrome"
-                    />
-                  </View>
-
-                  <Text
-                    className="min-w-0 flex-1 text-xs leading-4 text-foreground"
-                    numberOfLines={1}
-                  >
-                    <Text
-                      className={cn(
-                        "font-t3-medium text-foreground",
-                        iconIsDestructive && "text-rose-600 dark:text-rose-400",
-                      )}
-                    >
-                      {row.summary}
-                    </Text>
-                    {row.detail ? (
-                      <Text className="text-foreground-muted opacity-60"> {row.detail}</Text>
-                    ) : null}
-                  </Text>
-
-                  <View className="shrink-0 flex-row items-center gap-px">
-                    {props.copiedRowId === row.id ? (
-                      <Text className="pr-1 font-t3-medium text-3xs text-emerald-600 dark:text-emerald-400">
-                        Copied
-                      </Text>
-                    ) : null}
-                    <View className="h-4 w-4 items-center justify-center">
-                      {canExpand ? (
-                        <SymbolView
-                          name={expanded ? "chevron.up" : "chevron.down"}
-                          size={11}
-                          tintColor={props.iconSubtleColor}
-                          type="monochrome"
-                        />
-                      ) : null}
-                    </View>
-                    <View className="h-4 w-4 items-center justify-center">
-                      {row.status ? (
-                        <SymbolView
-                          name={
-                            row.status === "failure"
-                              ? "xmark"
-                              : row.status === "success"
-                                ? "checkmark"
-                                : "minus"
-                          }
-                          size={11}
-                          tintColor={row.status === "failure" ? "#e11d48" : props.iconSubtleColor}
-                          type="monochrome"
-                        />
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-              </Pressable>
-
-              {expanded && row.fullDetail ? (
-                <View className="ml-7 border-l border-neutral-300/60 pb-1 pl-3 pt-0.5 dark:border-white/[0.12]">
-                  <ScrollView
-                    nestedScrollEnabled
-                    directionalLockEnabled
-                    showsVerticalScrollIndicator
-                    style={{ maxHeight: 240 }}
-                    contentContainerStyle={{ paddingRight: 8 }}
-                  >
-                    <Text
-                      selectable
-                      className="text-2xs leading-[17px] text-foreground-muted"
-                      style={{ fontFamily: "ui-monospace" }}
-                    >
-                      {row.fullDetail}
-                    </Text>
-                  </ScrollView>
-                </View>
-              ) : null}
-            </View>
+            <ThreadWorkLogRow
+              key={row.id}
+              row={row}
+              expanded={expanded}
+              copied={props.copiedRowId === row.id}
+              iconSubtleColor={props.iconSubtleColor}
+              pressedBackground={pressedBackground}
+              onCopyRow={props.onCopyRow}
+              onToggleRow={props.onToggleRow}
+            />
           );
         })}
       </View>
