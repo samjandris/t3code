@@ -526,6 +526,12 @@ jobs:
           AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
           AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME }}
         run: |
+          if [[ "${{ matrix.platform }}" == "mac" ]]; then
+            # electron-builder signs thousands of unpacked files concurrently.
+            # GitHub's macOS runner default is too low for the desktop bundle.
+            ulimit -n 65536
+          fi
+
           args=(
             --platform "${{ matrix.platform }}"
             --target "${{ matrix.target }}"
