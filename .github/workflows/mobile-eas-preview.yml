@@ -1,14 +1,16 @@
 name: Mobile EAS Preview
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, labeled, unlabeled]
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-eas-preview-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   preview:
     name: EAS Preview
-    if: contains(github.event.pull_request.labels.*.name, '🚀 Mobile Continuous Deployment')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write
@@ -51,6 +53,18 @@ jobs:
           echo "$vp_pnpm_bin" >> "$GITHUB_PATH"
           "$vp_pnpm_bin/pnpm" --version
 
+      - id: eas-target
+        name: Resolve EAS update branch
+        if: steps.expo-token.outputs.present == 'true'
+        run: |
+          update_branch="preview"
+          build_profile="preview"
+
+          echo "branch=$update_branch" >> "$GITHUB_OUTPUT"
+          echo "profile=$build_profile" >> "$GITHUB_OUTPUT"
+          echo "Using EAS update branch: $update_branch"
+          echo "Using EAS build profile: $build_profile"
+
       - name: Setup EAS
         if: steps.expo-token.outputs.present == 'true'
         uses: expo/expo-github-action@v8
@@ -72,9 +86,9 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         with:
-          profile: preview:dev
-          branch: pr-${{ github.event.pull_request.number }}
-          platform: all
+          profile: ${{ steps.eas-target.outputs.profile }}
+          branch: ${{ steps.eas-target.outputs.branch }}
+          platform: ios
           environment: preview
           working-directory: apps/mobile
           github-token: ${{ secrets.GITHUB_TOKEN }}

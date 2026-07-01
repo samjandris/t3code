@@ -28,6 +28,7 @@ import {
   resolveFffNativeDependencies,
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
+  resolveDesktopAppId,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
   resolveGitHubPublishConfig,
@@ -210,10 +211,20 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         cpu: ["x64"],
       },
     });
+    // Windows artifacts also bundle the same-architecture WSL (Linux, glibc) backend, so the
+    // staged install must fetch its native optional deps (e.g. ffi-rs) too.
+    assert.deepStrictEqual(createStageWorkspaceConfig("win", "x64"), {
+      supportedArchitectures: {
+        os: ["win32", "linux"],
+        cpu: ["x64"],
+        libc: ["glibc"],
+      },
+    });
     assert.deepStrictEqual(createStageWorkspaceConfig("win", "arm64"), {
       supportedArchitectures: {
-        os: ["win32"],
+        os: ["win32", "linux"],
         cpu: ["arm64"],
+        libc: ["glibc"],
       },
     });
     assert.deepStrictEqual(createStageWorkspaceConfig("mac", "universal"), {
@@ -276,7 +287,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
 
     assert.deepStrictEqual(configuration, {
-      appId: "com.t3tools.t3code",
+      appId: "com.samjandris.t3code",
       teamId: "ABC1234567",
       rpDomains: ["example.clerk.accounts.dev"],
       provisioningProfilePath: "/tmp/t3code.provisionprofile",
@@ -296,11 +307,32 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       "clerk.example.com",
       "example.clerk.accounts.dev",
     ]);
-    assert.include(entitlements, "<string>ABC1234567.com.t3tools.t3code</string>");
+    assert.include(entitlements, "<string>ABC1234567.com.samjandris.t3code</string>");
     assert.include(entitlements, "<string>webcredentials:clerk.example.com</string>");
     assert.include(entitlements, "<string>webcredentials:example.clerk.accounts.dev</string>");
     assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");
   });
+
+  it.effect("allows release environments to override the desktop app id", () =>
+    Effect.gen(function* () {
+      const appId = yield* resolveDesktopAppId();
+      assert.equal(appId, "com.example.custom");
+
+      const configuration = resolveMacPasskeySigningConfiguration({
+        T3CODE_DESKTOP_APP_ID: " com.example.custom ",
+        T3CODE_APPLE_TEAM_ID: "ABC1234567",
+        T3CODE_MACOS_PROVISIONING_PROFILE: "/tmp/t3code.provisionprofile",
+        T3CODE_CLERK_PASSKEY_RP_DOMAINS: "example.clerk.accounts.dev",
+      });
+      assert.equal(configuration.appId, "com.example.custom");
+    }).pipe(
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({ env: { T3CODE_DESKTOP_APP_ID: " com.example.custom " } }),
+        ),
+      ),
+    ),
+  );
 
   it("rejects incomplete macOS passkey signing configuration", () => {
     const captureError = (env: Readonly<Record<string, string | undefined>>) => {
@@ -391,12 +423,31 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       });
 
       const mac = config.mac as Record<string, unknown>;
-      assert.equal(config.appId, "com.t3tools.t3code");
+      assert.equal(config.appId, "com.samjandris.t3code");
       assert.equal(mac.entitlements, "/tmp/entitlements.mac.plist");
       assert.equal(mac.provisioningProfile, "/tmp/t3code.provisionprofile");
       assert.deepStrictEqual(mac.protocols, [
         { name: "T3 Code", schemes: ["t3code", "t3code-dev"] },
       ]);
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
+  it.effect("keeps executable resource editing enabled for unsigned Windows builds", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "win",
+        "nsis",
+        "1.2.3",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+
+      const win = config.win as Record<string, unknown>;
+      assert.equal(win.icon, "icon.ico");
+      assert.equal(win.signAndEditExecutable, true);
+      assert.notProperty(win, "azureSignOptions");
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 
@@ -410,6 +461,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
     assert.deepStrictEqual(resolveFffNativeDependencies("win", "x64", "0.9.4"), {
       "@ff-labs/fff-bin-win32-x64": "0.9.4",
+    });
+    assert.deepStrictEqual(resolveFffNativeDependencies("linux", "x64", "0.9.4"), {
+      "@ff-labs/fff-bin-linux-x64-gnu": "0.9.4",
+      "@ff-labs/fff-bin-linux-x64-musl": "0.9.4",
     });
     assert.deepStrictEqual(resolveFffNativeDependencies("linux", "arm64", "0.9.4"), {
       "@ff-labs/fff-bin-linux-arm64-gnu": "0.9.4",
@@ -496,6 +551,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         verbose: Option.none(),
         mockUpdates: Option.none(),
         mockUpdateServerPort: Option.none(),
+        wslPrebuild: Option.none(),
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
@@ -533,6 +589,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         verbose: Option.some(false),
         mockUpdates: Option.some(false),
         mockUpdateServerPort: Option.none(),
+        wslPrebuild: Option.none(),
       }).pipe(
         Effect.provide(
           ConfigProvider.layer(
