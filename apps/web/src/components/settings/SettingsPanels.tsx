@@ -391,9 +391,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.sidebarThreadPreviewCount !== DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount
         ? ["Visible threads"]
         : []),
-      ...(settings.diffWordWrap !== DEFAULT_UNIFIED_SETTINGS.diffWordWrap
-        ? ["Diff line wrapping"]
-        : []),
+      ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
@@ -434,11 +432,11 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.defaultThreadEnvMode,
       settings.newWorktreesStartFromOrigin,
       settings.diffIgnoreWhitespace,
-      settings.diffWordWrap,
       settings.automaticGitFetchInterval,
       settings.enableAssistantStreaming,
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
+      settings.wordWrap,
       theme,
     ],
   );
@@ -456,7 +454,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     setTheme("system");
     updateSettings({
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
-      diffWordWrap: DEFAULT_UNIFIED_SETTINGS.diffWordWrap,
+      wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       autoOpenPlanSidebar: DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar,
@@ -594,15 +592,15 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
-          title="Diff line wrapping"
-          description="Set the default wrap state when the diff panel opens."
+          title="Word wrap"
+          description="Wrap long lines in code blocks, tables, diffs, and file previews by default."
           resetAction={
-            settings.diffWordWrap !== DEFAULT_UNIFIED_SETTINGS.diffWordWrap ? (
+            settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? (
               <SettingResetButton
-                label="diff line wrapping"
+                label="word wrapping"
                 onClick={() =>
                   updateSettings({
-                    diffWordWrap: DEFAULT_UNIFIED_SETTINGS.diffWordWrap,
+                    wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
                   })
                 }
               />
@@ -610,9 +608,9 @@ export function GeneralSettingsPanel() {
           }
           control={
             <Switch
-              checked={settings.diffWordWrap}
-              onCheckedChange={(checked) => updateSettings({ diffWordWrap: Boolean(checked) })}
-              aria-label="Wrap diff lines by default"
+              checked={settings.wordWrap}
+              onCheckedChange={(checked) => updateSettings({ wordWrap: Boolean(checked) })}
+              aria-label="Wrap code, tables, diffs, and file previews by default"
             />
           }
         />
@@ -666,6 +664,32 @@ export function GeneralSettingsPanel() {
                 updateSettings({ enableAssistantStreaming: Boolean(checked) })
               }
               aria-label="Stream assistant messages"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Tool call summaries"
+          description="Use the text generation model to replace raw provider tool output with concise work-log summaries."
+          resetAction={
+            settings.summarizeToolCalls !== DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls ? (
+              <SettingResetButton
+                label="tool call summaries"
+                onClick={() =>
+                  updateSettings({
+                    summarizeToolCalls: DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.summarizeToolCalls}
+              onCheckedChange={(checked) =>
+                updateSettings({ summarizeToolCalls: Boolean(checked) })
+              }
+              aria-label="Summarize provider tool calls"
             />
           }
         />
