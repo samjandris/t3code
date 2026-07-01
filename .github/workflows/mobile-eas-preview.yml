@@ -1,20 +1,15 @@
 name: Mobile EAS Preview
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, labeled, unlabeled]
-  push:
-    branches:
-      - dev
+  workflow_dispatch:
 
 concurrency:
-  group: mobile-eas-preview-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
+  group: mobile-eas-preview-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   preview:
     name: EAS Preview
-    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, '🚀 Mobile Continuous Deployment')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -61,16 +56,9 @@ jobs:
       - id: eas-target
         name: Resolve EAS update branch
         if: steps.expo-token.outputs.present == 'true'
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            update_branch="pr-$PR_NUMBER"
-            build_profile="preview:dev"
-          else
-            update_branch="preview"
-            build_profile="preview"
-          fi
+          update_branch="preview"
+          build_profile="preview"
 
           echo "branch=$update_branch" >> "$GITHUB_OUTPUT"
           echo "profile=$build_profile" >> "$GITHUB_OUTPUT"
