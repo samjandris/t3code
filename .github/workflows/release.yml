@@ -528,8 +528,12 @@ jobs:
         run: |
           if [[ "${{ matrix.platform }}" == "mac" ]]; then
             # electron-builder signs thousands of unpacked files concurrently.
-            # GitHub's macOS runner default is too low for the desktop bundle.
-            ulimit -n 65536
+            # Raise launchd's per-process cap before setting this shell's limit;
+            # ulimit alone is clamped by the GitHub macOS runner's kernel cap.
+            sudo launchctl limit maxfiles 65536 200000 || true
+            ulimit -Hn 65536 2>/dev/null || true
+            ulimit -Sn 65536
+            echo "File descriptor limit: $(ulimit -n)"
           fi
 
           args=(
