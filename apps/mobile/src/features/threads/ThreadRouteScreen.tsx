@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import * as Option from "effect/Option";
 import { EnvironmentId, ThreadId, type ProjectScript } from "@t3tools/contracts";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
-import { Platform, Pressable, ScrollView, Text as RNText, View } from "react-native";
+import { Keyboard, Platform, Pressable, ScrollView, Text as RNText, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useWorkspaceState } from "../../state/workspace";
 import { useThemeColor } from "../../lib/useThemeColor";
@@ -327,6 +327,9 @@ function ThreadRouteContent(
   const gitActionProgress = useGitActionProgress(gitActionProgressTarget);
 
   const handleOpenDrawer = useCallback(() => {
+    // Dismiss composer focus before presenting the drawer so iOS does not
+    // retain a stale keyboard inset beneath the transparent modal.
+    Keyboard.dismiss();
     if (!layout.usesSplitView) {
       setDrawerVisible(true);
     }
