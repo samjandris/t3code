@@ -155,7 +155,9 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    "*": (defaultSchema.attributes?.["*"] ?? []).filter((attribute) => attribute !== "title"),
+    "*": (defaultSchema.attributes?.["*"] ?? []).filter(
+      (attribute: unknown) => attribute !== "title",
+    ),
     code: [...(defaultSchema.attributes?.code ?? []), "dataCodeMeta"],
   },
   protocols: {
