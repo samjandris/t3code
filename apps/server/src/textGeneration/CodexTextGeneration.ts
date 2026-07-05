@@ -21,12 +21,15 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummariesPrompt,
+  buildToolCallSummaryPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   normalizeCliError,
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
+  sanitizeToolCallSummary,
   toJsonSchemaObject,
 } from "./TextGenerationUtils.ts";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
@@ -97,7 +100,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries",
     value: unknown,
   ): Effect.Effect<string, TextGenerationError> =>
     encodeJsonString(value).pipe(
@@ -116,7 +121,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries",
     attachments: TextGeneration.BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -158,7 +165,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateToolCallSummary"
+      | "generateToolCallSummaries";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -395,10 +404,57 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateToolCallSummary: TextGeneration.TextGeneration["Service"]["generateToolCallSummary"] =
+    Effect.fn("CodexTextGeneration.generateToolCallSummary")(function* (input) {
+      const { prompt, outputSchema } = buildToolCallSummaryPrompt({
+        toolName: input.toolName,
+        toolType: input.toolType,
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.detail ? { detail: input.detail } : {}),
+        payload: input.payload,
+      });
+
+      const generated = yield* runCodexJson({
+        operation: "generateToolCallSummary",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        summary: sanitizeToolCallSummary(generated.summary),
+      };
+    });
+
+  const generateToolCallSummaries: TextGeneration.TextGeneration["Service"]["generateToolCallSummaries"] =
+    Effect.fn("CodexTextGeneration.generateToolCallSummaries")(function* (input) {
+      const { prompt, outputSchema } = buildToolCallSummariesPrompt({
+        items: input.items,
+      });
+
+      const generated = yield* runCodexJson({
+        operation: "generateToolCallSummaries",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        summaries: generated.summaries.map((item) => ({
+          id: item.id,
+          summary: sanitizeToolCallSummary(item.summary),
+        })),
+      };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateToolCallSummary,
+    generateToolCallSummaries,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
