@@ -57,7 +57,7 @@ export class MobileStorageEncodeError extends Schema.TaggedErrorClass<MobileStor
   }
 }
 
-export interface Preferences {
+export interface MobilePreferences {
   readonly liveActivitiesEnabled?: boolean;
   readonly baseFontSize?: number;
   /** Terminal font size override; null/absent means derived from baseFontSize. */
@@ -67,7 +67,23 @@ export interface Preferences {
   /** Code/diff font size override; null/absent means derived from baseFontSize. */
   readonly codeFontSize?: number | null;
   readonly codeWordBreak?: boolean;
+  readonly modelFavorites?: ReadonlyArray<{
+    readonly provider: string;
+    readonly model: string;
+  }>;
 }
+
+export type Preferences = MobilePreferences;
+
+type MutableMobilePreferences = {
+  liveActivitiesEnabled?: boolean;
+  baseFontSize?: number;
+  terminalFontSize?: number | null;
+  markdownFontSize?: number;
+  codeFontSize?: number | null;
+  codeWordBreak?: boolean;
+  modelFavorites?: NonNullable<MobilePreferences["modelFavorites"]>;
+};
 
 async function readStorageItem(key: MobileStorageKeyValue): Promise<string | null> {
   try {
@@ -112,6 +128,36 @@ async function writeJsonStorageItem(key: MobileStorageKeyValue, value: unknown) 
   await writeStorageItem(key, encoded);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeModelFavorites(value: unknown): NonNullable<MobilePreferences["modelFavorites"]> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const favorites: Array<{ provider: string; model: string }> = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const provider = typeof entry.provider === "string" ? entry.provider.trim() : "";
+    const model = typeof entry.model === "string" ? entry.model.trim() : "";
+    if (!provider || !model) {
+      continue;
+    }
+    const key = `${provider}:${model}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    favorites.push({ provider, model });
+  }
+  return favorites;
+}
+
 export async function loadSavedConnections(): Promise<ReadonlyArray<SavedRemoteConnection>> {
   const parsed = await readJsonStorageItem<{
     readonly connections?: ReadonlyArray<SavedRemoteConnection>;
@@ -152,20 +198,13 @@ export async function clearSavedConnection(environmentId: EnvironmentId): Promis
   await writeJsonStorageItem(CONNECTIONS_KEY, { connections: next });
 }
 
-export async function loadPreferences(): Promise<Preferences> {
-  const parsed = await readJsonStorageItem<Preferences>(PREFERENCES_KEY);
-  if (!parsed || typeof parsed !== "object") {
+export async function loadPreferences(): Promise<MobilePreferences> {
+  const parsed = await readJsonStorageItem<unknown>(PREFERENCES_KEY);
+  if (!isRecord(parsed)) {
     return {};
   }
 
-  const preferences: {
-    liveActivitiesEnabled?: boolean;
-    baseFontSize?: number;
-    terminalFontSize?: number | null;
-    markdownFontSize?: number;
-    codeFontSize?: number | null;
-    codeWordBreak?: boolean;
-  } = {};
+  const preferences: MutableMobilePreferences = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
     preferences.liveActivitiesEnabled = parsed.liveActivitiesEnabled;
@@ -186,12 +225,19 @@ export async function loadPreferences(): Promise<Preferences> {
     preferences.codeWordBreak = parsed.codeWordBreak;
   }
 
+  const modelFavorites = normalizeModelFavorites(parsed.modelFavorites);
+  if (modelFavorites.length > 0) {
+    preferences.modelFavorites = modelFavorites;
+  }
+
   return preferences;
 }
 
-export async function savePreferencesPatch(patch: Partial<Preferences>): Promise<Preferences> {
+export async function savePreferencesPatch(
+  patch: Partial<MobilePreferences>,
+): Promise<MobilePreferences> {
   const current = await loadPreferences();
-  const next: Preferences = {
+  const next: MobilePreferences = {
     ...current,
     ...patch,
   };
