@@ -15,7 +15,8 @@
     },
     "preview": {
       "env": {
-        "APP_VARIANT": "preview"
+        "APP_VARIANT": "preview",
+        "MOBILE_VERSION_POLICY": "fingerprint"
       },
       "channel": "preview",
       "environment": "preview",
