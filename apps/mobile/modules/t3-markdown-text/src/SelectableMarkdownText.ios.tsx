@@ -42,7 +42,6 @@ export function SelectableMarkdownText({
   const chunks = useMemo(() => {
     const parsedDocument = parseMarkdownWithOptions(markdown, {
       gfm: true,
-      html: true,
       math: false,
     });
     const document = preserveSoftBreaks
