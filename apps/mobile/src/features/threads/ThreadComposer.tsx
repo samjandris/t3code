@@ -46,7 +46,7 @@ import {
 import { ControlPill, ControlPillMenu } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import { buildModelOptions } from "../../lib/modelOptions";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import type { RemoteClientConnectionState } from "../../lib/connection";
 import {
@@ -62,6 +62,8 @@ import {
 } from "../../lib/providerOptions";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
+import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
+import { useMobileModelFavorites } from "./useMobileModelFavorites";
 
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
@@ -259,6 +261,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const { onExpandedChange } = props;
 
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const { favorites: modelFavorites, updateFavorites: updateModelFavorites } =
+    useMobileModelFavorites();
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
   const isExpanded = isFocused;
   const canSend = hasContent;
@@ -314,6 +319,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       ) ?? null
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
+  const currentModelDriver = selectedProviderStatus?.driver ?? currentModelSelection.instanceId;
 
   // ── Trigger detection ────────────────────────────────────
   const [composerSelection, setComposerSelection] = useState(() => ({
@@ -563,16 +569,21 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   // ── Model menu ───────────────────────────────────────────
   const modelOptions = useMemo(
-    () => buildModelOptions(props.serverConfig, currentModelSelection),
-    [props.serverConfig, currentModelSelection],
+    () =>
+      buildModelOptions(props.serverConfig, currentModelSelection).filter(
+        (option) => option.providerDriver === currentModelDriver,
+      ),
+    [props.serverConfig, currentModelSelection, currentModelDriver],
   );
-  const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
-  const currentModelOption =
-    modelOptions.find(
-      (option) =>
-        option.selection.instanceId === currentModelSelection.instanceId &&
-        option.selection.model === currentModelSelection.model,
-    ) ?? null;
+  const currentModelOption = useMemo(
+    () =>
+      modelOptions.find(
+        (option) =>
+          option.selection.instanceId === currentModelSelection.instanceId &&
+          option.selection.model === currentModelSelection.model,
+      ) ?? null,
+    [currentModelSelection.instanceId, currentModelSelection.model, modelOptions],
+  );
   const providerOptionDescriptors = useMemo(
     () =>
       resolveProviderOptionDescriptors({
@@ -585,29 +596,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     () => providerOptionsConfigurationLabel(providerOptionDescriptors),
     [providerOptionDescriptors],
   );
-  const modelMenuActions = useMemo(
-    () =>
-      providerGroups.map((group) => ({
-        id: `provider:${group.providerKey}`,
-        title: group.providerLabel,
-        subtitle: group.models.find(
-          (model) =>
-            model.selection.instanceId === currentModelSelection.instanceId &&
-            model.selection.model === currentModelSelection.model,
-        )?.label,
-        subactions: group.models.map((option) => ({
-          id: `model:${option.key}`,
-          title: option.label,
-          state:
-            option.selection.instanceId === currentModelSelection.instanceId &&
-            option.selection.model === currentModelSelection.model
-              ? ("on" as const)
-              : undefined,
-        })),
-      })),
-    [providerGroups, currentModelSelection],
-  );
-
   // ── Options menu ─────────────────────────────────────────
   const optionsMenuActions = useMemo(
     () => [
@@ -655,17 +643,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   );
 
   // ── Menu handlers ────────────────────────────────────────
-  function handleModelMenuAction(event: string) {
-    if (!event.startsWith("model:")) {
-      return;
-    }
-    const modelKey = event.slice("model:".length);
-    const option = modelOptions.find((o) => o.key === modelKey);
-    if (option) {
-      props.onUpdateModelSelection(option.selection);
-    }
-  }
-
   function handleOptionsMenuAction(event: string) {
     const providerOptions = applyProviderOptionMenuEvent(providerOptionDescriptors, event);
     if (providerOptions) {
@@ -840,18 +817,14 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   onPress={() => void props.onPickDraftImages()}
                   showChevron={false}
                 />
-                <ControlPillMenu
-                  actions={modelMenuActions}
-                  onPressAction={({ nativeEvent }) => handleModelMenuAction(nativeEvent.event)}
-                >
-                  <ComposerToolbarTrigger
-                    accessibilityLabel="Model"
-                    iconNode={
-                      <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
-                    }
-                    label={currentModelOption?.label ?? currentModelSelection.model}
-                  />
-                </ControlPillMenu>
+                <ComposerToolbarTrigger
+                  accessibilityLabel="Model"
+                  iconNode={
+                    <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
+                  }
+                  label={currentModelOption?.label ?? currentModelSelection.model}
+                  onPress={() => setModelPickerVisible(true)}
+                />
                 <ControlPillMenu
                   actions={optionsMenuActions}
                   onPressAction={({ nativeEvent }) => handleOptionsMenuAction(nativeEvent.event)}
@@ -866,7 +839,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   <ComposerToolbarButton
                     icon="stop.fill"
                     variant="danger"
-                    onPress={props.onStopThread}
+                    onPress={() => void props.onStopThread()}
                     showChevron={false}
                   />
                 ) : null}
@@ -901,6 +874,15 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         onRequestClose={closePreview}
         swipeToCloseEnabled
         doubleTapToZoomEnabled
+      />
+      <MobileModelPickerSheet
+        visible={modelPickerVisible}
+        modelOptions={modelOptions}
+        selectedModel={currentModelSelection}
+        favorites={modelFavorites}
+        onClose={() => setModelPickerVisible(false)}
+        onSelectModel={props.onUpdateModelSelection}
+        onFavoritesChange={updateModelFavorites}
       />
     </Animated.View>
   );
