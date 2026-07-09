@@ -68,6 +68,10 @@ import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
+import {
+  sanitizeOrchestrationEventForClient,
+  sanitizeThreadForClient,
+} from "./orchestration/clientPayload.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -1162,7 +1166,7 @@ const makeWsRpcLayer = (
                 Stream.filter(isThisThreadDetailEvent),
                 Stream.map((event) => ({
                   kind: "event" as const,
-                  event,
+                  event: sanitizeOrchestrationEventForClient(event),
                 })),
               );
 
@@ -1195,7 +1199,10 @@ const makeWsRpcLayer = (
                       .readEvents(afterSequence, Number.MAX_SAFE_INTEGER)
                       .pipe(
                         Stream.filter(isThisThreadDetailEvent),
-                        Stream.map((event) => ({ kind: "event" as const, event })),
+                        Stream.map((event) => ({
+                          kind: "event" as const,
+                          event: sanitizeOrchestrationEventForClient(event),
+                        })),
                         Stream.mapError(
                           (cause) =>
                             new OrchestrationGetSnapshotError({
@@ -1231,7 +1238,10 @@ const makeWsRpcLayer = (
               return Stream.concat(
                 Stream.make({
                   kind: "snapshot" as const,
-                  snapshot: snapshot.value,
+                  snapshot: {
+                    ...snapshot.value,
+                    thread: sanitizeThreadForClient(snapshot.value.thread),
+                  },
                 }),
                 liveStream,
               );
