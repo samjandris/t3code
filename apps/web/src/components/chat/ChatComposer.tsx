@@ -1241,16 +1241,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         : null,
     [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
   );
-  const collapsedComposerPrimaryActionDisabled =
-    phase === "running" ||
-    isSendBusy ||
-    isSendDisabled ||
-    isConnecting ||
-    noProviderAvailable ||
-    projectSelectionRequired ||
-    environmentUnavailable !== null ||
-    !composerSendState.hasSendableContent;
-  const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
 
@@ -2780,27 +2770,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   : prompt.trim() ||
                     (noProviderAvailable ? "Enable a provider in Settings" : "Ask anything...")}
               </button>
-              <button
-                type="button"
-                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/90 text-primary-foreground disabled:opacity-30"
-                disabled={collapsedComposerPrimaryActionDisabled}
-                aria-label={collapsedComposerPrimaryActionLabel}
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  submitComposer();
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path
-                    d="M8 3L8 13M8 3L4 7M8 3L12 7"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+              <ComposerPrimaryActions
+                compact
+                pendingAction={null}
+                isRunning={phase === "running"}
+                showPlanFollowUpPrompt={showPlanFollowUpPrompt}
+                promptHasText={prompt.trim().length > 0}
+                isSendBusy={isSendBusy}
+                sendDisabledReason={sendDisabledReason}
+                isConnecting={isConnecting}
+                isEnvironmentUnavailable={
+                  environmentUnavailable !== null || noProviderAvailable || projectSelectionRequired
+                }
+                isPreparingWorktree={isPreparingWorktree}
+                hasSendableContent={composerSendState.hasSendableContent}
+                preserveComposerFocusOnPointerDown
+                onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
+                onInterrupt={handleInterruptPrimaryAction}
+                onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
+              />
             </div>
           ) : null}
 
