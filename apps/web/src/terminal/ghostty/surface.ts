@@ -30,6 +30,7 @@ const TERMINAL_GLYPH_FALLBACKS =
 export const DEFAULT_TERMINAL_FONT_FAMILY =
   '"SF Mono", "SFMono-Regular", "JetBrains Mono", ' + TERMINAL_GLYPH_FALLBACKS;
 const CONTENT_PADDING = 4;
+const TOUCH_SCROLL_THRESHOLD_PX = 6;
 const MIN_SCROLLBAR_THUMB_HEIGHT = 18;
 
 /** Requested terminal font; omitted fields fall back to the defaults. */
@@ -379,6 +380,12 @@ export class GhosttyTerminalSurface {
   private readonly suppressedKeyCodes = new Set<string>();
   private pasteShortcutToken = 0;
   private wheelRemainder = 0;
+  private touchScrollState: {
+    id: number;
+    lastY: number;
+    residualRows: number;
+    hasScrolled: boolean;
+  } | null = null;
   private dprMedia: MediaQueryList | null = null;
   private inputLeft = -1;
   private inputTop = -1;
@@ -854,6 +861,7 @@ export class GhosttyTerminalSurface {
 
   private readonly onPointerDown = (event: PointerEvent) => {
     this.focus();
+    if (event.pointerType === "touch") return;
     if (shouldReportTerminalMouse(this.core.isMouseTracking(), event)) {
       const button = ghosttyMouseButton(event.button);
       if (button === null) return;
@@ -1058,6 +1066,67 @@ export class GhosttyTerminalSurface {
     this.scrollViewport(delta.rows);
   };
 
+  private readonly onTouchStart = (event: TouchEvent) => {
+    if (event.touches.length !== 1) {
+      this.touchScrollState = null;
+      return;
+    }
+    const touch = event.touches.item(0);
+    if (!touch) {
+      this.touchScrollState = null;
+      return;
+    }
+    this.touchScrollState = {
+      id: touch.identifier,
+      lastY: touch.clientY,
+      residualRows: 0,
+      hasScrolled: false,
+    };
+  };
+
+  private readonly onTouchMove = (event: TouchEvent) => {
+    const state = this.touchScrollState;
+    if (!state || event.touches.length !== 1) return;
+    const touch = Array.from(event.touches).find(({ identifier }) => identifier === state.id);
+    if (!touch) {
+      this.touchScrollState = null;
+      return;
+    }
+
+    const deltaY = touch.clientY - state.lastY;
+    if (!state.hasScrolled && Math.abs(deltaY) < TOUCH_SCROLL_THRESHOLD_PX) return;
+
+    state.lastY = touch.clientY;
+    state.hasScrolled = true;
+    state.residualRows += -deltaY / this.metrics.height;
+    const rowDelta = Math.trunc(state.residualRows);
+    if (rowDelta === 0) return;
+
+    if (this.core.isAlternateScreen()) {
+      state.residualRows -= rowDelta;
+      this.options.onData(terminalWheelArrowData(rowDelta, this.core.isApplicationCursorKeys()));
+    } else {
+      const scrollState = this.readScrollbarState();
+      const maxOffset = scrollState === null ? 0 : Math.max(0, scrollState.total - scrollState.len);
+      const canScroll =
+        scrollState !== null &&
+        (rowDelta < 0 ? scrollState.offset > 0 : scrollState.offset < maxOffset);
+      if (!canScroll) {
+        state.residualRows = 0;
+        return;
+      }
+      state.residualRows -= rowDelta;
+      this.scrollViewport(rowDelta);
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  private readonly onTouchEnd = () => {
+    this.touchScrollState = null;
+  };
+
   private readonly onMouseDown = (event: MouseEvent) => {
     if (event.button === 0) event.preventDefault();
     this.focus();
@@ -1147,6 +1216,10 @@ export class GhosttyTerminalSurface {
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    this.canvas.addEventListener("touchstart", this.onTouchStart, { passive: true });
+    this.canvas.addEventListener("touchmove", this.onTouchMove, { passive: false });
+    this.canvas.addEventListener("touchend", this.onTouchEnd);
+    this.canvas.addEventListener("touchcancel", this.onTouchEnd);
     this.canvas.addEventListener("mousedown", this.onMouseDown);
     this.canvas.addEventListener("contextmenu", this.onContextMenu);
     this.scrollbar.addEventListener("pointerdown", this.onScrollbarPointerDown);
@@ -1170,6 +1243,10 @@ export class GhosttyTerminalSurface {
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
     this.canvas.removeEventListener("wheel", this.onWheel);
+    this.canvas.removeEventListener("touchstart", this.onTouchStart);
+    this.canvas.removeEventListener("touchmove", this.onTouchMove);
+    this.canvas.removeEventListener("touchend", this.onTouchEnd);
+    this.canvas.removeEventListener("touchcancel", this.onTouchEnd);
     this.canvas.removeEventListener("mousedown", this.onMouseDown);
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.scrollbar.removeEventListener("pointerdown", this.onScrollbarPointerDown);
