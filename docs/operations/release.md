@@ -271,6 +271,8 @@ Optional repository variables:
 - `DESKTOP_APP_ID`: override the fork default bundle ID (`com.samjandris.t3code`).
 - `CLERK_PASSKEY_RP_DOMAINS`: comma-separated RP-domain override. By default, the build derives the
   domain from the production Clerk publishable key.
+- `CLERK_PASSKEYS_ENABLED`: set to `false` when the signed desktop app identifier is not registered
+  as a Native Application in the production Clerk instance.
 
 Checklist:
 

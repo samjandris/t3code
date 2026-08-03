@@ -31,6 +31,7 @@ if (isElectron) {
 }
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
+const clerkPasskeysEnabled = import.meta.env.VITE_CLERK_PASSKEYS_ENABLED;
 
 const app = <AppRoot router={router} />;
 
@@ -38,7 +39,10 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     {clerkPublishableKey && hasCloudPublicConfig() ? (
       isElectron ? (
-        <ElectronClerkProvider publishableKey={clerkPublishableKey} passkeys={passkeys}>
+        <ElectronClerkProvider
+          publishableKey={clerkPublishableKey}
+          {...(clerkPasskeysEnabled ? { passkeys } : {})}
+        >
           <ManagedRelayAuthProvider>{app}</ManagedRelayAuthProvider>
         </ElectronClerkProvider>
       ) : (
