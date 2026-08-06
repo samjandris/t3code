@@ -231,4 +231,21 @@ describe("DesktopClerk", () => {
     storageMock.mockClear();
     createClerkBridgeMock.mockClear();
   });
+
+  it("can disable passkeys without disabling Clerk authentication", () => {
+    const bridge = { cleanup: vi.fn(), isPrimaryInstance: true };
+    storageMock.mockReturnValue(storageAdapter);
+    createClerkBridgeMock.mockReturnValue(bridge);
+
+    assert.equal(DesktopClerk.createDesktopClerkBridge("/tmp/t3-state", false, false), bridge);
+    assert.deepEqual(createClerkBridgeMock.mock.calls, [
+      [
+        {
+          storage: storageAdapter,
+          passkeys: false,
+          renderer: { scheme: "t3code", host: "app" },
+        },
+      ],
+    ]);
+  });
 });
