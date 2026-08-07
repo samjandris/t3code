@@ -189,7 +189,6 @@ import { sortThreads } from "../lib/threadSort";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
-import { CommandDialogTrigger } from "./ui/command";
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import {
@@ -671,7 +670,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
-        })} relative isolate`}
+        })} relative isolate max-sm:h-8`}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
@@ -2817,6 +2816,24 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     },
     [updateSettings],
   );
+  const { isMobile, setOpenMobile } = useSidebar();
+  const handleSearchClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!isMobile) {
+        openCommandPalette();
+        return;
+      }
+
+      setOpenMobile(false);
+      window.setTimeout(() => {
+        openCommandPalette();
+      }, 0);
+    },
+    [isMobile, openCommandPalette, setOpenMobile],
+  );
 
   return (
     <SidebarContent
@@ -2827,13 +2844,11 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         <SidebarGroup className="relative z-[1] px-2 pt-2 pb-1">
           <SidebarMenu>
             <SidebarMenuItem>
-              <CommandDialogTrigger
-                render={
-                  <SidebarMenuButton
-                    className="focus-visible:ring-0"
-                    data-testid="command-palette-trigger"
-                  />
-                }
+              <SidebarMenuButton
+                type="button"
+                className="focus-visible:ring-0"
+                data-testid="command-palette-trigger"
+                onClick={handleSearchClick}
               >
                 <SearchIcon />
                 <span className="flex-1 truncate">Search</span>
@@ -2842,7 +2857,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                     {commandPaletteShortcutLabel}
                   </Kbd>
                 ) : null}
-              </CommandDialogTrigger>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
