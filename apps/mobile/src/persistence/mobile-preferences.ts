@@ -34,6 +34,10 @@ export interface Preferences {
    * default flat list — see `resolveThreadListV2Enabled`.
    */
   readonly legacyThreadListEnabled?: boolean;
+  readonly modelFavorites?: ReadonlyArray<{
+    readonly provider: string;
+    readonly model: string;
+  }>;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedErrorClass<MobilePreferencesLoadError>()(
@@ -86,6 +90,10 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     projectGroupingEnabled?: boolean;
     projectGroupingMode?: SidebarProjectGroupingMode;
     legacyThreadListEnabled?: boolean;
+    modelFavorites?: ReadonlyArray<{
+      readonly provider: string;
+      readonly model: string;
+    }>;
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
@@ -124,6 +132,23 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.legacyThreadListEnabled === "boolean") {
     preferences.legacyThreadListEnabled = parsed.legacyThreadListEnabled;
+  }
+  if (Array.isArray(parsed.modelFavorites)) {
+    preferences.modelFavorites = parsed.modelFavorites.flatMap((favorite) => {
+      if (
+        typeof favorite !== "object" ||
+        favorite === null ||
+        !("provider" in favorite) ||
+        typeof favorite.provider !== "string" ||
+        !("model" in favorite) ||
+        typeof favorite.model !== "string"
+      ) {
+        return [];
+      }
+      const provider = favorite.provider.trim();
+      const model = favorite.model.trim();
+      return provider && model ? [{ provider, model }] : [];
+    });
   }
   return preferences;
 }
