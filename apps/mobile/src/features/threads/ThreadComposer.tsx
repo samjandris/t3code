@@ -51,10 +51,10 @@ import {
   ComposerToolbarScroller,
   ComposerToolbarTrigger,
 } from "../../components/ComposerToolbarTrigger";
-import { ControlPill } from "../../components/ControlPill";
+import { ControlPill, ControlPillMenu } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import { buildModelOptions } from "../../lib/modelOptions";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import type { RemoteClientConnectionState } from "../../lib/connection";
 import {
@@ -62,11 +62,16 @@ import {
   normalizeSearchQuery,
   scoreQueryMatch,
 } from "@t3tools/shared/searchRanking";
-import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
+import {
+  applyProviderOptionMenuEvent,
+  buildProviderOptionMenuActions,
+  providerOptionsConfigurationLabel,
+  resolveProviderOptionDescriptors,
+} from "../../lib/providerOptions";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
-import { ThreadSettingsSheet, threadSettingsSummaryLabel } from "./ThreadSettingsSheet";
-import { useThreadSettingsSheetPresentation } from "./use-thread-settings-sheet-presentation";
+import { MobileModelPickerSheet } from "./MobileModelPickerSheet";
+import { useMobileModelFavorites } from "./useMobileModelFavorites";
 
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
@@ -270,19 +275,16 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const fallbackInputRef = useRef<ComposerEditorHandle>(null);
   const inputRef = props.editorRef ?? fallbackInputRef;
   const [isFocused, setIsFocused] = useState(false);
-  const settingsSheetPresentation = useThreadSettingsSheetPresentation({
-    editorRef: inputRef,
-    isEditorFocused: isFocused,
-  });
   const wasExpandedBeforePreviewRef = useRef(false);
   const inFlightThreadIdsRef = useRef(new Set<string>());
   const { onExpandedChange } = props;
 
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
+  const { favorites: modelFavorites, updateFavorites: updateModelFavorites } =
+    useMobileModelFavorites();
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
-  // Opening and closing count as active so the composer stays expanded while
-  // focus moves between its native editor and the settings modal.
-  const isExpanded = isFocused || settingsSheetPresentation.isActive;
+  const isExpanded = isFocused;
   const canSend = hasContent;
 
   // Notify the parent from the derived value, not focus events: the parent
@@ -341,6 +343,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       ) ?? null
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
+  const currentModelDriver = selectedProviderStatus?.driver ?? currentModelSelection.instanceId;
 
   // ── Trigger detection ────────────────────────────────────
   const [composerSelection, setComposerSelection] = useState(() => ({
@@ -592,22 +595,21 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
 
   // ── Model menu ───────────────────────────────────────────
   const modelOptions = useMemo(
-    () => buildModelOptions(props.serverConfig, currentModelSelection),
-    [props.serverConfig, currentModelSelection],
+    () =>
+      buildModelOptions(props.serverConfig, currentModelSelection).filter(
+        (option) => option.providerDriver === currentModelDriver,
+      ),
+    [props.serverConfig, currentModelSelection, currentModelDriver],
   );
-  const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
-  // An existing thread is bound to its harness: sessions can't move between
-  // provider instances, so the picker only offers the thread's own group.
-  const threadProviderGroups = useMemo(
-    () => providerGroups.filter((group) => group.providerKey === currentModelSelection.instanceId),
-    [providerGroups, currentModelSelection.instanceId],
+  const currentModelOption = useMemo(
+    () =>
+      modelOptions.find(
+        (option) =>
+          option.selection.instanceId === currentModelSelection.instanceId &&
+          option.selection.model === currentModelSelection.model,
+      ) ?? null,
+    [currentModelSelection.instanceId, currentModelSelection.model, modelOptions],
   );
-  const currentModelOption =
-    modelOptions.find(
-      (option) =>
-        option.selection.instanceId === currentModelSelection.instanceId &&
-        option.selection.model === currentModelSelection.model,
-    ) ?? null;
   const providerOptionDescriptors = useMemo(
     () =>
       resolveProviderOptionDescriptors({
@@ -616,12 +618,79 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       }),
     [currentModelOption?.capabilities, currentModelSelection.options],
   );
-  const settingsSummaryLabel = threadSettingsSummaryLabel({
-    modelLabel: currentModelOption?.label ?? currentModelSelection.model,
-    optionDescriptors: providerOptionDescriptors,
-    runtimeMode: currentRuntimeMode,
-    interactionMode: currentInteractionMode,
-  });
+  const configurationLabel = useMemo(
+    () => providerOptionsConfigurationLabel(providerOptionDescriptors),
+    [providerOptionDescriptors],
+  );
+  // ── Options menu ─────────────────────────────────────────
+  const optionsMenuActions = useMemo(
+    () => [
+      ...buildProviderOptionMenuActions(providerOptionDescriptors),
+      {
+        id: "options-runtime",
+        title: "Runtime",
+        subtitle:
+          currentRuntimeMode === "approval-required"
+            ? "Approve actions"
+            : currentRuntimeMode === "auto-accept-edits"
+              ? "Auto-accept edits"
+              : currentRuntimeMode === "auto"
+                ? "Auto"
+                : "Full access",
+        subactions: [
+          { id: "options:runtime:approval-required", title: "Approve actions" },
+          { id: "options:runtime:auto-accept-edits", title: "Auto-accept edits" },
+          { id: "options:runtime:auto", title: "Auto" },
+          { id: "options:runtime:full-access", title: "Full access" },
+        ].map((option) => {
+          const value = option.id.replace("options:runtime:", "");
+          return {
+            id: option.id,
+            title: option.title,
+            state: currentRuntimeMode === value ? ("on" as const) : undefined,
+          };
+        }),
+      },
+      {
+        id: "options-interaction",
+        title: "Interaction",
+        subtitle: currentInteractionMode === "plan" ? "Plan" : "Default",
+        subactions: [
+          { id: "options:interaction:default", title: "Default" },
+          { id: "options:interaction:plan", title: "Plan" },
+        ].map((option) => {
+          const value = option.id.replace("options:interaction:", "");
+          return {
+            id: option.id,
+            title: option.title,
+            state: currentInteractionMode === value ? ("on" as const) : undefined,
+          };
+        }),
+      },
+    ],
+    [currentInteractionMode, currentRuntimeMode, providerOptionDescriptors],
+  );
+
+  // ── Menu handlers ────────────────────────────────────────
+  function handleOptionsMenuAction(event: string) {
+    const providerOptions = applyProviderOptionMenuEvent(providerOptionDescriptors, event);
+    if (providerOptions) {
+      props.onUpdateModelSelection({
+        ...currentModelSelection,
+        options: providerOptions,
+      });
+      return;
+    }
+    if (event.startsWith("options:runtime:")) {
+      const runtimeMode = event.slice("options:runtime:".length) as RuntimeMode;
+      props.onUpdateRuntimeMode(runtimeMode);
+      return;
+    }
+    if (event.startsWith("options:interaction:")) {
+      const interactionMode = event.slice("options:interaction:".length) as ProviderInteractionMode;
+      props.onUpdateInteractionMode(interactionMode);
+    }
+  }
 
   return (
     <Animated.View
@@ -793,20 +862,29 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   showChevron={false}
                 />
                 <ComposerToolbarTrigger
-                  accessibilityLabel="Thread settings"
+                  accessibilityLabel="Model"
                   iconNode={
                     <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
                   }
-                  label={settingsSummaryLabel}
-                  maxWidth={320}
-                  onPress={settingsSheetPresentation.open}
+                  label={currentModelOption?.label ?? currentModelSelection.model}
+                  onPress={() => setModelPickerVisible(true)}
                 />
+                <ControlPillMenu
+                  actions={optionsMenuActions}
+                  onPressAction={({ nativeEvent }) => handleOptionsMenuAction(nativeEvent.event)}
+                >
+                  <ComposerToolbarTrigger
+                    accessibilityLabel="Configuration"
+                    icon="slider.horizontal.3"
+                    label={configurationLabel}
+                  />
+                </ControlPillMenu>
                 {showStopAction ? (
                   <ComposerToolbarButton
                     accessibilityLabel="Stop"
                     icon="stop.fill"
                     variant="danger"
-                    onPress={props.onStopThread}
+                    onPress={() => void props.onStopThread()}
                     showChevron={false}
                   />
                 ) : null}
@@ -834,21 +912,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         ) : null}
       </Animated.View>
 
-      <ThreadSettingsSheet
-        visible={settingsSheetPresentation.isVisible}
-        onClose={settingsSheetPresentation.close}
-        onDismissed={settingsSheetPresentation.onDismissed}
-        providerGroups={threadProviderGroups}
-        selectedModel={currentModelSelection}
-        onSelectModel={(option) => props.onUpdateModelSelection(option.selection)}
-        optionDescriptors={providerOptionDescriptors}
-        onUpdateOptionSelections={(options) =>
-          props.onUpdateModelSelection({ ...currentModelSelection, options })
-        }
-        runtimeMode={currentRuntimeMode}
-        onUpdateRuntimeMode={props.onUpdateRuntimeMode}
-      />
-
       <ImageViewing
         images={previewImageUri ? [{ uri: previewImageUri }] : []}
         imageIndex={0}
@@ -856,6 +919,15 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         onRequestClose={closePreview}
         swipeToCloseEnabled
         doubleTapToZoomEnabled
+      />
+      <MobileModelPickerSheet
+        visible={modelPickerVisible}
+        modelOptions={modelOptions}
+        selectedModel={currentModelSelection}
+        favorites={modelFavorites}
+        onClose={() => setModelPickerVisible(false)}
+        onSelectModel={props.onUpdateModelSelection}
+        onFavoritesChange={updateModelFavorites}
       />
     </Animated.View>
   );
