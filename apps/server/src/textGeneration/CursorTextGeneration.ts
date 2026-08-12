@@ -16,11 +16,13 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummariesPrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
+  sanitizeToolCallSummary,
 } from "./TextGenerationUtils.ts";
 import {
   applyCursorAcpModelSelection,
@@ -54,7 +56,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateToolCallSummaries";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -259,10 +262,33 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const generateToolCallSummaries: TextGeneration.TextGeneration["Service"]["generateToolCallSummaries"] =
+    Effect.fn("CursorTextGeneration.generateToolCallSummaries")(function* (input) {
+      const { prompt, outputSchema } = buildToolCallSummariesPrompt({
+        items: input.items,
+      });
+
+      const generated = yield* runCursorJson({
+        operation: "generateToolCallSummaries",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        summaries: generated.summaries.map((item) => ({
+          id: item.id,
+          summary: sanitizeToolCallSummary(item.summary),
+        })),
+      };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateToolCallSummaries,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

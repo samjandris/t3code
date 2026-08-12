@@ -67,6 +67,9 @@ export interface WorkLogEntry {
   turnId?: TurnId | null;
   label: string;
   detail?: string;
+  /** Optional generated label; upstream tool input/output remain in their original fields. */
+  toolSummary?: string;
+  toolSummaryStatus?: "pending" | "complete";
   command?: string;
   rawCommand?: string;
   changedFiles?: ReadonlyArray<string>;
@@ -823,6 +826,11 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
+  const toolSummary = isTaskActivity ? null : asTrimmedString(payload?.toolSummary);
+  const toolSummaryStatus =
+    payload?.summarizationStatus === "pending" || payload?.summarizationStatus === "complete"
+      ? payload.summarizationStatus
+      : null;
   const detail = isTaskActivity
     ? !taskDetailAsLabel &&
       payload &&
@@ -847,6 +855,12 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
+  if (toolSummary) {
+    entry.toolSummary = toolSummary;
+  }
+  if (toolSummaryStatus) {
+    entry.toolSummaryStatus = toolSummaryStatus;
+  }
   if (detail) {
     entry.detail = detail;
   }
@@ -1034,6 +1048,8 @@ function mergeDerivedWorkLogEntries(
 ): DerivedWorkLogEntry {
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
   const detail = next.detail ?? previous.detail;
+  const toolSummary = next.toolSummary ?? previous.toolSummary;
+  const toolSummaryStatus = next.toolSummaryStatus ?? previous.toolSummaryStatus;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
@@ -1047,6 +1063,8 @@ function mergeDerivedWorkLogEntries(
     ...previous,
     ...next,
     ...(detail ? { detail } : {}),
+    ...(toolSummary ? { toolSummary } : {}),
+    ...(toolSummaryStatus ? { toolSummaryStatus } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),

@@ -16,7 +16,9 @@ import {
   type OrchestrationCheckpointSummary,
   type OrchestrationProposedPlan,
   type OrchestrationThread,
+  type OrchestrationThreadShell,
   type OrchestrationThreadActivity,
+  type ModelSelection,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
@@ -26,6 +28,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
@@ -45,6 +48,7 @@ import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { canReplaceThreadTitle } from "../threadTitles.ts";
+import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerTaskKey = (threadId: ThreadId, taskId: string) => `${threadId}:${taskId}`;
@@ -99,6 +103,8 @@ const BUFFERED_PROPOSED_PLAN_BY_ID_TTL = Duration.minutes(120);
 const TASK_DESCRIPTION_BY_TASK_CACHE_CAPACITY = 10_000;
 const TASK_DESCRIPTION_BY_TASK_TTL = Duration.minutes(120);
 const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
+const TOOL_SUMMARY_BATCH_WINDOW = Duration.seconds(2);
+const TOOL_SUMMARY_BATCH_MAX_ITEMS = 8;
 const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.T3CODE_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
 
 type TurnStartRequestedDomainEvent = Extract<
@@ -115,6 +121,55 @@ type RuntimeIngestionInput =
       source: "domain";
       event: TurnStartRequestedDomainEvent;
     };
+
+interface PendingToolCallSummary {
+  readonly event: Extract<ProviderRuntimeEvent, { type: "item.completed" }>;
+  readonly cwd: string;
+  readonly modelSelection: ModelSelection;
+  readonly item: {
+    readonly id: string;
+    readonly toolName: string;
+    readonly toolType: string;
+    readonly status?: string | undefined;
+    readonly detail?: string | undefined;
+    readonly payload: string;
+  };
+}
+
+function modelSelectionBatchKey(modelSelection: ModelSelection): string {
+  const options =
+    modelSelection.options
+      ?.map((option) => `${option.id}=${String(option.value)}`)
+      .sort()
+      .join(",") ?? "";
+  return `${modelSelection.instanceId}:${modelSelection.model}:${options}`;
+}
+
+function stringifyToolPayloadForSummary(event: ProviderRuntimeEvent): string {
+  try {
+    return JSON.stringify(event.payload, null, 2);
+  } catch {
+    return String(event.payload);
+  }
+}
+
+function toolNameForSummary(event: ProviderRuntimeEvent): string {
+  if (event.payload && "title" in event.payload && typeof event.payload.title === "string") {
+    return event.payload.title;
+  }
+  if (
+    event.payload &&
+    "data" in event.payload &&
+    event.payload.data &&
+    typeof event.payload.data === "object"
+  ) {
+    const data = event.payload.data as Record<string, unknown>;
+    if (typeof data.tool === "string" && data.tool.trim().length > 0) {
+      return data.tool;
+    }
+  }
+  return "Tool";
+}
 
 function toTurnId(value: TurnId | string | undefined): TurnId | undefined {
   return value === undefined ? undefined : TurnId.make(String(value));
@@ -947,6 +1002,193 @@ const make = Effect.gen(function* () {
     return yield* projectionSnapshotQuery
       .getThreadShellById(threadId)
       .pipe(Effect.map(Option.getOrUndefined));
+  });
+
+  const resolveProjectWorkspaceRoot = Effect.fn("resolveProjectWorkspaceRoot")(function* (
+    projectId: OrchestrationThread["projectId"],
+  ) {
+    return yield* projectionSnapshotQuery
+      .getProjectShellById(projectId)
+      .pipe(Effect.map((project) => Option.getOrUndefined(project)?.workspaceRoot));
+  });
+
+  const appendToolCallSummaryActivity = Effect.fn("appendToolCallSummaryActivity")(function* (
+    request: PendingToolCallSummary,
+    commandSuffix: string,
+    summaryFields: Readonly<Record<string, unknown>>,
+  ) {
+    const activity = runtimeEventToActivities(request.event).find(
+      (candidate) => candidate.kind === "tool.completed",
+    );
+    if (!activity) {
+      return;
+    }
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : {};
+    yield* orchestrationEngine.dispatch({
+      type: "thread.activity.append",
+      commandId: yield* providerCommandId(request.event, commandSuffix),
+      threadId: request.event.threadId,
+      activity: {
+        ...activity,
+        payload: {
+          ...payload,
+          ...summaryFields,
+        },
+      },
+      createdAt: activity.createdAt,
+    });
+  });
+
+  const appendToolCallSummary = (request: PendingToolCallSummary, toolSummary: string) =>
+    appendToolCallSummaryActivity(request, "tool-call-summary", {
+      summarizationStatus: "complete",
+      toolSummary: truncateDetail(toolSummary),
+    });
+
+  const restoreToolCallActivity = (request: PendingToolCallSummary) =>
+    appendToolCallSummaryActivity(request, "tool-call-summary-fallback", {});
+
+  const processToolSummaryBatch = Effect.fn("processToolSummaryBatch")(function* (
+    batch: ReadonlyArray<PendingToolCallSummary>,
+  ) {
+    const textGeneration = Option.getOrUndefined(yield* Effect.serviceOption(TextGeneration));
+    const generateToolCallSummaries = textGeneration?.generateToolCallSummaries;
+    if (!generateToolCallSummaries) {
+      return;
+    }
+
+    const grouped = new Map<string, PendingToolCallSummary[]>();
+    for (const request of batch) {
+      const key = `${request.cwd}\u0000${modelSelectionBatchKey(request.modelSelection)}`;
+      grouped.set(key, [...(grouped.get(key) ?? []), request]);
+    }
+
+    yield* Effect.forEach(
+      Array.from(grouped.values()),
+      (group) =>
+        Effect.forEach(
+          Array.from(
+            { length: Math.ceil(group.length / TOOL_SUMMARY_BATCH_MAX_ITEMS) },
+            (_, index) =>
+              group.slice(
+                index * TOOL_SUMMARY_BATCH_MAX_ITEMS,
+                index * TOOL_SUMMARY_BATCH_MAX_ITEMS + TOOL_SUMMARY_BATCH_MAX_ITEMS,
+              ),
+          ),
+          (chunk) => {
+            const first = chunk[0];
+            if (!first) {
+              return Effect.void;
+            }
+            return generateToolCallSummaries({
+              cwd: first.cwd,
+              modelSelection: first.modelSelection,
+              items: chunk.map((request) => request.item),
+            }).pipe(
+              Effect.flatMap((generated) => {
+                const summaries = new Map(
+                  generated.summaries.map((item) => [item.id, item.summary]),
+                );
+                return Effect.forEach(
+                  chunk,
+                  (request) => {
+                    const summary = summaries.get(request.item.id);
+                    return summary
+                      ? appendToolCallSummary(request, summary)
+                      : restoreToolCallActivity(request);
+                  },
+                  { discard: true },
+                );
+              }),
+              Effect.catchCause((cause) =>
+                Effect.logWarning(
+                  "provider runtime ingestion failed to generate tool call summaries",
+                  {
+                    eventIds: chunk.map((request) => request.event.eventId),
+                    cause: Cause.pretty(cause),
+                  },
+                ).pipe(
+                  Effect.andThen(Effect.forEach(chunk, restoreToolCallActivity, { discard: true })),
+                ),
+              ),
+            );
+          },
+          { discard: true },
+        ),
+      { discard: true },
+    );
+  });
+
+  const toolSummaryProcessWorker = yield* makeDrainableWorker(processToolSummaryBatch);
+  const pendingToolSummariesRef = yield* Ref.make<{
+    readonly scheduled: boolean;
+    readonly items: ReadonlyArray<PendingToolCallSummary>;
+  }>({ scheduled: false, items: [] });
+  const toolSummaryBatchWorker = yield* makeDrainableWorker(() =>
+    Effect.sleep(TOOL_SUMMARY_BATCH_WINDOW).pipe(
+      Effect.andThen(
+        Ref.modify(pendingToolSummariesRef, (state) => [
+          state.items,
+          { scheduled: false, items: [] },
+        ]),
+      ),
+      Effect.flatMap((batch) =>
+        batch.length > 0 ? toolSummaryProcessWorker.enqueue(batch) : Effect.void,
+      ),
+    ),
+  );
+
+  const enqueueToolSummary = (request: PendingToolCallSummary) =>
+    Ref.modify(pendingToolSummariesRef, (state) => [
+      !state.scheduled,
+      { scheduled: true, items: [...state.items, request] },
+    ]).pipe(
+      Effect.flatMap((shouldSchedule) =>
+        shouldSchedule ? toolSummaryBatchWorker.enqueue(undefined) : Effect.void,
+      ),
+    );
+
+  const summarizeProviderToolCall = Effect.fn("summarizeProviderToolCall")(function* (input: {
+    readonly event: Extract<ProviderRuntimeEvent, { type: "item.completed" }>;
+    readonly thread: OrchestrationThreadShell;
+  }) {
+    const { event, thread } = input;
+    if (!event.itemId || !isToolLifecycleItemType(event.payload.itemType)) {
+      return;
+    }
+    const settings = yield* serverSettingsService.getSettings;
+    if (!settings.summarizeToolCalls) {
+      return;
+    }
+    const textGeneration = Option.getOrUndefined(yield* Effect.serviceOption(TextGeneration));
+    if (!textGeneration?.generateToolCallSummaries) {
+      return;
+    }
+    const workspaceRoot = yield* resolveProjectWorkspaceRoot(thread.projectId);
+    const cwd = thread.worktreePath ?? workspaceRoot;
+    if (!cwd) {
+      return;
+    }
+    const request: PendingToolCallSummary = {
+      event,
+      cwd,
+      modelSelection: settings.textGenerationModelSelection,
+      item: {
+        id: event.eventId,
+        toolName: toolNameForSummary(event),
+        toolType: event.payload.itemType,
+        ...(event.payload.status ? { status: event.payload.status } : {}),
+        ...(event.payload.detail ? { detail: event.payload.detail } : {}),
+        payload: stringifyToolPayloadForSummary(event),
+      },
+    };
+    yield* appendToolCallSummaryActivity(request, "tool-call-summary-pending", {
+      summarizationStatus: "pending",
+    });
+    yield* enqueueToolSummary(request);
   });
 
   const rememberAssistantMessageId = (threadId: ThreadId, turnId: TurnId, messageId: MessageId) =>
@@ -2029,6 +2271,9 @@ const make = Effect.gen(function* () {
           ),
         ),
       ).pipe(Effect.asVoid);
+      if (event.type === "item.completed") {
+        yield* summarizeProviderToolCall({ event, thread });
+      }
     });
 
   const processDomainEvent = (_event: TurnStartRequestedDomainEvent) => Effect.void;
@@ -2072,7 +2317,10 @@ const make = Effect.gen(function* () {
 
   return {
     start,
-    drain: worker.drain,
+    drain: worker.drain.pipe(
+      Effect.andThen(toolSummaryBatchWorker.drain),
+      Effect.andThen(toolSummaryProcessWorker.drain),
+    ),
   } satisfies ProviderRuntimeIngestionShape;
 });
 
