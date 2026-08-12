@@ -36,6 +36,7 @@ function group(models: ReadonlyArray<ModelOption>): ProviderGroup {
   return {
     providerKey: first.providerKey,
     providerLabel: first.providerLabel,
+    providerDriver: first.providerDriver,
     models,
   };
 }
