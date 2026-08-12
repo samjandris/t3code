@@ -173,9 +173,13 @@ describe("compressImageForStash", () => {
   });
 
   it("reports too-large when even the smallest encoding overflows the budget", async () => {
-    const { close } = stubCanvasPipeline(() => 8_000_000);
+    // Keep the synthetic payload small: the failure path only needs an
+    // encoding larger than the supplied budget. Multi-megabyte blobs make
+    // this test spend most of its time repeatedly allocating and base64
+    // encoding fake data, which can exceed the test timeout under CI load.
+    const { close } = stubCanvasPipeline(() => 256);
 
-    const result = await compressImageForStash(makeFile(9_000_000));
+    const result = await compressImageForStash(makeFile(1_024), 100);
 
     expect(result).toEqual({ ok: false, reason: "too-large" });
     // The bitmap must still be released on the give-up path.

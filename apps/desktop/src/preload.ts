@@ -9,7 +9,14 @@ import { contextBridge, ipcRenderer } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
 
-exposeClerkBridge({ passkeys: true });
+declare const __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__: boolean | undefined;
+
+const clerkPasskeysEnabled =
+  typeof __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__ === "undefined"
+    ? true
+    : __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__;
+
+exposeClerkBridge({ passkeys: clerkPasskeysEnabled });
 
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Electron exposes the client platform in its sandboxed preload process.
 const clientPlatform = process.platform;
