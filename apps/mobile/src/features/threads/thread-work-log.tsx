@@ -1,14 +1,33 @@
 import * as Haptics from "expo-haptics";
 import { type AppSymbolName, SymbolView } from "../../components/AppSymbol";
-import { LayoutAnimation, Pressable, ScrollView, useColorScheme, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  LayoutAnimation,
+  Pressable,
+  ScrollView,
+  Text as NativeText,
+  useColorScheme,
+  View,
+} from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { scaledTypographyLineHeight } from "../../lib/appearancePreferences";
 import { cn } from "../../lib/cn";
 import type { ThreadFeedActivity } from "../../lib/threadActivity";
 import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 
+const AnimatedNativeText = Animated.createAnimatedComponent(NativeText);
+const AnimatedView = Animated.createAnimatedComponent(View);
+const TOOL_SUMMARY_SHIMMER_WIDTH = 52;
+const WORK_LOG_LINE_HEIGHT = 20;
 const WORK_LOG_LAYOUT_ANIMATION = {
   duration: 180,
   create: {
@@ -119,6 +138,89 @@ export function collapsedWorkLogHeight(
   );
 }
 
+function ToolSummaryPreview(props: { readonly text: string; readonly pending: boolean }) {
+  const colorScheme = useColorScheme();
+  const [width, setWidth] = useState(0);
+  const shimmerProgress = useSharedValue(0);
+  const shimmerTravelDistance = width + TOOL_SUMMARY_SHIMMER_WIDTH * 2;
+  const glintColor = colorScheme === "dark" ? "rgba(255,255,255,0.72)" : "rgba(23,23,23,0.46)";
+
+  useEffect(() => {
+    if (!props.pending) {
+      shimmerProgress.value = 0;
+      return;
+    }
+    shimmerProgress.value = withRepeat(
+      withTiming(1, { duration: 1650, easing: Easing.linear }),
+      -1,
+      false,
+    );
+  }, [props.pending, shimmerProgress]);
+
+  const shimmerWindowStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: shimmerProgress.value * shimmerTravelDistance - TOOL_SUMMARY_SHIMMER_WIDTH,
+      },
+    ],
+  }));
+  const shimmerTextStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: TOOL_SUMMARY_SHIMMER_WIDTH - shimmerProgress.value * shimmerTravelDistance,
+      },
+    ],
+  }));
+
+  return (
+    <View
+      className="min-w-0 flex-1 overflow-hidden"
+      style={{ height: WORK_LOG_LINE_HEIGHT }}
+      onLayout={(event) => {
+        const nextWidth = Math.ceil(event.nativeEvent.layout.width);
+        setWidth((currentWidth) => (currentWidth === nextWidth ? currentWidth : nextWidth));
+      }}
+    >
+      <Text className="text-xs leading-5 text-foreground-muted opacity-60" numberOfLines={1}>
+        {props.text}
+      </Text>
+      {props.pending && width > 0 ? (
+        <AnimatedView
+          pointerEvents="none"
+          style={[
+            {
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              top: 0,
+              width: TOOL_SUMMARY_SHIMMER_WIDTH,
+              overflow: "hidden",
+            },
+            shimmerWindowStyle,
+          ]}
+        >
+          <AnimatedNativeText
+            className="font-sans text-xs leading-5"
+            numberOfLines={1}
+            style={[
+              {
+                position: "absolute",
+                left: 0,
+                top: 0,
+                width,
+                color: glintColor,
+              },
+              shimmerTextStyle,
+            ]}
+          >
+            {props.text}
+          </AnimatedNativeText>
+        </AnimatedView>
+      ) : null}
+    </View>
+  );
+}
+
 export function ThreadWorkLog(props: {
   readonly activities: ReadonlyArray<ThreadFeedActivity>;
   readonly copiedRowId: string | null;
@@ -194,19 +296,23 @@ export function ThreadWorkLog(props: {
                     />
                   </View>
 
-                  <Text className="min-w-0 flex-1 text-xs text-foreground" numberOfLines={1}>
+                  <View className="min-w-0 flex-1 flex-row items-center gap-1.5 overflow-hidden">
                     <Text
                       className={cn(
-                        "font-t3-medium text-foreground",
+                        "shrink-0 font-t3-medium text-xs leading-5 text-foreground",
                         iconIsDestructive && "text-rose-600 dark:text-rose-400",
                       )}
+                      numberOfLines={1}
                     >
                       {row.summary}
                     </Text>
                     {row.detail ? (
-                      <Text className="text-foreground-muted opacity-60"> {row.detail}</Text>
+                      <ToolSummaryPreview
+                        text={row.detail}
+                        pending={row.toolSummaryStatus === "pending"}
+                      />
                     ) : null}
-                  </Text>
+                  </View>
 
                   <View className="shrink-0 flex-row items-center gap-px">
                     {props.copiedRowId === row.id ? (

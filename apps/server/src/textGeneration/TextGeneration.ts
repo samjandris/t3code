@@ -1,12 +1,14 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import type { ChatAttachment, ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import { TextGenerationError } from "@t3tools/contracts";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
 import type { TextGenerationPolicy } from "./TextGenerationPolicy.ts";
+import { ServerConfig } from "../config.ts";
 
 export type TextGenerationProvider = "codex" | "claudeAgent" | "cursor" | "grok" | "opencode";
 
@@ -73,6 +75,29 @@ export interface ThreadTitleGenerationResult {
   title: string;
 }
 
+export interface ToolCallSummariesGenerationItem {
+  id: string;
+  toolName: string;
+  toolType: string;
+  status?: string | undefined;
+  detail?: string | undefined;
+  payload: string;
+}
+
+export interface ToolCallSummariesGenerationInput {
+  cwd: string;
+  items: ReadonlyArray<ToolCallSummariesGenerationItem>;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+export interface ToolCallSummariesGenerationResult {
+  summaries: ReadonlyArray<{
+    id: string;
+    summary: string;
+  }>;
+}
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -80,6 +105,9 @@ export interface TextGenerationService {
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
   generateThreadTitle(input: ThreadTitleGenerationInput): Promise<ThreadTitleGenerationResult>;
+  generateToolCallSummaries?(
+    input: ToolCallSummariesGenerationInput,
+  ): Promise<ToolCallSummariesGenerationResult>;
 }
 
 /**
@@ -113,6 +141,13 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /**
+     * Generate concise work-log summaries for completed provider tool calls in one model request.
+     */
+    readonly generateToolCallSummaries?: (
+      input: ToolCallSummariesGenerationInput,
+    ) => Effect.Effect<ToolCallSummariesGenerationResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -123,7 +158,8 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateToolCallSummaries";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -145,6 +181,7 @@ const resolveInstance = (
 
 export const makeTextGenerationFromRegistry = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+  options?: { readonly textGenerationCwd?: string | undefined },
 ): TextGeneration["Service"] =>
   TextGeneration.of({
     generateCommitMessage: (input) =>
@@ -163,11 +200,43 @@ export const makeTextGenerationFromRegistry = (
       resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
         Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
       ),
+    generateToolCallSummaries: (input) =>
+      resolveInstance(registry, "generateToolCallSummaries", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => {
+          const generateToolCallSummaries = textGeneration.generateToolCallSummaries;
+          return generateToolCallSummaries
+            ? generateToolCallSummaries(withTextGenerationCwd(input, options))
+            : Effect.fail(
+                new TextGenerationError({
+                  operation: "generateToolCallSummaries",
+                  detail: `Provider instance '${input.modelSelection.instanceId}' does not support tool call summaries.`,
+                }),
+              );
+        }),
+      ),
   });
+
+function resolveTextGenerationCwd(
+  fallbackCwd: string,
+  options: { readonly textGenerationCwd?: string | undefined } | undefined,
+): string {
+  return options?.textGenerationCwd ?? fallbackCwd;
+}
+
+function withTextGenerationCwd<T extends { readonly cwd: string }>(
+  input: T,
+  options: { readonly textGenerationCwd?: string | undefined } | undefined,
+): T {
+  const cwd = resolveTextGenerationCwd(input.cwd, options);
+  return cwd === input.cwd ? input : { ...input, cwd };
+}
 
 export const make = Effect.gen(function* () {
   const registry = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
-  return makeTextGenerationFromRegistry(registry);
+  const config = Option.getOrUndefined(yield* Effect.serviceOption(ServerConfig));
+  return makeTextGenerationFromRegistry(registry, {
+    textGenerationCwd: config?.textGenerationCwd,
+  });
 });
 
 export const layer = Layer.effect(TextGeneration, make);

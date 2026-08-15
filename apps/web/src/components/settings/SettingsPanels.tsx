@@ -1975,6 +1975,32 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          {...searchableSetting("tool-call-summaries")}
+          description="Use the text generation model for concise work-log labels while retaining provider input and output."
+          resetAction={
+            settings.summarizeToolCalls !== DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls ? (
+              <SettingResetButton
+                label="tool call summaries"
+                onClick={() =>
+                  updateSettings({
+                    summarizeToolCalls: DEFAULT_UNIFIED_SETTINGS.summarizeToolCalls,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.summarizeToolCalls}
+              onCheckedChange={(checked) =>
+                updateSettings({ summarizeToolCalls: Boolean(checked) })
+              }
+              aria-label="Summarize provider tool calls"
+            />
+          }
+        />
+
+        <SettingsRow
           {...searchableSetting("provider-update-checks")}
           description="Check installed provider CLIs for newer available versions."
           resetAction={
