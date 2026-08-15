@@ -211,9 +211,36 @@ describe("release workflow tracing config propagation", () => {
 
       expect(workflow).not.toContain("client_tracing_token:");
       expect(workflow).not.toContain("needs.relay_public_config.outputs.client_tracing_token");
-      expect(workflow).toContain('--github-env-file "$RUNNER_TEMP/relay-client-tracing.env"');
+      expect(workflow).toContain('config_path="$RUNNER_TEMP/relay-client-tracing.env"');
+      expect(workflow).toContain('--github-env-file "$config_path"');
+      expect(workflow).toContain(': > "$config_path"');
       expect(workflow).toContain("name: relay-client-tracing-config");
       expect(workflow).toContain('cat "$config_path" >> "$GITHUB_ENV"');
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+});
+
+describe("release workflow publication dependencies", () => {
+  it.effect("publishes GitHub releases when npm publishing is disabled", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workflowPath = yield* path.fromFileUrl(
+        new URL("../../../.github/workflows/release.yml", import.meta.url),
+      );
+      const workflow = yield* fileSystem.readFileString(workflowPath);
+      const releaseJob = workflow.slice(
+        workflow.indexOf("\n  release:"),
+        workflow.indexOf("\n  deploy_web:"),
+      );
+
+      expect(releaseJob).toContain("needs: [preflight, build, publish_cli]");
+      expect(releaseJob).toContain("always() && !failure() && !cancelled()");
+      expect(releaseJob).toContain("runs-on: ubuntu-24.04");
+      expect(releaseJob).not.toContain("runs-on: blacksmith-");
+      expect(releaseJob).toContain(
+        "vars.PUBLISH_CLI_TO_NPM != 'true' || needs.publish_cli.result == 'success'",
+      );
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });
