@@ -54,6 +54,7 @@ export interface ThreadFeedActivity {
     | "zap";
   readonly toolLike: boolean;
   readonly status: "success" | "failure" | "neutral" | null;
+  readonly toolSummaryStatus?: "pending" | "complete";
 }
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
@@ -75,11 +76,11 @@ interface WorkLogEntry {
   requestKind?: PendingApproval["requestKind"];
   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
   toolData?: unknown;
+  toolSummaryStatus?: "pending" | "complete";
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
   activityKind: OrchestrationThreadActivity["kind"];
-  collapseKey?: string;
   /** Grouping key for subagent lifecycle rows (one row per agent). */
   taskId?: string;
 }
@@ -391,6 +392,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
+  const toolSummaryStatus =
+    activity.kind === "tool.updated" ? undefined : extractToolSummaryStatus(payload);
   if (
     !taskDetailAsLabel &&
     payload &&
@@ -433,9 +436,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (toolLifecycleStatus) {
     entry.toolLifecycleStatus = toolLifecycleStatus;
   }
-  const collapseKey = deriveToolLifecycleCollapseKey(entry);
-  if (collapseKey) {
-    entry.collapseKey = collapseKey;
+  if (toolSummaryStatus) {
+    entry.toolSummaryStatus = toolSummaryStatus;
   }
   return entry;
 }
@@ -463,30 +465,10 @@ function collapseDerivedWorkLogEntries(
       collapsed.push(entry);
       continue;
     }
-    const previous = collapsed.at(-1);
-    if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
-      collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
-      continue;
-    }
+
     collapsed.push(entry);
   }
   return collapsed;
-}
-
-function shouldCollapseToolLifecycleEntries(
-  previous: DerivedWorkLogEntry,
-  next: DerivedWorkLogEntry,
-): boolean {
-  if (previous.activityKind !== "tool.updated" && previous.activityKind !== "tool.completed") {
-    return false;
-  }
-  if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
-    return false;
-  }
-  if (previous.activityKind === "tool.completed") {
-    return false;
-  }
-  return previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey;
 }
 
 function mergeDerivedWorkLogEntries(
@@ -500,7 +482,7 @@ function mergeDerivedWorkLogEntries(
   const toolTitle = next.toolTitle ?? previous.toolTitle;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
-  const collapseKey = next.collapseKey ?? previous.collapseKey;
+  const toolSummaryStatus = next.toolSummaryStatus ?? previous.toolSummaryStatus;
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
   return {
@@ -513,7 +495,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolTitle ? { toolTitle } : {}),
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
-    ...(collapseKey ? { collapseKey } : {}),
+    ...(toolSummaryStatus ? { toolSummaryStatus } : {}),
     ...(toolLifecycleStatus ? { toolLifecycleStatus } : {}),
     ...(toolData !== undefined ? { toolData } : {}),
   };
@@ -528,19 +510,6 @@ function mergeChangedFiles(
     return [];
   }
   return [...new Set(merged)];
-}
-
-function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | undefined {
-  if (entry.activityKind !== "tool.updated" && entry.activityKind !== "tool.completed") {
-    return undefined;
-  }
-  const normalizedLabel = normalizeCompactToolLabel(entry.toolTitle ?? entry.label);
-  const detail = entry.detail?.trim() ?? "";
-  const itemType = entry.itemType ?? "";
-  if (normalizedLabel.length === 0 && detail.length === 0 && itemType.length === 0) {
-    return undefined;
-  }
-  return [itemType, normalizedLabel, detail].join("\u001f");
 }
 
 function normalizeCompactToolLabel(value: string): string {
@@ -689,10 +658,18 @@ function memoizeValue<T>(build: () => T): () => T {
 }
 
 function workEntryPreview(
-  workEntry: Pick<WorkLogEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<
+    WorkLogEntry,
+    "detail" | "command" | "changedFiles" | "toolSummaryStatus" | "itemType" | "requestKind"
+  >,
 ): string | null {
+  if (workEntry.toolSummaryStatus === "complete" && workEntry.detail) return workEntry.detail;
   if (workEntry.command) return workEntry.command;
-  if (workEntry.detail) return workEntry.detail;
+  const hasStructuredChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
+  const isStructuredFileChange =
+    hasStructuredChangedFiles &&
+    (workEntry.itemType === "file_change" || workEntry.requestKind === "file-change");
+  if (workEntry.detail && !isStructuredFileChange) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
@@ -881,15 +858,22 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   rawCommand: string | null;
 } {
   const data = asRecord(payload?.data);
+  const state = asRecord(data?.state);
   const item = asRecord(data?.item);
   const itemResult = asRecord(item?.result);
   const itemInput = asRecord(item?.input);
+  const dataInput = asRecord(data?.input);
+  const stateInput = asRecord(state?.input);
   const itemType = asTrimmedString(payload?.itemType);
   const detail = asTrimmedString(payload?.detail);
   const candidates: unknown[] = [
     item?.command,
     itemInput?.command,
     itemResult?.command,
+    dataInput?.command,
+    dataInput?.cmd,
+    stateInput?.command,
+    stateInput?.cmd,
     data?.command,
     itemType === "command_execution" && detail ? stripTrailingExitCode(detail).output : null,
   ];
@@ -972,6 +956,15 @@ function extractWorkLogRequestKind(
     return payload.requestKind;
   }
   return requestKindFromRequestType(payload?.requestType) ?? undefined;
+}
+
+function extractToolSummaryStatus(
+  payload: Record<string, unknown> | null,
+): WorkLogEntry["toolSummaryStatus"] | undefined {
+  if (payload?.summarizationStatus === "pending" || payload?.summarizationStatus === "complete") {
+    return payload.summarizationStatus;
+  }
+  return undefined;
 }
 
 function pushChangedFile(target: string[], seen: Set<string>, value: unknown) {
@@ -1566,6 +1559,7 @@ export function buildThreadFeed(
               icon: workEntryIcon(entry),
               toolLike: workLogEntryIsToolLike(entry),
               status: workEntryStatus(entry),
+              ...(entry.toolSummaryStatus ? { toolSummaryStatus: entry.toolSummaryStatus } : {}),
             },
           };
         }),
