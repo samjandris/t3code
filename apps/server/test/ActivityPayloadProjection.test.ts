@@ -411,23 +411,6 @@ describe("superseded tool.updated snapshot dedup", () => {
       projected.type === "thread.activity-appended" ? projected.payload.activity.id : undefined,
     ).toEqual(update.id);
   });
-
-  it("leaves the collapsed work log identical to the full history", () => {
-    const activities = [
-      makeToolLifecycleActivity("upd-1", "tool.updated", { detail: "writing" }),
-      makeToolLifecycleActivity("upd-2", "tool.updated", { detail: "writing" }),
-      makeToolLifecycleActivity("done-1", "tool.completed", { detail: "writing" }),
-    ];
-    const projected = projectThreadDetailSnapshot({
-      snapshotSequence: 7,
-      thread: makeThread(activities),
-    });
-
-    const before = deriveWorkLogEntries(activities);
-    const after = deriveWorkLogEntries(projected.thread.activities);
-    expect(after).toHaveLength(before.length);
-    expect(after.map((entry) => entry.label)).toEqual(before.map((entry) => entry.label));
-  });
 });
 
 describe("context-window snapshot dedup", () => {

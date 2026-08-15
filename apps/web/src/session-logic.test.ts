@@ -1196,24 +1196,8 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.detail).toBeUndefined();
   });
 
-  it("uses grep raw output summaries instead of repeating the generic tool label", () => {
+  it("uses completed grep output summaries instead of repeating the generic tool label", () => {
     const activities: OrchestrationThreadActivity[] = [
-      makeActivity({
-        id: "grep-update",
-        createdAt: "2026-02-23T00:00:01.000Z",
-        kind: "tool.updated",
-        summary: "grep",
-        payload: {
-          itemType: "web_search",
-          title: "grep",
-          detail: "grep",
-          data: {
-            toolCallId: "tool-grep-1",
-            kind: "search",
-            rawInput: {},
-          },
-        },
-      }),
       makeActivity({
         id: "grep-complete",
         createdAt: "2026-02-23T00:00:02.000Z",
@@ -1245,24 +1229,8 @@ describe("deriveWorkLogEntries", () => {
     });
   });
 
-  it("uses completed read-file output previews and still collapses the same tool call", () => {
+  it("uses completed read-file output previews", () => {
     const activities: OrchestrationThreadActivity[] = [
-      makeActivity({
-        id: "read-update",
-        createdAt: "2026-02-23T00:00:01.000Z",
-        kind: "tool.updated",
-        summary: "Read File",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Read File",
-          detail: "Read File",
-          data: {
-            toolCallId: "tool-read-1",
-            kind: "read",
-            rawInput: {},
-          },
-        },
-      }),
       makeActivity({
         id: "read-complete",
         createdAt: "2026-02-23T00:00:02.000Z",
@@ -1329,48 +1297,7 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.command).toBeUndefined();
   });
 
-  it("collapses legacy completed tool rows that are missing tool metadata", () => {
-    const activities: OrchestrationThreadActivity[] = [
-      makeActivity({
-        id: "legacy-read-update",
-        createdAt: "2026-02-23T00:00:01.000Z",
-        kind: "tool.updated",
-        summary: "Read File",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Read File",
-          detail: "Read File",
-          data: {
-            toolCallId: "tool-read-legacy",
-            kind: "read",
-            rawInput: {},
-          },
-        },
-      }),
-      makeActivity({
-        id: "legacy-read-complete",
-        createdAt: "2026-02-23T00:00:02.000Z",
-        kind: "tool.completed",
-        summary: "Read File",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Read File",
-          detail: "Read File",
-        },
-      }),
-    ];
-
-    const entries = deriveWorkLogEntries(activities);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      id: "legacy-read-complete",
-      toolTitle: "Read File",
-      itemType: "dynamic_tool_call",
-    });
-    expect(entries[0]?.detail).toBeUndefined();
-  });
-
-  it("collapses repeated lifecycle updates for the same tool call into one entry", () => {
+  it("leaves lifecycle reconciliation to the server", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
         id: "tool-update-1",
@@ -1414,112 +1341,11 @@ describe("deriveWorkLogEntries", () => {
 
     const entries = deriveWorkLogEntries(activities);
 
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      id: "tool-complete",
-      createdAt: "2026-02-23T00:00:03.000Z",
-      label: "Tool call completed",
-      detail: 'Read: {"file_path":"/tmp/app.ts"}',
-      command: "sed -n 1,40p /tmp/app.ts",
-      itemType: "dynamic_tool_call",
-      toolTitle: "Tool call",
-    });
-  });
-
-  it("keeps separate tool entries when an identical call starts after the prior one completed", () => {
-    const activities: OrchestrationThreadActivity[] = [
-      makeActivity({
-        id: "tool-1-update",
-        createdAt: "2026-02-23T00:00:01.000Z",
-        kind: "tool.updated",
-        summary: "Tool call",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Tool call",
-          detail: 'Read: {"file_path":"/tmp/app.ts"}',
-        },
-      }),
-      makeActivity({
-        id: "tool-1-complete",
-        createdAt: "2026-02-23T00:00:02.000Z",
-        kind: "tool.completed",
-        summary: "Tool call completed",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Tool call",
-          detail: 'Read: {"file_path":"/tmp/app.ts"}',
-        },
-      }),
-      makeActivity({
-        id: "tool-2-update",
-        createdAt: "2026-02-23T00:00:03.000Z",
-        kind: "tool.updated",
-        summary: "Tool call",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Tool call",
-          detail: 'Read: {"file_path":"/tmp/app.ts"}',
-        },
-      }),
-      makeActivity({
-        id: "tool-2-complete",
-        createdAt: "2026-02-23T00:00:04.000Z",
-        kind: "tool.completed",
-        summary: "Tool call completed",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Tool call",
-          detail: 'Read: {"file_path":"/tmp/app.ts"}',
-        },
-      }),
-    ];
-
-    const entries = deriveWorkLogEntries(activities);
-
-    expect(entries.map((entry) => entry.id)).toEqual(["tool-1-complete", "tool-2-complete"]);
-  });
-
-  it("collapses same-timestamp lifecycle rows even when completed sorts before updated by id", () => {
-    const activities: OrchestrationThreadActivity[] = [
-      makeActivity({
-        id: "z-update-earlier",
-        createdAt: "2026-02-23T00:00:01.000Z",
-        kind: "tool.updated",
-        summary: "Tool call",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Tool call",
-          detail: 'Read: {"file_path":"/tmp/app.ts"}',
-        },
-      }),
-      makeActivity({
-        id: "a-complete-same-timestamp",
-        createdAt: "2026-02-23T00:00:02.000Z",
-        kind: "tool.completed",
-        summary: "Tool call",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Tool call",
-          detail: 'Read: {"file_path":"/tmp/app.ts"}',
-        },
-      }),
-      makeActivity({
-        id: "z-update-same-timestamp",
-        createdAt: "2026-02-23T00:00:02.000Z",
-        kind: "tool.updated",
-        summary: "Tool call",
-        payload: {
-          itemType: "dynamic_tool_call",
-          title: "Tool call",
-          detail: 'Read: {"file_path":"/tmp/app.ts"}',
-        },
-      }),
-    ];
-
-    const entries = deriveWorkLogEntries(activities);
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.id).toBe("a-complete-same-timestamp");
+    expect(entries.map((entry) => entry.id)).toEqual([
+      "tool-update-1",
+      "tool-update-2",
+      "tool-complete",
+    ]);
   });
 });
 
