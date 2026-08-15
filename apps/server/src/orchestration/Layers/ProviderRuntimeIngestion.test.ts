@@ -19,6 +19,7 @@ import {
   type OrchestrationCommand,
   ProjectId,
   ProviderItemId,
+  RuntimeItemId,
   type ServerSettings,
   ThreadId,
   TurnId,
@@ -47,7 +48,10 @@ import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
-import { ProviderRuntimeIngestionLive } from "./ProviderRuntimeIngestion.ts";
+import {
+  ProviderRuntimeIngestionLive,
+  runtimeEventToActivities,
+} from "./ProviderRuntimeIngestion.ts";
 import { DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
@@ -62,6 +66,7 @@ function makeTestServerSettingsLayer(overrides: Partial<ServerSettings> = {}) {
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asItemId = (value: string): ProviderItemId => ProviderItemId.make(value);
+const asRuntimeItemId = (value: string): RuntimeItemId => RuntimeItemId.make(value);
 const asEventId = (value: string): EventId => EventId.make(value);
 const asMessageId = (value: string): MessageId => MessageId.make(value);
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
@@ -201,6 +206,53 @@ describe("ProviderRuntimeIngestion", () => {
   > | null = null;
   let scope: Scope.Closeable | null = null;
   const tempDirs: string[] = [];
+
+  it("projects one stable activity identity across a tool lifecycle", () => {
+    const common = {
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-tool"),
+      itemId: asRuntimeItemId("item-tool"),
+      payload: {
+        itemType: "command_execution" as const,
+        title: "Run tests",
+      },
+    };
+    const started: Extract<ProviderRuntimeEvent, { type: "item.started" }> = {
+      ...common,
+      type: "item.started",
+      eventId: asEventId("evt-tool-started"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const updated: Extract<ProviderRuntimeEvent, { type: "item.updated" }> = {
+      ...common,
+      type: "item.updated",
+      eventId: asEventId("evt-tool-updated"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+    };
+    const completed: Extract<ProviderRuntimeEvent, { type: "item.completed" }> = {
+      ...common,
+      type: "item.completed",
+      eventId: asEventId("evt-tool-completed"),
+      createdAt: "2026-01-01T00:00:02.000Z",
+    };
+
+    const [startedActivity] = runtimeEventToActivities(started);
+    const [updatedActivity] = runtimeEventToActivities(updated);
+    const [completedActivity] = runtimeEventToActivities(completed, {
+      summarizeToolCalls: true,
+    });
+
+    expect(startedActivity?.id).toBe("tool:thread-1:turn-tool:item-tool");
+    expect(updatedActivity?.id).toBe(startedActivity?.id);
+    expect(completedActivity?.id).toBe(startedActivity?.id);
+    expect(startedActivity?.payload).toMatchObject({ status: "inProgress" });
+    expect(updatedActivity?.payload).toMatchObject({ status: "inProgress" });
+    expect(completedActivity?.payload).toMatchObject({
+      status: "completed",
+      summarizationStatus: "pending",
+    });
+  });
 
   function makeTempDir(prefix: string): string {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), prefix));
@@ -1089,11 +1141,13 @@ describe("ProviderRuntimeIngestion", () => {
 
     const thread = await waitForThread(harness.readModel, (entry) =>
       entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-tool-completed-with-data",
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === "tool:thread-1:turn-tool-completed:item-tool-completed",
       ),
     );
     const activity = thread.activities.find(
-      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-tool-completed-with-data",
+      (entry: ProviderRuntimeTestActivity) =>
+        entry.id === "tool:thread-1:turn-tool-completed:item-tool-completed",
     );
     const payload =
       activity?.payload && typeof activity.payload === "object"
@@ -1115,6 +1169,58 @@ describe("ProviderRuntimeIngestion", () => {
     expect(data?.toolCallId).toBe("tool-read-1");
     expect(data?.kind).toBe("read");
     expect(rawOutput?.content).toBe('import * as Effect from "effect/Effect"\n');
+  });
+
+  it("upserts tool lifecycle events into one projected activity", async () => {
+    const harness = await createHarness();
+    const activityId = "tool:thread-1:turn-tool-lifecycle:item-tool-lifecycle";
+
+    harness.emit({
+      type: "item.updated",
+      eventId: asEventId("evt-tool-lifecycle-updated"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-tool-lifecycle"),
+      itemId: asItemId("item-tool-lifecycle"),
+      payload: {
+        itemType: "command_execution",
+        title: "Run tests",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-tool-lifecycle-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:02.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-tool-lifecycle"),
+      itemId: asItemId("item-tool-lifecycle"),
+      payload: {
+        itemType: "command_execution",
+        title: "Ran command",
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === activityId && activity.kind === "tool.completed",
+      ),
+    );
+    const lifecycleActivities = thread.activities.filter(
+      (activity: ProviderRuntimeTestActivity) => activity.id === activityId,
+    );
+    expect(lifecycleActivities).toHaveLength(1);
+    expect(lifecycleActivities[0]).toMatchObject({
+      id: activityId,
+      kind: "tool.completed",
+      summary: "Ran command",
+      payload: {
+        itemType: "command_execution",
+        status: "completed",
+      },
+    });
   });
 
   it("normalizes command execution activities to ran-command summaries", async () => {
@@ -1144,11 +1250,13 @@ describe("ProviderRuntimeIngestion", () => {
 
     const thread = await waitForThread(harness.readModel, (entry) =>
       entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-command-completed",
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === "tool:thread-1:turn-command-completed:item-command-completed",
       ),
     );
     const activity = thread.activities.find(
-      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-command-completed",
+      (entry: ProviderRuntimeTestActivity) =>
+        entry.id === "tool:thread-1:turn-command-completed:item-command-completed",
     );
     const payload =
       activity?.payload && typeof activity.payload === "object"
@@ -1186,11 +1294,13 @@ describe("ProviderRuntimeIngestion", () => {
 
     const thread = await waitForThread(harness.readModel, (entry) =>
       entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-read-path-completed",
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === "tool:thread-1:turn-read-path:item-read-path",
       ),
     );
     const activity = thread.activities.find(
-      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-read-path-completed",
+      (entry: ProviderRuntimeTestActivity) =>
+        entry.id === "tool:thread-1:turn-read-path:item-read-path",
     );
     const payload =
       activity?.payload && typeof activity.payload === "object"
@@ -2817,7 +2927,7 @@ describe("ProviderRuntimeIngestion", () => {
       turnId: asTurnId("turn-9"),
       payload: {
         itemType: "command_execution",
-        status: "in_progress",
+        status: "inProgress",
         title: "Read file",
         detail: "/tmp/file.ts",
       },
@@ -2883,7 +2993,7 @@ describe("ProviderRuntimeIngestion", () => {
       itemId: asItemId("item-p1-tool"),
       payload: {
         itemType: "command_execution",
-        status: "in_progress",
+        status: "inProgress",
         title: "Run tests",
         detail: "bun test",
         data: { pid: 123 },
@@ -2947,7 +3057,8 @@ describe("ProviderRuntimeIngestion", () => {
     expect(Array.isArray(planPayload?.plan)).toBe(true);
 
     const toolUpdate = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-item-updated",
+      (activity: ProviderRuntimeTestActivity) =>
+        activity.id === "tool:thread-1:turn-p1:item-p1-tool",
     );
     const toolUpdatePayload =
       toolUpdate?.payload && typeof toolUpdate.payload === "object"
@@ -2955,7 +3066,7 @@ describe("ProviderRuntimeIngestion", () => {
         : undefined;
     expect(toolUpdate?.kind).toBe("tool.updated");
     expect(toolUpdatePayload?.itemType).toBe("command_execution");
-    expect(toolUpdatePayload?.status).toBe("in_progress");
+    expect(toolUpdatePayload?.status).toBe("inProgress");
 
     const warning = thread.activities.find(
       (activity: ProviderRuntimeTestActivity) => activity.id === "evt-runtime-warning",

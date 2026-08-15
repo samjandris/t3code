@@ -44,6 +44,33 @@ describe("deriveWorkLogEntries command output", () => {
     });
   });
 
+  it("keeps summarized command output available in the expanded detail", () => {
+    const [entry] = deriveWorkLogEntries([
+      makeCommandActivity("summarized-command", {
+        itemType: "command_execution",
+        title: "Ran command",
+        detail: "Printed the greeting successfully",
+        summarizationStatus: "complete",
+        data: {
+          item: {
+            type: "commandExecution",
+            command: "/bin/zsh -lc \"printf 'hello\\n'\"",
+            commandActions: [{ command: "printf 'hello\\n'", type: "unknown" }],
+            aggregatedOutput: "hello\n<exited with exit code 0>",
+            status: "completed",
+          },
+        },
+      }),
+    ]);
+
+    expect(entry).toMatchObject({
+      toolSummary: "Printed the greeting successfully",
+      command: "printf 'hello\\n'",
+      rawCommand: "/bin/zsh -lc \"printf 'hello\\n'\"",
+      detail: "hello",
+    });
+  });
+
   it("uses a projected Claude output summary instead of repeating the command", () => {
     const [entry] = deriveWorkLogEntries([
       makeCommandActivity("claude-command", {
