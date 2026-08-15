@@ -151,15 +151,20 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             variant={props.triggerVariant ?? "ghost"}
             data-chat-provider-model-picker="true"
             className={cn(
-              "min-w-0 justify-between whitespace-nowrap",
-              props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56",
+              "min-w-0 justify-start overflow-hidden whitespace-nowrap",
+              props.compact ? "shrink-0" : "max-w-48 shrink sm:max-w-56",
               props.triggerClassName,
             )}
             disabled={props.disabled}
           />
         }
       >
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span
+          className={cn(
+            "flex min-w-0 w-full box-border flex-1 items-center gap-1.5 overflow-hidden",
+            props.compact ? "sm:pl-1" : undefined,
+          )}
+        >
           {activeEntry ? (
             <ProviderInstanceIcon
               driverKind={activeEntry.driverKind}
@@ -177,9 +182,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : null}
           <Tooltip>
             <TooltipTrigger render={<span className="min-w-0 flex-1 overflow-hidden truncate" />}>
-              {triggerTitle}
+              {triggerLabel}
             </TooltipTrigger>
-            <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
+            <TooltipPopup side="top">{triggerTitle}</TooltipPopup>
           </Tooltip>
         </span>
         <span aria-hidden="true" className="flex items-center">
