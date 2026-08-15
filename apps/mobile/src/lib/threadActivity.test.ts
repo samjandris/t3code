@@ -203,7 +203,7 @@ describe("buildThreadFeed", () => {
     ]);
   });
 
-  it("collapses matching tool lifecycle rows like desktop", () => {
+  it("renders a server-reconciled tool completion row", () => {
     const thread = makeThread({
       id: ThreadId.make("thread-2"),
       projectId: ProjectId.make("project-1"),
@@ -218,20 +218,7 @@ describe("buildThreadFeed", () => {
       },
       activities: [
         makeActivity({
-          id: EventId.make("tool-updated"),
-          kind: "tool.updated",
-          tone: "tool",
-          summary: "Run tests",
-          createdAt: "2026-04-01T00:00:01.000Z",
-          turnId: TurnId.make("turn-1"),
-          payload: {
-            title: "Run tests",
-            itemType: "command_execution",
-            detail: "/bin/zsh -lc 'bun run test'",
-          },
-        }),
-        makeActivity({
-          id: EventId.make("tool-completed"),
+          id: EventId.make("tool:thread-2:turn-1:item-tool"),
           kind: "tool.completed",
           tone: "tool",
           summary: "Run tests completed",
@@ -240,6 +227,7 @@ describe("buildThreadFeed", () => {
           payload: {
             title: "Run tests",
             itemType: "command_execution",
+            status: "completed",
             detail: "/bin/zsh -lc 'bun run test'",
           },
         }),
@@ -258,7 +246,7 @@ describe("buildThreadFeed", () => {
 
     expect(group.activities).toHaveLength(1);
     expect(group.activities[0]).toMatchObject({
-      id: "tool-completed",
+      id: "tool:thread-2:turn-1:item-tool",
       createdAt: "2026-04-01T00:00:02.000Z",
       turnId: "turn-1",
       summary: "Run tests",

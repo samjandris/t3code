@@ -63,6 +63,27 @@ export function sanitizeThreadTitle(raw: string): string {
   return `${normalized.slice(0, 47).trimEnd()}...`;
 }
 
+/** Normalise a tool-call summary to a compact single-line work-log label. */
+export function sanitizeToolCallSummary(raw: string): string {
+  const normalized = raw
+    .trim()
+    .split(/\r?\n/g)[0]
+    ?.trim()
+    .replace(/^['"`]+|['"`]+$/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+
+  if (!normalized || normalized.trim().length === 0) {
+    return "Completed tool call";
+  }
+
+  if (normalized.length <= 90) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 87).trimEnd()}...`;
+}
+
 /** CLI name to human-readable label, e.g. "codex" → "Codex CLI (`codex`)" */
 function cliLabel(cliName: string): string {
   const capitalized = cliName.charAt(0).toUpperCase() + cliName.slice(1);
