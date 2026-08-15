@@ -640,6 +640,56 @@ describe("applyThreadDetailEvent", () => {
       }
     });
 
+    it("replaces a tool lifecycle activity when its stable id is reused", () => {
+      const activityId = EventId.make("tool:thread-1:turn-1:item-1");
+      const result = applyThreadDetailEvent(
+        {
+          ...baseThread,
+          activities: [
+            {
+              id: activityId,
+              tone: "tool",
+              kind: "tool.updated",
+              summary: "Tool updated",
+              payload: { itemType: "command_execution", status: "inProgress" },
+              turnId: TurnId.make("turn-1"),
+              createdAt: "2026-04-01T11:00:00.000Z",
+            },
+          ],
+        },
+        {
+          ...baseEventFields,
+          sequence: 13,
+          occurredAt: "2026-04-01T11:00:01.000Z",
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread-1"),
+          type: "thread.activity-appended",
+          payload: {
+            threadId: ThreadId.make("thread-1"),
+            activity: {
+              id: activityId,
+              tone: "tool",
+              kind: "tool.completed",
+              summary: "Ran command",
+              payload: { itemType: "command_execution", status: "completed" },
+              turnId: TurnId.make("turn-1"),
+              createdAt: "2026-04-01T11:00:01.000Z",
+            },
+          },
+        },
+      );
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.activities).toHaveLength(1);
+        expect(result.thread.activities[0]).toMatchObject({
+          id: activityId,
+          kind: "tool.completed",
+          summary: "Ran command",
+        });
+      }
+    });
+
     it("preserves the complete activity history when live events arrive", () => {
       const existingActivities = Array.from({ length: 129 }, (_, index) => ({
         id: EventId.make(`activity-${index}`),
