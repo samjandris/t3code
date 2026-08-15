@@ -118,4 +118,41 @@ describe("makeTextGenerationFromRegistry", () => {
       }
     }),
   );
+
+  it.effect("uses the neutral cwd only for tool summaries", () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("codex_personal");
+      const seenCwds: string[] = [];
+      const instance = makeStubInstance(
+        instanceId,
+        makeStubTextGeneration({
+          generateBranchName: (input) => {
+            seenCwds.push(input.cwd);
+            return Effect.succeed({ branch: "kept-workspace" });
+          },
+          generateToolCallSummaries: (input) => {
+            seenCwds.push(input.cwd);
+            return Effect.succeed({ summaries: [] });
+          },
+        }),
+      );
+      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([instance]), {
+        textGenerationCwd: "/neutral-text-generation",
+      });
+      const modelSelection = createModelSelection(instanceId, "gpt-5");
+
+      yield* tg.generateBranchName({
+        cwd: "/workspace",
+        message: "Keep the existing behavior",
+        modelSelection,
+      });
+      yield* tg.generateToolCallSummaries!({
+        cwd: "/workspace",
+        items: [],
+        modelSelection,
+      });
+
+      expect(seenCwds).toEqual(["/workspace", "/neutral-text-generation"]);
+    }),
+  );
 });

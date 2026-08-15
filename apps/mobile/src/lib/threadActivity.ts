@@ -66,6 +66,7 @@ interface WorkLogEntry {
   turnId: TurnId | null;
   label: string;
   detail?: string;
+  toolSummary?: string;
   command?: string;
   rawCommand?: string;
   changedFiles?: ReadonlyArray<string>;
@@ -391,6 +392,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
+  const toolSummary = isTaskActivity ? null : asTrimmedString(payload?.toolSummary);
+  if (toolSummary) {
+    entry.toolSummary = toolSummary;
+  }
   if (
     !taskDetailAsLabel &&
     payload &&
@@ -495,6 +500,7 @@ function mergeDerivedWorkLogEntries(
 ): DerivedWorkLogEntry {
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
   const detail = next.detail ?? previous.detail;
+  const toolSummary = next.toolSummary ?? previous.toolSummary;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
@@ -507,6 +513,7 @@ function mergeDerivedWorkLogEntries(
     ...previous,
     ...next,
     ...(detail ? { detail } : {}),
+    ...(toolSummary ? { toolSummary } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
@@ -689,8 +696,9 @@ function memoizeValue<T>(build: () => T): () => T {
 }
 
 function workEntryPreview(
-  workEntry: Pick<WorkLogEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<WorkLogEntry, "detail" | "toolSummary" | "command" | "changedFiles">,
 ): string | null {
+  if (workEntry.toolSummary) return workEntry.toolSummary;
   if (workEntry.command) return workEntry.command;
   if (workEntry.detail) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;

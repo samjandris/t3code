@@ -2011,9 +2011,10 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<TimelineWorkEntry, "detail" | "toolSummary" | "command" | "changedFiles">,
   workspaceRoot: string | undefined,
 ) {
+  if (workEntry.toolSummary) return workEntry.toolSummary;
   if (workEntry.command) return workEntry.command;
   if (workEntry.detail) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;

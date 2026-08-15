@@ -5,6 +5,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildToolCallSummariesPrompt,
 } from "./TextGenerationPrompts.ts";
 import { normalizeCliError, sanitizeThreadTitle } from "./TextGenerationUtils.ts";
 import { TextGenerationError } from "@t3tools/contracts";
@@ -243,6 +244,25 @@ describe("sanitizeThreadTitle", () => {
         '  "Reconnect failures after restart because the session state does not recover"  ',
       ),
     ).toBe("Reconnect failures after restart because the se...");
+  });
+});
+
+describe("buildToolCallSummariesPrompt", () => {
+  it("includes both visible output and the raw input payload", () => {
+    const result = buildToolCallSummariesPrompt({
+      items: [
+        {
+          id: "tool-1",
+          toolName: "Terminal",
+          toolType: "command_execution",
+          detail: "hello from stdout",
+          payload: '{"command":"printf hello"}',
+        },
+      ],
+    });
+
+    expect(result.prompt).toContain("Visible output:\nhello from stdout");
+    expect(result.prompt).toContain('Raw tool payload:\n{"command":"printf hello"}');
   });
 });
 

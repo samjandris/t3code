@@ -228,6 +228,7 @@ describe("buildThreadFeed", () => {
             title: "Run tests",
             itemType: "command_execution",
             detail: "/bin/zsh -lc 'bun run test'",
+            toolSummary: "Passed the test suite",
           },
         }),
         makeActivity({
@@ -262,7 +263,7 @@ describe("buildThreadFeed", () => {
       createdAt: "2026-04-01T00:00:02.000Z",
       turnId: "turn-1",
       summary: "Run tests",
-      detail: "bun run test",
+      detail: "Passed the test suite",
       canExpand: true,
       icon: "command",
       toolLike: true,
@@ -270,7 +271,7 @@ describe("buildThreadFeed", () => {
     });
     expect(group.activities[0]?.getFullDetail()).toBe("/bin/zsh -lc 'bun run test'");
     expect(group.activities[0]?.getCopyText()).toBe(
-      "Run tests\nbun run test\n/bin/zsh -lc 'bun run test'",
+      "Run tests\nPassed the test suite\n/bin/zsh -lc 'bun run test'",
     );
   });
 

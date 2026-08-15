@@ -67,6 +67,8 @@ export interface WorkLogEntry {
   turnId?: TurnId | null;
   label: string;
   detail?: string;
+  /** Optional generated label; upstream tool input/output remain in their original fields. */
+  toolSummary?: string;
   command?: string;
   rawCommand?: string;
   changedFiles?: ReadonlyArray<string>;
@@ -823,6 +825,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
+  const toolSummary = isTaskActivity ? null : asTrimmedString(payload?.toolSummary);
   const detail = isTaskActivity
     ? !taskDetailAsLabel &&
       payload &&
@@ -847,6 +850,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
+  if (toolSummary) {
+    entry.toolSummary = toolSummary;
+  }
   if (detail) {
     entry.detail = detail;
   }
@@ -1034,6 +1040,7 @@ function mergeDerivedWorkLogEntries(
 ): DerivedWorkLogEntry {
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
   const detail = next.detail ?? previous.detail;
+  const toolSummary = next.toolSummary ?? previous.toolSummary;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
@@ -1047,6 +1054,7 @@ function mergeDerivedWorkLogEntries(
     ...previous,
     ...next,
     ...(detail ? { detail } : {}),
+    ...(toolSummary ? { toolSummary } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
