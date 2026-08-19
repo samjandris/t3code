@@ -54,10 +54,26 @@ import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeInge
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import * as TextGeneration from "../../textGeneration/TextGeneration.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 function makeTestServerSettingsLayer(overrides: Partial<ServerSettings> = {}) {
   return ServerSettingsService.layerTest(overrides);
+}
+
+function makeToolSummaryTextGeneration(
+  generateToolCallSummaries: NonNullable<
+    TextGeneration.TextGeneration["Service"]["generateToolCallSummaries"]
+  >,
+): TextGeneration.TextGeneration["Service"] {
+  const unsupported = () => Effect.die("Unsupported text generation operation in test");
+  return TextGeneration.TextGeneration.of({
+    generateCommitMessage: unsupported,
+    generatePrContent: unsupported,
+    generateBranchName: unsupported,
+    generateThreadTitle: unsupported,
+    generateToolCallSummaries,
+  });
 }
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -225,6 +241,7 @@ describe("ProviderRuntimeIngestion", () => {
   async function createHarness(options?: {
     serverSettings?: Partial<ServerSettings>;
     threadTitle?: string;
+    textGeneration?: TextGeneration.TextGeneration["Service"];
   }) {
     const workspaceRoot = makeTempDir("t3-provider-project-");
     NodeFS.mkdirSync(NodePath.join(workspaceRoot, ".git"));
@@ -241,6 +258,9 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provide(RepositoryIdentityResolver.layer),
       Layer.provide(SqlitePersistenceMemory),
     );
+    const textGenerationLayer = options?.textGeneration
+      ? Layer.succeed(TextGeneration.TextGeneration, options.textGeneration)
+      : Layer.empty;
     const layer = ProviderRuntimeIngestionLive.pipe(
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
@@ -251,6 +271,7 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
+      Layer.provideMerge(textGenerationLayer),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(NodeServices.layer),
     );
@@ -1115,6 +1136,79 @@ describe("ProviderRuntimeIngestion", () => {
     expect(data?.toolCallId).toBe("tool-read-1");
     expect(data?.kind).toBe("read");
     expect(rawOutput?.content).toBe('import * as Effect from "effect/Effect"\n');
+  });
+
+  it("adds a generated summary without replacing upstream tool fields", async () => {
+    const generatedInputs: TextGeneration.ToolCallSummariesGenerationInput[] = [];
+    const harness = await createHarness({
+      serverSettings: { summarizeToolCalls: true },
+      textGeneration: makeToolSummaryTextGeneration((input) => {
+        generatedInputs.push(input);
+        return Effect.succeed({
+          summaries: input.items.map((item) => ({
+            id: item.id,
+            summary: "Printed the greeting successfully",
+          })),
+        });
+      }),
+    });
+    const detail = "/bin/zsh -lc \"printf 'hello\\n'\"";
+    const data = {
+      item: {
+        type: "commandExecution",
+        command: detail,
+        aggregatedOutput: "hello\n<exited with exit code 0>",
+      },
+    };
+
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-summarized-command"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-summarized-command"),
+      itemId: asItemId("item-summarized-command"),
+      payload: {
+        itemType: "command_execution",
+        status: "completed",
+        title: "Ran command",
+        detail,
+        data,
+      },
+    });
+
+    const beforeSummary = await waitForThread(harness.readModel, (thread) =>
+      thread.activities.some((activity) => activity.id === "evt-summarized-command"),
+    );
+    expect(
+      beforeSummary.activities.find((activity) => activity.id === "evt-summarized-command"),
+    ).toMatchObject({
+      payload: {
+        itemType: "command_execution",
+        detail,
+        data,
+        summarizationStatus: "pending",
+      },
+    });
+
+    await harness.drain();
+    const afterSummary = (await harness.readModel()).threads.find(
+      (thread) => thread.id === "thread-1",
+    );
+    expect(
+      afterSummary?.activities.find((activity) => activity.id === "evt-summarized-command"),
+    ).toMatchObject({
+      payload: {
+        itemType: "command_execution",
+        detail,
+        data,
+        summarizationStatus: "complete",
+        toolSummary: "Printed the greeting successfully",
+      },
+    });
+    expect(generatedInputs).toHaveLength(1);
+    expect(generatedInputs[0]?.items).toHaveLength(1);
   });
 
   it("normalizes command execution activities to ran-command summaries", async () => {
