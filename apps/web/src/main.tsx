@@ -29,6 +29,7 @@ if (isElectron) {
 }
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
+const clerkPasskeysEnabled = import.meta.env.VITE_CLERK_PASSKEYS_ENABLED;
 
 // First Clerk UI build containing https://github.com/clerk/javascript/pull/9500.
 const electronClerkUI = {
@@ -45,7 +46,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
           {...electronClerkUI}
           appearance={clerkAppearance}
           publishableKey={clerkPublishableKey}
-          passkeys={passkeys}
+          {...(clerkPasskeysEnabled ? { passkeys } : {})}
         >
           <ManagedRelayAuthProvider>{app}</ManagedRelayAuthProvider>
         </ElectronClerkProvider>
