@@ -11,7 +11,7 @@ import {
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
-export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
+export const MAX_VISIBLE_WORK_LOG_ENTRIES = 5;
 export const TIMELINE_MINIMAP_ITEM_SPACING = 8;
 export const TIMELINE_MINIMAP_MIN_ITEMS = 2;
 export const TIMELINE_MINIMAP_MAX_HEIGHT_CSS = "calc(100vh - 18rem)";
@@ -185,6 +185,7 @@ export type MessagesTimelineRow =
       groupedEntries: WorkLogEntry[];
       isExpandedToolGroupEntry: boolean;
       isLastExpandedToolGroupEntry: boolean;
+      overflowGroupPosition?: "first" | "middle" | "last";
     }
   | {
       kind: "work-live";
@@ -938,7 +939,7 @@ export function deriveMessagesTimelineRows(input: {
           );
           const renderedEntries = expanded ? visibleGroupedEntries : visibleEntries;
 
-          for (const workEntry of renderedEntries) {
+          for (const [entryIndex, workEntry] of renderedEntries.entries()) {
             nextRows.push({
               kind: "work",
               id: workEntry.id,
@@ -946,6 +947,12 @@ export function deriveMessagesTimelineRows(input: {
               groupedEntries: [workEntry],
               isExpandedToolGroupEntry: false,
               isLastExpandedToolGroupEntry: false,
+              overflowGroupPosition:
+                entryIndex === 0
+                  ? "first"
+                  : entryIndex === renderedEntries.length - 1
+                    ? "last"
+                    : "middle",
             });
           }
 
@@ -1084,6 +1091,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.isExpandedToolGroupEntry === bw.isExpandedToolGroupEntry &&
         a.isLastExpandedToolGroupEntry === bw.isLastExpandedToolGroupEntry &&
+        a.overflowGroupPosition === bw.overflowGroupPosition &&
         Equal.equals(a.groupedEntries, bw.groupedEntries)
       );
     }
