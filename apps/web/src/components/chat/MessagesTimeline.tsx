@@ -2011,9 +2011,10 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<TimelineWorkEntry, "detail" | "toolSummary" | "command" | "changedFiles">,
   workspaceRoot: string | undefined,
 ) {
+  if (workEntry.toolSummary) return workEntry.toolSummary;
   if (workEntry.command) return workEntry.command;
   if (workEntry.detail) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
@@ -2247,6 +2248,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const expandedBody = buildToolCallExpandedBody(workEntry, workspaceRoot);
   const canExpand = expandedBody !== null;
+  const isToolSummaryPending = workEntry.toolSummaryStatus === "pending";
   const showFailedIndicator = workEntryIndicatesToolFailure(workEntry);
   const showDestructiveRowStyle =
     showFailedIndicator &&
@@ -2304,7 +2306,12 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
-            <p className="flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5">
+            <p
+              className={cn(
+                "tool-summary-line flex min-w-0 w-full items-baseline gap-1.5 text-[12px] leading-5",
+                isToolSummaryPending && "tool-summary-shimmer",
+              )}
+            >
               <span className={cn("min-w-0 shrink truncate", headingClass)}>{heading}</span>
               {preview && (
                 <span className="min-w-0 flex-1 truncate text-secondary-label">{preview}</span>
