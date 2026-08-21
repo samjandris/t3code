@@ -952,12 +952,16 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
               : (row.kind === "message" &&
                     row.message.role === "assistant" &&
                     !row.showAssistantMeta) ||
-                  row.kind === "work" ||
+                  (row.kind === "work" &&
+                    row.overflowGroupPosition !== "first" &&
+                    row.overflowGroupPosition !== "middle") ||
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
                   row.kind === "turn-plan"
                 ? "pb-2"
-                : "pb-4",
+                : row.kind === "work"
+                  ? "pb-px"
+                  : "pb-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
       )}
       data-timeline-row-id={row.id}
@@ -969,6 +973,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         <WorkGroupSection
           groupedEntries={row.groupedEntries}
           isExpandedToolGroupEntry={row.isExpandedToolGroupEntry}
+          overflowGroupPosition={row.overflowGroupPosition}
         />
       ) : null}
       {row.kind === "work-live" ? <LiveWorkEntryTimelineRow row={row} /> : null}
@@ -1375,9 +1380,11 @@ function WorkingTimer({ createdAt }: { createdAt: string }) {
 const WorkGroupSection = memo(function WorkGroupSection({
   groupedEntries,
   isExpandedToolGroupEntry,
+  overflowGroupPosition,
 }: {
   groupedEntries: Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"];
   isExpandedToolGroupEntry: boolean;
+  overflowGroupPosition: Extract<MessagesTimelineRow, { kind: "work" }>["overflowGroupPosition"];
 }) {
   const { workspaceRoot } = use(TimelineRowCtx);
   const nonEmptyEntries = useMemo(
@@ -1397,7 +1404,21 @@ const WorkGroupSection = memo(function WorkGroupSection({
 
   return (
     <GroupContainer
-      className={cn("-mx-1 px-1", isExpandedToolGroupEntry ? "py-0" : "space-y-0.5 py-0.5")}
+      className={cn(
+        "-mx-1 px-1",
+        isExpandedToolGroupEntry
+          ? "py-0"
+          : cn(
+              "space-y-0.5",
+              overflowGroupPosition === undefined
+                ? "py-0.5"
+                : overflowGroupPosition === "first"
+                  ? "pt-0.5"
+                  : overflowGroupPosition === "last"
+                    ? "pb-0.5"
+                    : null,
+            ),
+      )}
       aria-label={isExpandedToolGroupEntry ? undefined : groupLabel}
     >
       {!onlyToolEntries && (
@@ -2426,6 +2447,12 @@ function liveWorkEntryLabel(
   return workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
 }
 
+function detailDuplicatesCommand(detail: string, command: string | undefined): boolean {
+  if (!command) return false;
+  if (detail === command) return true;
+  return detail.endsWith("...") && command.startsWith(detail.slice(0, -3));
+}
+
 function buildToolCallExpandedBody(
   workEntry: TimelineWorkEntry,
   workspaceRoot: string | undefined,
@@ -2435,13 +2462,13 @@ function buildToolCallExpandedBody(
     blocks.push(`MCP call\n${JSON.stringify(workEntry.toolData, null, 2)}`);
   }
   const raw = workEntryRawCommand(workEntry);
-  if (raw?.trim()) {
-    blocks.push(raw.trim());
-  } else if (workEntry.command?.trim()) {
-    blocks.push(workEntry.command.trim());
+  const command = raw?.trim() || workEntry.command?.trim();
+  if (command) {
+    blocks.push(command);
   }
-  if (workEntry.detail?.trim()) {
-    blocks.push(workEntry.detail.trim());
+  const detail = workEntry.detail?.trim();
+  if (detail && !detailDuplicatesCommand(detail, command)) {
+    blocks.push(detail);
   }
   const changedFiles = workEntry.changedFiles ?? [];
   if (changedFiles.length > 0) {

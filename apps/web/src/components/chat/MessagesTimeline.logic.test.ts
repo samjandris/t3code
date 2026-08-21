@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  MAX_VISIBLE_WORK_LOG_ENTRIES,
   computeStableMessagesTimelineRows,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
@@ -1304,44 +1305,22 @@ describe("deriveMessagesTimelineRows", () => {
   });
 
   it("models work log overflow expansion as inserted list rows", () => {
-    const timelineEntries = [
-      {
-        id: "work-entry-1",
+    const workEntryCount = MAX_VISIBLE_WORK_LOG_ENTRIES + 2;
+    const timelineEntries = Array.from({ length: workEntryCount }, (_, index) => {
+      const entryNumber = index + 1;
+      return {
+        id: `work-entry-${entryNumber}`,
         kind: "work" as const,
-        createdAt: "2026-01-01T00:00:01Z",
+        createdAt: `2026-01-01T00:00:${String(entryNumber).padStart(2, "0")}Z`,
         entry: {
-          id: "work-1",
-          createdAt: "2026-01-01T00:00:01Z",
-          label: "read",
-          detail: "Reading package.json",
-          tone: "tool" as const,
+          id: `work-${entryNumber}`,
+          createdAt: `2026-01-01T00:00:${String(entryNumber).padStart(2, "0")}Z`,
+          label: "tool",
+          detail: `Running tool ${entryNumber}`,
+          tone: index === 0 ? ("info" as const) : ("tool" as const),
         },
-      },
-      {
-        id: "work-entry-2",
-        kind: "work" as const,
-        createdAt: "2026-01-01T00:00:02Z",
-        entry: {
-          id: "work-2",
-          createdAt: "2026-01-01T00:00:02Z",
-          label: "edit",
-          detail: "Editing MessagesTimeline.tsx",
-          tone: "tool" as const,
-        },
-      },
-      {
-        id: "work-entry-3",
-        kind: "work" as const,
-        createdAt: "2026-01-01T00:00:03Z",
-        entry: {
-          id: "work-3",
-          createdAt: "2026-01-01T00:00:03Z",
-          label: "test",
-          detail: "Running tests",
-          tone: "tool" as const,
-        },
-      },
-    ];
+      };
+    });
 
     const baseInput = {
       timelineEntries,
@@ -1356,19 +1335,20 @@ describe("deriveMessagesTimelineRows", () => {
       expandedWorkGroupIds: new Set(["work-group:work-entry-1"]),
     });
 
-    expect(collapsedRows.map((row) => row.id)).toEqual(["work-toggle:work-entry-1"]);
+    expect(collapsedRows.map((row) => row.id)).toEqual([
+      ...Array.from({ length: MAX_VISIBLE_WORK_LOG_ENTRIES }, (_, index) => `work-${index + 3}`),
+      "work-toggle:work-entry-1",
+    ]);
     expect(collapsedRows.find((row) => row.kind === "work-toggle")).toMatchObject({
       groupId: "work-group:work-entry-1",
-      hiddenCount: 3,
+      hiddenCount: 2,
       expanded: false,
-      onlyToolEntries: true,
-      summary: "Used 3 tools",
+      onlyToolEntries: false,
+      summary: null,
     });
     expect(expandedRows.map((row) => row.id)).toEqual([
+      ...Array.from({ length: workEntryCount }, (_, index) => `work-${index + 1}`),
       "work-toggle:work-entry-1",
-      "work-1",
-      "work-2",
-      "work-3",
     ]);
     expect(expandedRows.find((row) => row.kind === "work-toggle")).toMatchObject({
       expanded: true,
