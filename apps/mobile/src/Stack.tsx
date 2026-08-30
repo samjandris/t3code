@@ -54,6 +54,7 @@ import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
 import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
 import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
 import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
+import { SettingsDictationRouteScreen } from "./features/settings/SettingsDictationRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
@@ -222,6 +223,13 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "open-source-licenses/:entryKey",
       options: {
         title: "License notice",
+      },
+    }),
+    SettingsDictation: createNativeStackScreen({
+      screen: SettingsDictationRouteScreen,
+      linking: "dictation",
+      options: {
+        title: "Voice Dictation",
       },
     }),
     SettingsUsage: createNativeStackScreen({
