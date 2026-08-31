@@ -264,6 +264,12 @@ export async function pickComposerFiles(input: {
   return { files: attachments, error };
 }
 
+const PICKED_IMAGE_COMPRESSION_STAGES = [
+  { maxDimension: 4096, qualities: [0.85, 0.7] },
+  { maxDimension: 2560, qualities: [0.7, 0.55] },
+  { maxDimension: 1600, qualities: [0.5] },
+] as const;
+
 async function loadImagePicker() {
   try {
     return await import("expo-image-picker");
@@ -278,6 +284,84 @@ async function loadClipboard() {
   } catch (error) {
     throw new Error("Clipboard paste is unavailable right now.", { cause: error });
   }
+}
+
+function supportedImageMimeTypeFromBase64(base64: string): string | null {
+  if (base64.startsWith("/9j/")) {
+    return "image/jpeg";
+  }
+  if (base64.startsWith("iVBORw0KGgo")) {
+    return "image/png";
+  }
+  if (base64.startsWith("R0lGOD")) {
+    return "image/gif";
+  }
+  if (base64.startsWith("UklGR")) {
+    return "image/webp";
+  }
+  return null;
+}
+
+function normalizeImageFileName(fileName: string | null | undefined, mimeType: string): string {
+  const extension = mimeType === "image/jpeg" ? "jpg" : mimeType.slice("image/".length);
+  const baseName = fileName?.replace(/\.[^./]+$/, "") || "image";
+  return `${baseName}.${extension}`;
+}
+
+async function deleteTemporaryImage(uri: string): Promise<void> {
+  try {
+    const { File } = await import("expo-file-system");
+    const file = new File(uri);
+    if (file.exists) {
+      file.delete();
+    }
+  } catch {
+    // Cache cleanup should not turn a valid attachment into a failure.
+  }
+}
+
+async function compressPickedJpeg(input: {
+  readonly uri: string;
+  readonly width: number;
+  readonly height: number;
+}): Promise<{ readonly base64: string; readonly sizeBytes: number } | null> {
+  const { ImageManipulator, SaveFormat } = await import("expo-image-manipulator");
+
+  for (const stage of PICKED_IMAGE_COMPRESSION_STAGES) {
+    const context = ImageManipulator.manipulate(input.uri);
+    const longestEdge = Math.max(input.width, input.height);
+    if (longestEdge > stage.maxDimension) {
+      context.resize(
+        input.width >= input.height
+          ? { width: stage.maxDimension, height: null }
+          : { width: null, height: stage.maxDimension },
+      );
+    }
+
+    const image = await context.renderAsync();
+    try {
+      for (const quality of stage.qualities) {
+        const result = await image.saveAsync({
+          base64: true,
+          compress: quality,
+          format: SaveFormat.JPEG,
+        });
+        await deleteTemporaryImage(result.uri);
+        if (!result.base64) {
+          continue;
+        }
+        const sizeBytes = estimateBase64ByteSize(result.base64);
+        if (sizeBytes > 0 && sizeBytes <= PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+          return { base64: result.base64, sizeBytes };
+        }
+      }
+    } finally {
+      image.release();
+      context.release();
+    }
+  }
+
+  return null;
 }
 
 export async function pickComposerImages(input: { readonly existingCount: number }): Promise<{
@@ -329,6 +413,8 @@ export async function pickComposerMedia(input: {
       base64: true,
       quality: 1,
       shouldDownloadFromNetwork: true,
+      preferredAssetRepresentationMode:
+        "compatible" as import("expo-image-picker").UIImagePickerPreferredAssetRepresentationMode,
     });
   } catch (error) {
     return {
@@ -354,8 +440,8 @@ export async function pickComposerMedia(input: {
       error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} attachments per message.`;
       break;
     }
-    let mimeType = asset.mimeType?.toLowerCase();
-    if (asset.type === "video" || mimeType?.startsWith("video/")) {
+    const reportedMimeType = asset.mimeType?.toLowerCase();
+    if (asset.type === "video" || reportedMimeType?.startsWith("video/")) {
       if (input.maxVideoBytes === undefined) {
         error = "Video attachments are unavailable here.";
         continue;
@@ -367,7 +453,7 @@ export async function pickComposerMedia(input: {
           await createComposerFileAttachment({
             uri: asset.uri,
             name: asset.fileName?.trim() || file.name || "video",
-            mimeType: mimeType || file.type || "application/octet-stream",
+            mimeType: reportedMimeType || file.type || "application/octet-stream",
             sizeBytes: asset.fileSize ?? null,
             maxBytes: clampFileAttachmentUploadBytes(input.maxVideoBytes),
           }),
@@ -378,61 +464,67 @@ export async function pickComposerMedia(input: {
       }
       continue;
     }
-    if (asset.type !== "image" && !mimeType?.startsWith("image/")) {
-      error = `Unsupported file type for '${asset.fileName ?? "image"}'.`;
-      continue;
-    }
-
     let base64 = asset.base64;
     if (!base64) {
       error = `Failed to read '${asset.fileName ?? "image"}'.`;
       continue;
     }
 
-    let name = asset.fileName?.trim() || "image";
-    // The iOS picker returns JPEG base64 even when its metadata describes HEIC,
-    // PNG, or GIF. Keep supported originals so transparency and animation survive;
-    // use the native JPEG conversion for formats providers cannot accept.
-    if (base64.startsWith("/9j/")) {
-      if (
-        mimeType &&
-        mimeType !== "image/jpeg" &&
-        isProviderSendTurnSupportedImageMimeType(mimeType)
-      ) {
-        try {
-          const { File } = await import("expo-file-system");
-          base64 = await new File(asset.uri).base64();
-        } catch {
-          error = `Failed to read '${name}'.`;
-          continue;
-        }
-      } else {
-        mimeType = "image/jpeg";
-        if (!/\.jpe?g$/i.test(name)) {
-          name = `${name.replace(/\.[^.]+$/, "")}.jpg`;
-        }
+    // iOS can return a JPEG preview while retaining the original asset's MIME
+    // type. Preserve supported originals; use JPEG previews for HEIC and HEIF.
+    if (
+      base64.startsWith("/9j/") &&
+      reportedMimeType &&
+      reportedMimeType !== "image/jpeg" &&
+      isProviderSendTurnSupportedImageMimeType(reportedMimeType)
+    ) {
+      try {
+        const { File } = await import("expo-file-system");
+        base64 = await new File(asset.uri).base64();
+      } catch {
+        error = `Failed to read '${asset.fileName ?? "image"}'.`;
+        continue;
       }
     }
+
+    const mimeType = supportedImageMimeTypeFromBase64(base64);
     if (!mimeType || !isProviderSendTurnSupportedImageMimeType(mimeType)) {
-      error = `'${name}' is not a supported image type. Attach GIF, JPEG, PNG, or WebP images.`;
+      error = `'${asset.fileName ?? "image"}' is not a supported image type.`;
       continue;
     }
 
-    const sizeBytes = estimateBase64ByteSize(base64);
+    let attachmentBase64 = base64;
+    let sizeBytes = estimateBase64ByteSize(attachmentBase64);
+    if (sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES && mimeType === "image/jpeg") {
+      try {
+        const compressed = await compressPickedJpeg({
+          uri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+        });
+        if (compressed) {
+          attachmentBase64 = compressed.base64;
+          sizeBytes = compressed.sizeBytes;
+        }
+      } catch {
+        // The size error below is more useful than a native conversion detail.
+      }
+    }
     if (sizeBytes <= 0 || sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
       error = `'${asset.fileName ?? "image"}' exceeds the 10 MB attachment limit.`;
       continue;
     }
 
-    const dataUrl = `data:${mimeType};base64,${base64}`;
+    const dataUrl = `data:${mimeType};base64,${attachmentBase64}`;
+
     attachments.push({
       id: uuidv4(),
       type: "image",
-      name,
+      name: normalizeImageFileName(asset.fileName, mimeType),
       mimeType,
       sizeBytes,
       dataUrl,
-      previewUri: mimeType === asset.mimeType?.toLowerCase() ? asset.uri : dataUrl,
+      previewUri: dataUrl,
     });
   }
 
