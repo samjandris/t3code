@@ -2,7 +2,7 @@ import { useNavigation, type StaticScreenProps } from "@react-navigation/native"
 import { TextInputWrapper } from "expo-paste-input";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { KeyboardAvoidingView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FilePreviewModal, type FilePreviewSource } from "../../components/FilePreviewModal";
@@ -15,7 +15,6 @@ import { cn } from "../../lib/cn";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/composerImages";
 import { useNativePaste } from "../../lib/useNativePaste";
-import { setPendingConnectionError } from "../../state/use-remote-environment-registry";
 import { appendReviewCommentToDraft } from "../../state/use-thread-composer-state";
 import {
   clearReviewCommentTarget,
@@ -132,7 +131,7 @@ export function ReviewCommentComposerSheet(props: ReviewCommentComposerSheetProp
       setAttachments((current) => [...current, ...result.images]);
     }
     if (result.error) {
-      setPendingConnectionError(result.error);
+      Alert.alert("Could not attach image", result.error);
     }
   }
 

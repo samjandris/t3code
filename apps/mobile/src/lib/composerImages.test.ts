@@ -2,6 +2,45 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
 
 const files = new Map<string, { base64: string; deleted: boolean }>();
+const imagePickerMocks = vi.hoisted(() => ({
+  launchImageLibraryAsync: vi.fn(),
+}));
+const imageManipulatorMocks = vi.hoisted(() => {
+  const image = {
+    release: vi.fn(),
+    saveAsync: vi.fn(),
+  };
+  const context = {
+    release: vi.fn(),
+    renderAsync: vi.fn(() => Promise.resolve(image)),
+    resize: vi.fn(),
+  };
+  return {
+    context,
+    image,
+    manipulate: vi.fn(() => context),
+  };
+});
+
+vi.mock("expo-image-picker", () => ({
+  launchImageLibraryAsync: imagePickerMocks.launchImageLibraryAsync,
+  UIImagePickerPreferredAssetRepresentationMode: {
+    Compatible: "compatible",
+  },
+}));
+
+vi.mock("expo-image-manipulator", () => ({
+  ImageManipulator: {
+    manipulate: imageManipulatorMocks.manipulate,
+  },
+  SaveFormat: {
+    JPEG: "jpeg",
+  },
+}));
+
+vi.mock("./foreground-handoff", () => ({
+  beginForegroundHandoff: () => () => undefined,
+}));
 
 vi.mock("expo-file-system", () => ({
   File: class {
@@ -36,7 +75,96 @@ vi.mock("./uuid", () => ({
   uuidv4: () => "attachment-id",
 }));
 
-import { convertPastedImagesToAttachments, isOwnedPastedImageUri } from "./composerImages";
+import {
+  convertPastedImagesToAttachments,
+  isOwnedPastedImageUri,
+  pickComposerImages,
+} from "./composerImages";
+
+describe("pickComposerImages", () => {
+  beforeEach(() => {
+    imagePickerMocks.launchImageLibraryAsync.mockReset();
+    imageManipulatorMocks.manipulate.mockClear();
+    imageManipulatorMocks.context.release.mockClear();
+    imageManipulatorMocks.context.renderAsync.mockClear();
+    imageManipulatorMocks.context.resize.mockClear();
+    imageManipulatorMocks.image.release.mockClear();
+    imageManipulatorMocks.image.saveAsync.mockReset();
+    files.clear();
+  });
+
+  it("compresses and resizes picker output that exceeds the attachment limit", async () => {
+    const oversizedJpeg = `/9j/${"A".repeat(14_000_000)}`;
+    const compressedJpeg = "/9j/AAAA";
+    const oversizedTemporaryUri = "file:///cache/oversized.jpg";
+    const compressedTemporaryUri = "file:///cache/compressed.jpg";
+    files.set(oversizedTemporaryUri, { base64: oversizedJpeg, deleted: false });
+    files.set(compressedTemporaryUri, { base64: compressedJpeg, deleted: false });
+    imagePickerMocks.launchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [
+        {
+          base64: oversizedJpeg,
+          fileName: "large.HEIC",
+          height: 6048,
+          mimeType: "image/heic",
+          uri: "file:///photos/large.HEIC",
+          width: 8064,
+        },
+      ],
+    });
+    imageManipulatorMocks.image.saveAsync
+      .mockResolvedValueOnce({
+        base64: oversizedJpeg,
+        height: 3072,
+        uri: oversizedTemporaryUri,
+        width: 4096,
+      })
+      .mockResolvedValueOnce({
+        base64: compressedJpeg,
+        height: 3072,
+        uri: compressedTemporaryUri,
+        width: 4096,
+      });
+
+    const result = await pickComposerImages({ existingCount: 0 });
+
+    expect(imagePickerMocks.launchImageLibraryAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredAssetRepresentationMode: "compatible" }),
+    );
+    expect(imageManipulatorMocks.manipulate).toHaveBeenCalledWith("file:///photos/large.HEIC");
+    expect(imageManipulatorMocks.context.resize).toHaveBeenCalledWith({
+      width: 4096,
+      height: null,
+    });
+    expect(imageManipulatorMocks.image.saveAsync).toHaveBeenNthCalledWith(1, {
+      base64: true,
+      compress: 0.85,
+      format: "jpeg",
+    });
+    expect(imageManipulatorMocks.image.saveAsync).toHaveBeenNthCalledWith(2, {
+      base64: true,
+      compress: 0.7,
+      format: "jpeg",
+    });
+    expect(imageManipulatorMocks.context.release).toHaveBeenCalledOnce();
+    expect(imageManipulatorMocks.image.release).toHaveBeenCalledOnce();
+    expect(files.get(oversizedTemporaryUri)?.deleted).toBe(true);
+    expect(files.get(compressedTemporaryUri)?.deleted).toBe(true);
+    expect(result).toEqual({
+      images: [
+        expect.objectContaining({
+          dataUrl: `data:image/jpeg;base64,${compressedJpeg}`,
+          mimeType: "image/jpeg",
+          name: "large.jpg",
+          sizeBytes: 6,
+        }),
+      ],
+      error: null,
+    });
+  });
+
+});
 
 describe("native pasted image cleanup", () => {
   beforeEach(() => {
