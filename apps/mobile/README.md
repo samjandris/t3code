@@ -67,6 +67,21 @@ Build and install a self-contained Release app that does not need Metro:
 vp run ios:release
 ```
 
+### Tailnet install
+
+Sync the fork's EAS preview environment into the ignored repository-root `.env.local` before every
+tailnet build. Do not substitute `.env.example`; pulling EAS keeps Clerk, OAuth, hosted app, and relay
+configuration aligned with cloud builds.
+
+```bash
+pnpm dlx eas-cli@20.5.1 env:pull preview --path ../../.env.local --non-interactive
+```
+
+Then ask Codex to use the `ios-tailnet-installer` skill from the repository root. Build the `preview`
+variant with the synced environment, fingerprint runtime policy, bundled JavaScript, and no Metro.
+The Mac needs Tailscale plus signing profiles for the target device, app, widget, and share extension;
+the skill returns a private HTTPS install URL.
+
 The Personal Team equivalent also needs a unique bundle identifier:
 
 ```bash

@@ -306,6 +306,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
 
   it("routes development builds to the APNs sandbox", () => {
     expect(resolveApsEnvironment("development")).toBe("sandbox");
+    expect(resolveApsEnvironment("preview", true)).toBe("sandbox");
     expect(resolveApsEnvironment("preview")).toBe("production");
     expect(resolveApsEnvironment("production")).toBe("production");
     expect(resolveApsEnvironment(undefined)).toBe("production");
