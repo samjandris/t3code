@@ -171,8 +171,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             size={size}
             data-chat-provider-model-picker="true"
             className={cn(
-              "min-w-0 justify-between whitespace-nowrap",
-              props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56",
+              "min-w-0 justify-start overflow-hidden whitespace-nowrap",
+              props.compact ? "shrink-0" : "max-w-48 shrink sm:max-w-56",
               props.triggerClassName,
             )}
             disabled={props.disabled}
@@ -180,7 +180,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         }
       >
         <span
-          className={cn("flex min-w-0 flex-1 items-center", size === "xs" ? "gap-1" : "gap-1.5")}
+          className={cn(
+            "flex min-w-0 w-full box-border flex-1 items-center overflow-hidden",
+            size === "xs" ? "gap-1" : "gap-1.5",
+            props.compact ? "sm:pl-1" : undefined,
+          )}
         >
           {activeEntry ? (
             <ProviderInstanceIcon
@@ -206,9 +210,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 />
               }
             >
-              {triggerTitle}
+              {triggerLabel}
             </TooltipTrigger>
-            <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
+            <TooltipPopup side="top">{triggerTitle}</TooltipPopup>
           </Tooltip>
           {selectedModel?.isUnavailable ? (
             <Badge variant="outline" size="sm">
