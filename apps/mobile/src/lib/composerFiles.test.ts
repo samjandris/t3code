@@ -216,8 +216,8 @@ describe("composer file attachments", () => {
       type: "image",
       fileName: "photo.png",
       mimeType: "image/png",
-      fileSize: 3,
-      base64: "YWJj",
+      fileSize: 8,
+      base64: "iVBORw0KGgo=",
       width: 1,
       height: 1,
     };
@@ -246,7 +246,10 @@ describe("composer file attachments", () => {
       );
       expect(result).toEqual({
         attachments: [
-          expect.objectContaining({ type: "image", dataUrl: "data:image/png;base64,YWJj" }),
+          expect.objectContaining({
+            type: "image",
+            dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+          }),
           {
             id: "attachment-id",
             type: "file",
