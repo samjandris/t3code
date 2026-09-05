@@ -139,16 +139,6 @@ export function mergeAgentAwarenessRegistrationPreferences(
   return { ...stored, ...override };
 }
 
-export function normalizeAgentAwarenessRelayBaseUrl(
-  value: string | null | undefined,
-): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  return trimmed.replace(/\/+$/g, "");
-}
-
 function readRelayConfig(): { readonly url: string } | null {
   const relayUrl = resolveCloudPublicConfig().relay.url;
   if (!relayUrl) {
@@ -735,7 +725,10 @@ function registerDevice(
         iosMajorVersion: iosMajorVersion(),
         appVersion: Constants.expoConfig?.version,
         ...(bundleId ? { bundleId } : {}),
-        apsEnvironment: resolveApsEnvironment(Constants.expoConfig?.extra?.appVariant),
+        apsEnvironment: resolveApsEnvironment(
+          Constants.expoConfig?.extra?.appVariant,
+          Constants.expoConfig?.extra?.iosDevelopmentSigning,
+        ),
         ...(pushTokenRegistration.pushToken ? { pushToken: pushTokenRegistration.pushToken } : {}),
         notificationsEnabled: pushTokenRegistration.notificationsEnabled,
         preferences,

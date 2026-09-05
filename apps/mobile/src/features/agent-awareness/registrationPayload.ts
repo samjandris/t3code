@@ -6,8 +6,11 @@ import { supportsAgentAwarenessPush } from "./capabilities";
 // Development builds are Xcode-signed and receive sandbox APNs tokens;
 // preview and production builds are distribution-signed and use production
 // APNs. The relay routes each device's pushes accordingly.
-export function resolveApsEnvironment(appVariant: unknown): "sandbox" | "production" {
-  return appVariant === "development" ? "sandbox" : "production";
+export function resolveApsEnvironment(
+  appVariant: unknown,
+  iosDevelopmentSigning: unknown = false,
+): "sandbox" | "production" {
+  return appVariant === "development" || iosDevelopmentSigning === true ? "sandbox" : "production";
 }
 
 export function makeRelayDeviceRegistrationRequest(input: {

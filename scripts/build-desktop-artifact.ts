@@ -52,7 +52,7 @@ import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const DESKTOP_APP_ID = "com.t3tools.t3code";
+const DEFAULT_DESKTOP_APP_ID = "com.samjandris.t3code";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -1233,6 +1233,7 @@ function normalizePasskeyRpDomain(value: string): string {
 export function resolveMacPasskeySigningConfiguration(
   env: Readonly<Record<string, string | undefined>>,
 ): MacPasskeySigningConfiguration {
+  const appId = env.T3CODE_DESKTOP_APP_ID?.trim() || DEFAULT_DESKTOP_APP_ID;
   const teamId = env.T3CODE_APPLE_TEAM_ID?.trim().toUpperCase() ?? "";
   if (!APPLE_TEAM_ID_PATTERN.test(teamId)) {
     throw new InvalidAppleTeamIdError({ teamId });
@@ -1267,7 +1268,7 @@ export function resolveMacPasskeySigningConfiguration(
   }
 
   return {
-    appId: DESKTOP_APP_ID,
+    appId,
     teamId,
     rpDomains: uniqueRpDomains,
     provisioningProfilePath,
@@ -1355,6 +1356,12 @@ export function resolveMacStageDependencies(input: {
 export interface ClerkPasskeyNativeArtifact {
   readonly packageName: string;
   readonly binaryFileName: string;
+}
+
+export function resolveClerkPasskeysEnabled(
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  return env.T3CODE_CLERK_PASSKEYS_ENABLED?.trim().toLowerCase() !== "false";
 }
 
 export function resolveClerkPasskeyNativeArtifacts(
@@ -2562,6 +2569,14 @@ export function resolveDesktopProductName(version: string): string {
     : (desktopPackageJson.productName ?? "T3 Code");
 }
 
+export const resolveDesktopAppId = Effect.fn("resolveDesktopAppId")(function* () {
+  const configuredAppId = yield* Config.string("T3CODE_DESKTOP_APP_ID").pipe(Config.option);
+  return Option.match(configuredAppId, {
+    onNone: () => DEFAULT_DESKTOP_APP_ID,
+    onSome: (value) => value.trim() || DEFAULT_DESKTOP_APP_ID,
+  });
+});
+
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   platform: typeof BuildPlatform.Type,
   target: string,
@@ -2581,8 +2596,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   wslRuntimeBundled = false,
   arch?: typeof BuildArch.Type,
 ) {
+  const desktopAppId = yield* resolveDesktopAppId();
   const buildConfig: Record<string, unknown> = {
-    appId: DESKTOP_APP_ID,
+    appId: desktopAppId,
     productName: resolveDesktopProductName(version),
     artifactName: "T3-Code-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
@@ -3374,6 +3390,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       }),
     });
   }
+  const repoEnv = loadRepoEnv({ repoRoot });
   const workspaceConfig = yield* readWorkspaceConfig();
   const workspaceCatalog = workspaceConfig.catalog ?? {};
   const workspaceOverrides = workspaceConfig.overrides ?? {};
@@ -3599,7 +3616,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const configuredMacPasskeySigning =
     options.platform === "mac" && options.signed
       ? yield* Effect.try({
-          try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
+          try: () => resolveMacPasskeySigningConfiguration(repoEnv),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
         })
       : undefined;
@@ -3716,7 +3733,9 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     }),
     { label: "vp install --prod", verbose: options.verbose },
   );
-  yield* stageClerkPasskeyNativeBinaries(stageAppDir, options.platform, options.arch);
+  if (resolveClerkPasskeysEnabled(repoEnv)) {
+    yield* stageClerkPasskeyNativeBinaries(stageAppDir, options.platform, options.arch);
+  }
   yield* stageKeyringNativeBinaries(stageAppDir, options.platform, options.arch);
 
   // WSL is Windows-only, so only the Windows artifact carries the server
