@@ -17967,7 +17967,7 @@ snapshots:
 
   expo-image-manipulator@57.0.14(expo@57.0.18):
     dependencies:
-      expo: 57.0.18(f9c992a5d7c53d81398568d3950992dc)
+      expo: 57.0.18(fc5a731e35a0144aab60c7305f29cbed)
       expo-image-loader: 57.0.1(expo@57.0.18)
 
   expo-image-picker@57.0.14(expo@57.0.18):
