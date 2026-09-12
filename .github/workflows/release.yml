@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - dev
     tags:
       - "v*.*.*"
       - "!v*-nightly.*"
@@ -35,8 +37,12 @@ concurrency:
   queue: max
 
 permissions:
-  contents: read
+  contents: write
   id-token: none
+
+env:
+  T3CODE_RELEASE_SOURCE_BRANCH: dev
+  T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
 
 jobs:
   # Picks the commit every later job builds. Nightlies and tag pushes build the
@@ -45,7 +51,7 @@ jobs:
   # have already run. Scheduled runs also decide here whether a nightly is due.
   resolve_commit:
     name: Resolve release commit
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
@@ -56,6 +62,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           sparse-checkout: .github/scripts
+          ref: ${{ env.T3CODE_RELEASE_SOURCE_BRANCH }}
 
       - id: resolve
         name: Resolve release commit
@@ -70,13 +77,24 @@ jobs:
             } = require('./.github/scripts/check-nightly-release.cjs');
 
             if (context.eventName === 'schedule') {
-              core.setOutput('has_changes', await shouldReleaseNightly({ github, context, core }));
-              core.setOutput('ref', context.sha);
+              const { data: commit } = await github.rest.repos.getCommit({
+                ...context.repo,
+                ref: process.env.T3CODE_RELEASE_SOURCE_BRANCH,
+              });
+              const releaseContext = { ...context, sha: commit.sha };
+              core.setOutput('has_changes', await shouldReleaseNightly({ github, context: releaseContext, core }));
+              core.setOutput('ref', commit.sha);
             } else if (context.eventName === 'workflow_dispatch' && process.env.DISPATCH_CHANNEL !== 'nightly') {
               const { tag, sha, version } = await resolveLatestNightlyCommit({ github, context, core });
               core.notice(`Stable release builds ${sha}, the commit shipped by ${tag}.`);
               core.setOutput('ref', sha);
               core.setOutput('nightly_version', version);
+            } else if (context.eventName === 'workflow_dispatch') {
+              const { data: commit } = await github.rest.repos.getCommit({
+                ...context.repo,
+                ref: process.env.T3CODE_RELEASE_SOURCE_BRANCH,
+              });
+              core.setOutput('ref', commit.sha);
             } else {
               core.setOutput('ref', context.sha);
             }
@@ -87,8 +105,8 @@ jobs:
     if: |
       needs.resolve_commit.result == 'success' &&
       (github.event_name != 'schedule' || needs.resolve_commit.outputs.has_changes == 'true')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     outputs:
       release_channel: ${{ steps.release_meta.outputs.release_channel }}
       version: ${{ steps.release_meta.outputs.version }}
@@ -131,7 +149,7 @@ jobs:
           NIGHTLY_SHA: ${{ needs.resolve_commit.outputs.ref }}
           NIGHTLY_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_CHANNEL:-stable}" == "nightly" ) ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "dev" ) || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_CHANNEL:-stable}" == "nightly" ) ]]; then
             nightly_date="$(date -u -d "$NIGHTLY_DATE" +%Y%m%d)"
 
             node scripts/resolve-nightly-release.ts \
@@ -195,7 +213,7 @@ jobs:
     name: Release quality checks
     needs: [preflight]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -239,11 +257,12 @@ jobs:
     if: |
       needs.resolve_commit.result == 'success' &&
       (github.event_name != 'schedule' || needs.resolve_commit.outputs.has_changes == 'true')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment:
       name: production
     outputs:
+      enabled: ${{ steps.public_config.outputs.enabled }}
       clerk_publishable_key: ${{ steps.public_config.outputs.clerk_publishable_key }}
       clerk_jwt_template: ${{ steps.public_config.outputs.clerk_jwt_template }}
       clerk_cli_oauth_client_id: ${{ steps.public_config.outputs.clerk_cli_oauth_client_id }}
@@ -279,11 +298,19 @@ jobs:
         name: Read production relay tracing config
         shell: bash
         run: |
-          vp run --filter t3code-relay deploy \
+          set -euo pipefail
+
+          config_path="$RUNNER_TEMP/relay-client-tracing.env"
+          if vp run --filter t3code-relay deploy \
             --stage prod \
             --read-state \
             --github-output \
-            --github-env-file "$RUNNER_TEMP/relay-client-tracing.env"
+            --github-env-file "$config_path"; then
+            exit 0
+          fi
+
+          echo "T3 Connect relay state is unavailable; continuing without relay client tracing config."
+          : > "$config_path"
 
       - name: Upload relay client tracing config
         uses: actions/upload-artifact@v7
@@ -316,10 +343,16 @@ jobs:
             fi
           done
           if (( ${#missing[@]} > 0 )); then
-            printf 'Missing required relay deployment configuration: %s\n' "${missing[*]}" >&2
-            exit 1
+            printf 'T3 Cloud public config disabled; missing: %s\n' "${missing[*]}"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "clerk_publishable_key=" >> "$GITHUB_OUTPUT"
+            echo "clerk_jwt_template=" >> "$GITHUB_OUTPUT"
+            echo "clerk_cli_oauth_client_id=" >> "$GITHUB_OUTPUT"
+            echo "relay_url=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "clerk_publishable_key=$CLERK_PUBLISHABLE_KEY" >> "$GITHUB_OUTPUT"
           echo "clerk_jwt_template=$CLERK_JWT_TEMPLATE" >> "$GITHUB_OUTPUT"
           echo "clerk_cli_oauth_client_id=$CLERK_CLI_OAUTH_CLIENT_ID" >> "$GITHUB_OUTPUT"
@@ -339,7 +372,8 @@ jobs:
     if: |
       needs.resolve_commit.result == 'success' &&
       (github.event_name != 'schedule' || needs.resolve_commit.outputs.has_changes == 'true')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # The fork does not have the upstream repository's Blacksmith runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -398,34 +432,35 @@ jobs:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
       T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      T3CODE_CLERK_PASSKEYS_ENABLED: ${{ vars.CLERK_PASSKEYS_ENABLED }}
       T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - label: macOS arm64
-            runner: blacksmith-12vcpu-macos-26
+            runner: macos-15
             platform: mac
             target: dmg
             arch: arm64
             rust_target: aarch64-apple-darwin
             resource_key: darwin-arm64
           - label: macOS x64
-            runner: blacksmith-12vcpu-macos-26
+            runner: macos-15
             platform: mac
             target: dmg
             arch: x64
             rust_target: x86_64-apple-darwin
             resource_key: darwin-x64
           - label: Linux x64
-            runner: blacksmith-32vcpu-ubuntu-2404
+            runner: ubuntu-24.04
             platform: linux
             target: AppImage
             arch: x64
             rust_target: x86_64-unknown-linux-gnu
             resource_key: linux-x64
           - label: Windows x64
-            runner: blacksmith-32vcpu-windows-2025
+            runner: windows-2025
             platform: win
             target: nsis
             arch: x64
@@ -636,6 +671,7 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          T3CODE_DESKTOP_APP_ID: ${{ vars.DESKTOP_APP_ID }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           MACOS_PROVISIONING_PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
           T3CODE_CLERK_PASSKEY_RP_DOMAINS: ${{ vars.CLERK_PASSKEY_RP_DOMAINS }}
@@ -647,6 +683,16 @@ jobs:
           AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
           AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME }}
         run: |
+          if [[ "${{ matrix.platform }}" == "mac" ]]; then
+            # electron-builder signs thousands of unpacked files concurrently.
+            # Raise launchd's per-process cap before setting this shell's limit;
+            # ulimit alone is clamped by the GitHub macOS runner's kernel cap.
+            sudo launchctl limit maxfiles 65536 200000 || true
+            ulimit -Hn 65536 2>/dev/null || true
+            ulimit -Sn 65536
+            echo "File descriptor limit: $(ulimit -n)"
+          fi
+
           args=(
             --platform "${{ matrix.platform }}"
             --target "${{ matrix.target }}"
@@ -778,7 +824,7 @@ jobs:
   publish_cli:
     name: Publish CLI to npm
     needs: [preflight, relay_public_config, quality, build]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.quality.result == 'success' && needs.build.result == 'success' }}
+    if: ${{ vars.PUBLISH_CLI_TO_NPM == 'true' && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.relay_public_config.outputs.enabled == 'true' && needs.quality.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04 # blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
@@ -855,9 +901,9 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [preflight, build, publish_cli]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' && needs.publish_cli.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [preflight, quality, build, publish_cli]
+    if: ${{ always() && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.quality.result == 'success' && needs.build.result == 'success' && (vars.PUBLISH_CLI_TO_NPM != 'true' || needs.publish_cli.result == 'success') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
@@ -942,7 +988,7 @@ jobs:
   publish_aur:
     name: Publish AUR package
     needs: [preflight, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' }}
+    if: ${{ vars.PUBLISH_AUR == 'true' && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' }}
     uses: ./.github/workflows/publish-aur.yml
     with:
       release_tag: ${{ needs.preflight.outputs.tag }}
@@ -952,8 +998,8 @@ jobs:
   deploy_web:
     name: Deploy hosted web app
     needs: [preflight, relay_public_config, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    if: ${{ vars.DEPLOY_HOSTED_WEB == 'true' && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.relay_public_config.outputs.enabled == 'true' && needs.release.result == 'success' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
@@ -1072,7 +1118,7 @@ jobs:
     name: Deploy marketing site
     needs: [preflight, release]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -1124,9 +1170,9 @@ jobs:
 
   finalize:
     name: Finalize release
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
+    if: ${{ vars.FINALIZE_STABLE_RELEASE == 'true' && !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
     needs: [preflight, release]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - id: app_token
@@ -1140,7 +1186,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ env.T3CODE_RELEASE_SOURCE_BRANCH }}
           fetch-depth: 0
           token: ${{ steps.app_token.outputs.token }}
           persist-credentials: true
@@ -1199,19 +1245,21 @@ jobs:
 
           git add apps/server/package.json apps/desktop/package.json apps/web/package.json packages/contracts/package.json pnpm-lock.yaml
           git commit -m "chore(release): prepare $RELEASE_TAG"
-          git push origin HEAD:main
+          git push origin "HEAD:${T3CODE_RELEASE_SOURCE_BRANCH}"
 
   announce_discord:
     name: Announce release on Discord
     if: |
       always() && !cancelled() &&
+      vars.ANNOUNCE_DISCORD_RELEASES == 'true' &&
       needs.preflight.result == 'success' &&
       needs.relay_public_config.result == 'success' &&
+      needs.relay_public_config.outputs.enabled == 'true' &&
       needs.release.result == 'success' &&
       needs.deploy_web.result == 'success' &&
       (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
     needs: [preflight, relay_public_config, release, deploy_web, finalize]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout
