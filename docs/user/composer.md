@@ -30,6 +30,12 @@ messages while disconnected. Uploads resume when you reconnect. Drafts and queue
 messages survive app restarts. Signing out of T3 Connect keeps that work on your
 device until you sign back into the same account.
 
+## Custom models
+
+On web and desktop, use Settings → Providers → **Models** to add an unlisted model with a custom
+name and options. Only options supported by the provider integration affect turns. Antigravity
+uses its account catalog and does not support custom models.
+
 ## Model defaults
 
 T3 Code remembers your provider, model, and model options for new threads. A
@@ -49,6 +55,31 @@ is unavailable or has changed, the saved quote remains readable.
 
 Mobile displays saved quotes and comments, but does not create citations or
 navigate to their sources.
+
+## Recall a sent prompt
+
+Press `ArrowUp` in an empty composer to bring back the last prompt you sent in this thread. Press
+`ArrowUp` again to go further back, and `ArrowDown` to come forward. Moving forward past the newest
+prompt clears the composer. Recall walks the prompts loaded in the thread. Attachments, terminal
+context, and other extras from the original message are not restored, only the text you typed. A
+composer that holds an attachment or a picked element does not count as empty.
+
+When the composer has text, the arrow keys move the caret as usual. Recall takes over only while
+the text is an unedited recalled prompt, with the caret on the first visual line for `ArrowUp` or
+the last visual line for `ArrowDown`, counting wrapped lines. Editing a recalled prompt turns it
+into a normal draft.
+
+## Edit an earlier prompt
+
+On web and desktop, choose **Edit from here** beneath a sent message to rewind
+the conversation to before that message. Choose **Revert and keep changes** to
+leave workspace files as they are, or **Revert files too** to restore them as well.
+The selected prompt and its attachments return to the composer for editing and
+resending. Any unsent draft stays above the restored prompt.
+
+This removes the selected message and later conversation from the active thread
+and provider history. It does not undo external actions or separate provider
+memory. The action is available only when the provider supports rewind.
 
 ## Prompt stash
 

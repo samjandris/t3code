@@ -12,6 +12,7 @@ import pkg from "./package.json" with { type: "json" };
 import { DEV_PROXIED_PATH_PREFIXES } from "@t3tools/shared/devProxy";
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
+import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 
 const repoEnv = loadRepoEnv();
@@ -35,6 +36,8 @@ const configuredRelayUrl = repoEnv.VITE_T3CODE_RELAY_URL?.trim() || "";
 const configuredClerkPublishableKey = repoEnv.VITE_CLERK_PUBLISHABLE_KEY?.trim() || "";
 const configuredClerkJwtTemplate = repoEnv.VITE_CLERK_JWT_TEMPLATE?.trim() || "";
 const configuredClerkCliOAuthClientId = repoEnv.VITE_CLERK_CLI_OAUTH_CLIENT_ID?.trim() || "";
+const configuredClerkPasskeysEnabled =
+  repoEnv.T3CODE_CLERK_PASSKEYS_ENABLED?.trim().toLowerCase() !== "false";
 const configuredRelayTracingUrl = repoEnv.VITE_RELAY_OTLP_TRACES_URL?.trim() || "";
 const configuredRelayTracingDataset = repoEnv.VITE_RELAY_OTLP_TRACES_DATASET?.trim() || "";
 const configuredRelayTracingToken = repoEnv.VITE_RELAY_OTLP_TRACES_TOKEN?.trim() || "";
@@ -157,6 +160,15 @@ export default defineConfig(() => {
     assetsInclude: ["**/*.wasm"],
     plugins: [
       devCompressionPlugin(),
+      thirdPartyLicensesPlugin({
+        bundleName: "web",
+        configFile: new URL("../../third-party-licenses.config.json", import.meta.url),
+        packageManifests: [
+          { bundle: "web", path: new URL("./package.json", import.meta.url) },
+          { bundle: "server", path: new URL("../server/package.json", import.meta.url) },
+          { bundle: "desktop", path: new URL("../desktop/package.json", import.meta.url) },
+        ],
+      }),
       // Route components load as split chunks so settings, pull-request, and
       // usage code stay out of the cold-start payload; the router prefetches
       // them on navigation intent (see getRouter's defaultPreload).
@@ -198,6 +210,7 @@ export default defineConfig(() => {
       "import.meta.env.VITE_CLERK_CLI_OAUTH_CLIENT_ID": JSON.stringify(
         configuredClerkCliOAuthClientId,
       ),
+      "import.meta.env.VITE_CLERK_PASSKEYS_ENABLED": JSON.stringify(configuredClerkPasskeysEnabled),
       "import.meta.env.VITE_RELAY_OTLP_TRACES_URL": JSON.stringify(configuredRelayTracingUrl),
       "import.meta.env.VITE_RELAY_OTLP_TRACES_DATASET": JSON.stringify(
         configuredRelayTracingDataset,
@@ -230,16 +243,17 @@ export default defineConfig(() => {
         ? {
             // One entry per shared prefix; the server's dev catch-all 404s the
             // same list, so the two sides cannot drift. `/ws` is the app's own
-            // socket — Vite's HMR socket is matched separately and exactly
-            // (path "/" plus a vite-hmr subprotocol), so the two upgrade
-            // handlers don't collide.
+            // socket and `/api` carries the device hub's stream sockets —
+            // Vite's HMR socket is matched separately and exactly (path "/"
+            // plus a vite-hmr subprotocol), so the upgrade handlers don't
+            // collide.
             proxy: Object.fromEntries(
               DEV_PROXIED_PATH_PREFIXES.map((prefix) => [
                 prefix,
                 {
                   target: devProxyTarget,
                   changeOrigin: true,
-                  ...(prefix === "/ws" ? { ws: true } : {}),
+                  ...(prefix === "/ws" || prefix === "/api" ? { ws: true } : {}),
                 },
               ]),
             ),

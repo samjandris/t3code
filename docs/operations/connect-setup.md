@@ -74,16 +74,28 @@ Development uses `t3code-dev://app`; production uses `t3code://app`. Update the 
 The Clerk Electron integration handles token
 persistence and system-browser callback delivery.
 
+## Android native sign-in redirects
+
+Clerk's native Android SDK uses `clerk://<applicationId>.callback`. In the Clerk instance selected by the app's publishable key, add each supported package to **Native applications > Allowlist for mobile SSO redirect**:
+
+| Variant     | Callback                                      |
+| ----------- | --------------------------------------------- |
+| Development | `clerk://com.t3tools.t3code.dev.callback`     |
+| Preview     | `clerk://com.t3tools.t3code.preview.callback` |
+| Production  | `clerk://com.t3tools.t3code.callback`         |
+
+Preserve existing entries. These callbacks are separate from the `t3code-dev` / `t3code-preview` / `t3code` navigation schemes. A private development build using the production Clerk key still needs its development callback allowed by that instance's administrator; rebuilding the same package does not change the allowlist.
+
 ## Desktop passkeys
 
-For a production macOS app with bundle ID `com.t3tools.t3code`:
+For this fork's production macOS app with bundle ID `com.samjandris.t3code`:
 
 1. Create an explicit macOS App ID in the Apple Developer portal with **Associated Domains**.
 2. Create a provisioning profile for that App ID and the distribution signing certificate.
 3. In Clerk's Native API settings, add an iOS app with the same Apple Team ID and bundle ID.
    This setting also configures Electron/macOS passkeys.
 4. Check `https://<frontend-api>/.well-known/apple-app-site-association`. Its
-   `webcredentials.apps` must include `<TEAM_ID>.com.t3tools.t3code`.
+   `webcredentials.apps` must include `<TEAM_ID>.com.samjandris.t3code`.
 5. Configure signing as described in the [release runbook](./release.md#2-apple-signing--notarization-setup-macos).
 
 Local signed builds additionally use:
@@ -91,6 +103,8 @@ Local signed builds additionally use:
 ```dotenv
 T3CODE_APPLE_TEAM_ID=ABC1234567
 T3CODE_MACOS_PROVISIONING_PROFILE=/absolute/path/to/t3code.provisionprofile
+# Optional: override the fork default bundle ID.
+T3CODE_DESKTOP_APP_ID=com.samjandris.t3code
 # Override only when the RP domain differs from the Clerk Frontend API hostname.
 T3CODE_CLERK_PASSKEY_RP_DOMAINS=example.clerk.accounts.dev,clerk.example.com
 ```
