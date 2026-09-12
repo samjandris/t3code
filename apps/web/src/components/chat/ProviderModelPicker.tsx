@@ -184,7 +184,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           className={cn(
             "flex min-w-0 w-full box-border flex-1 items-center overflow-hidden",
             size === "xs" ? "gap-1" : "gap-1.5",
-            props.compact ? "sm:pl-1" : undefined,
           )}
         >
           {activeEntry && props.triggerLabel === undefined ? (
