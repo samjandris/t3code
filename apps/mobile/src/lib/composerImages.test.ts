@@ -60,9 +60,12 @@ vi.mock("expo-file-system", () => ({
     }
 
     write(text: string, options?: { encoding: string }): void {
-      files.set(this.uri, options?.encoding === "base64"
-        ? { base64: text, deleted: false }
-        : { base64: "", deleted: false, text });
+      files.set(
+        this.uri,
+        options?.encoding === "base64"
+          ? { base64: text, deleted: false }
+          : { base64: "", deleted: false, text },
+      );
     }
 
     moveSync(destination: { readonly uri: string }): void {
@@ -82,6 +85,7 @@ vi.mock("expo-file-system", () => ({
     create(): void {}
   },
   Paths: { document: { uri: "file:///documents" } },
+  FileMode: { ReadOnly: "r", WriteOnly: "w" },
 }));
 
 vi.mock("./uuid", () => ({

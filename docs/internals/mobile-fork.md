@@ -44,19 +44,13 @@ pretending they can be signed.
 
 ## Image attachments
 
-The phone converts selected photos before creating composer attachments:
+Keep upstream's bounded native photo conversion in `composerImages.ts`. Do not restore the old
+picker `base64: true` option or fork compression stages; full-resolution camera exports stalled
+the composer before those stages could run.
 
-- Ask the iOS picker for a compatible representation so HEIC and similar library assets can become
-  a provider-supported format.
-- Detect the resulting MIME type from the bytes, not stale picker metadata, and normalize the file
-  extension.
-- If a JPEG exceeds the shared 10 MB provider limit, recompress it through bounded resolution and
-  quality stages on the phone. Reject it only when no stage gets under the existing contract limit.
-- Apply the same attachment conversion path to existing threads, new tasks, review comments, and
-  native paste entry points where applicable.
-
-Do not raise the wire limit to fix large photos. The fork should adapt the local image to the shared
-provider contract.
+The fork persists the resulting bytes in owned files instead of draft JSON. Keep the fingerprint
+storage-baseline salt so file-backed writers cannot OTA into binaries without the matching readers
+and storage guards. The shared 10 MB provider limit still applies.
 
 ## Voice dictation
 
