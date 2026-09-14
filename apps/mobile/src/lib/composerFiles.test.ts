@@ -187,11 +187,9 @@ describe("composer file attachments", () => {
           ],
           error: null,
         });
-        expect(mocks.write).toHaveBeenCalledWith(
-          result.images[0]?.fileUri,
-          rendered.base64,
-          { encoding: "base64" },
-        );
+        expect(mocks.write).toHaveBeenCalledWith(result.images[0]?.fileUri, rendered.base64, {
+          encoding: "base64",
+        });
       },
     );
 
@@ -237,11 +235,9 @@ describe("composer file attachments", () => {
         }),
       ]);
       expect(result.images[0]?.dataUrl).toBeUndefined();
-      expect(mocks.write).toHaveBeenCalledWith(
-        result.images[0]?.fileUri,
-        original.base64,
-        { encoding: "base64" },
-      );
+      expect(mocks.write).toHaveBeenCalledWith(result.images[0]?.fileUri, original.base64, {
+        encoding: "base64",
+      });
     });
 
     it("renders a supported original that exceeds the image limit instead of rejecting it", async () => {
@@ -317,6 +313,25 @@ describe("composer file attachments", () => {
 
       expect(result.images).toEqual([expect.objectContaining({ name: "photo.jpg" })]);
       expect(result.error).toBe("Failed to read 'missing.gif'.");
+    });
+
+    it("removes a partial photo write and keeps the next selected photo", async () => {
+      mocks.pickMedia.mockResolvedValue({
+        canceled: false,
+        assets: [{ ...photo, fileName: "failed.heic" }, photo],
+      });
+      mocks.write.mockImplementationOnce(() => {
+        throw new Error("disk full");
+      });
+
+      const result = await pickComposerImages({ existingCount: 0 });
+
+      expect(result.error).toBe("Failed to read 'failed.heic'.");
+      expect(result.images).toEqual([expect.objectContaining({ name: "photo.jpg" })]);
+      expect(mocks.delete).toHaveBeenCalledWith(
+        "file:///documents/t3-composer-attachments/attachment-id-failed.jpg",
+      );
+      expect(result.images[0]?.dataUrl).toBeUndefined();
     });
 
     it("reports a photo the native renderer cannot decode", async () => {
