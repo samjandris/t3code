@@ -52,6 +52,13 @@ The fork persists the resulting bytes in owned files instead of draft JSON. Keep
 storage-baseline salt so file-backed writers cannot OTA into binaries without the matching readers
 and storage guards. The shared 10 MB provider limit still applies.
 
+## Video attachments
+
+Oversized videos use native compression before file-backed persistence, including Photos, Files,
+and incoming shares. Keep originals untouched and keep temporary encoder output out of draft state.
+The iOS progress UI must appear above native new-task sheets; a root React Native Modal does not.
+The compressor is a native dependency, so this change needs a new binary, not an OTA-only update.
+
 ## Voice dictation
 
 Use upstream's voice-input controller, composer UI, waveform, editor freeze, recording lifecycle,

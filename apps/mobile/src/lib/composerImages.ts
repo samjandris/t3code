@@ -23,6 +23,7 @@ import { videoMimeType } from "@t3tools/shared/video";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
 import { writeFileAtomically } from "./atomic-file";
+import { withComposerVideo } from "./composerVideo";
 
 export interface DraftComposerImageAttachment extends Omit<UploadChatImageAttachment, "dataUrl"> {
   readonly id: string;
@@ -272,7 +273,23 @@ export async function removePersistedComposerAttachmentFile(uri: string): Promis
   }
 }
 
-async function createComposerFileAttachment(input: {
+export async function createComposerFileAttachment(input: {
+  readonly uri: string;
+  readonly name: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number | null;
+  readonly maxBytes: number;
+}): Promise<DraftComposerFileAttachment> {
+  const mimeType = videoMimeType(input);
+  if (mimeType !== null) {
+    return withComposerVideo({ ...input, mimeType }, (video) =>
+      persistComposerFileAttachment({ ...video, maxBytes: input.maxBytes }),
+    );
+  }
+  return persistComposerFileAttachment(input);
+}
+
+async function persistComposerFileAttachment(input: {
   readonly uri: string;
   readonly name: string;
   readonly mimeType: string;
