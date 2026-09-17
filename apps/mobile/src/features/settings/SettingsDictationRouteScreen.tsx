@@ -160,7 +160,7 @@ export function SettingsDictationRouteScreen() {
         <View className="items-center gap-3 px-6 py-3">
           <View className="size-16 items-center justify-center rounded-full bg-subtle">
             <SymbolView
-              name="microphone.fill"
+              name="mic"
               size={28}
               tintColorClassName="accent-icon"
               type="monochrome"
