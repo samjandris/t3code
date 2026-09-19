@@ -98,8 +98,8 @@ signed in.
 - A cleanup failure falls back to the raw transcript. Authentication and transcription failures
   remain visible errors.
 - Keep upstream's five-minute recording limit. There is no fork-specific 30-second cap.
-- The private ChatGPT endpoints are unsupported and can change without notice. Keep that warning in
-  Settings. Do not describe this as a stable public OpenAI API.
+- The private ChatGPT endpoints are unsupported and can change without notice. Settings omits
+  the service disclaimer footer by fork preference. Do not describe this as a stable public OpenAI API.
 
 Do not restore the fork's old `DictationBar`, recorder hook, composer layout, or native input-lock
 patches. Upstream now owns those behaviors. The only composer integration the fork needs is selecting
