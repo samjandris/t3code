@@ -1,16 +1,13 @@
 "use client";
 
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { ChevronRightIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "~/lib/utils";
-
-const MenuCreateHandle = MenuPrimitive.createHandle;
+import { buttonVariants } from "./button";
 
 const Menu = MenuPrimitive.Root;
-
-const MenuPortal = MenuPrimitive.Portal;
 
 function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Props) {
   return (
@@ -81,12 +78,18 @@ function MenuItem({
   ...props
 }: MenuPrimitive.Item.Props & {
   inset?: boolean;
-  variant?: "default" | "destructive";
+  variant?: "default" | "destructive" | "ghost";
 }) {
   return (
     <MenuPrimitive.Item
       className={cn(
         "[&>svg]:-mx-0.5 flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1 text-base text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-inset:ps-8 data-[variant=destructive]:text-destructive-foreground data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:[&>svg:not([class*='text-'])]:text-current [&>svg]:pointer-events-none [&>svg]:shrink-0",
+        variant === "ghost" &&
+          buttonVariants({
+            variant: "ghost",
+            size: "compact",
+            className: "h-auto min-h-7 w-full sm:text-xs",
+          }),
         className,
       )}
       data-inset={inset}
@@ -174,6 +177,23 @@ function MenuRadioItem({
     >
       <span className="min-w-0 flex-1">{children}</span>
     </MenuPrimitive.RadioItem>
+  );
+}
+
+function MenuRadioItemIndicator({
+  className,
+  children,
+  ...props
+}: MenuPrimitive.RadioItemIndicator.Props) {
+  return (
+    <MenuPrimitive.RadioItemIndicator
+      aria-hidden
+      className={cn("flex shrink-0", className)}
+      data-slot="menu-radio-item-indicator"
+      {...props}
+    >
+      {children ?? <CheckIcon className="size-3.5" />}
+    </MenuPrimitive.RadioItemIndicator>
   );
 }
 
@@ -280,12 +300,8 @@ function MenuSubPopup({
 }
 
 export {
-  MenuCreateHandle,
-  MenuCreateHandle as DropdownMenuCreateHandle,
   Menu,
   Menu as DropdownMenu,
-  MenuPortal,
-  MenuPortal as DropdownMenuPortal,
   MenuTrigger,
   MenuTrigger as DropdownMenuTrigger,
   MenuPopup,
@@ -300,6 +316,7 @@ export {
   MenuRadioGroup as DropdownMenuRadioGroup,
   MenuRadioItem,
   MenuRadioItem as DropdownMenuRadioItem,
+  MenuRadioItemIndicator,
   MenuGroupLabel,
   MenuGroupLabel as DropdownMenuLabel,
   MenuSeparator,

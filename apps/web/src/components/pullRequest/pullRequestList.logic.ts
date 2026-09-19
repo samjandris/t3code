@@ -67,7 +67,7 @@ export type PullRequestViewers = PullRequestListResult["viewers"];
 /** A row plus the environment that read it, where the caller has one to give. */
 type ScopedEntry = PullRequestListEntry & { readonly environmentId?: string };
 
-export const pullRequestViewerKey = (entry: ScopedEntry): string =>
+const pullRequestViewerKey = (entry: ScopedEntry): string =>
   `${entry.environmentId ?? ""} ${entry.host}`;
 
 const GROUP_LABELS: Record<PullRequestGroupKey, string> = {
@@ -469,7 +469,11 @@ export function pullRequestStatsKeysToRequest(
     [...enteredKeys].filter((key) => {
       const entry = entriesByKey.get(key);
       return (
-        entry !== undefined && !requested.has(key) && !statsByRow.has(pullRequestDiffStatKey(entry))
+        entry !== undefined &&
+        entry.additions === 0 &&
+        entry.deletions === 0 &&
+        !requested.has(key) &&
+        !statsByRow.has(pullRequestDiffStatKey(entry))
       );
     }),
   );
@@ -1006,7 +1010,8 @@ export function rankPullRequestMatches<Entry extends PullRequestListEntry>(
  * verdict, then everything else still open. Drafts stay in that third tier because their author
  * has not made them mergeable yet. Finished work follows open work when all states are visible. A
  * known conflict is never ready, whatever its checks, review or state say, so it stays at the
- * bottom. Smaller measured changes come first within a tier; recency only breaks a remaining tie.
+ * bottom. Within each tier, smaller measured diffs come first, then unknown sizes. Recency
+ * breaks ties between equally sized diffs.
  */
 export function rankPullRequestsByMergeReadiness<Entry extends PullRequestListEntry>(
   entries: ReadonlyArray<Entry>,
@@ -1023,11 +1028,47 @@ export function rankPullRequestsByMergeReadiness<Entry extends PullRequestListEn
   return entries.toSorted((left, right) => {
     const byTier = tier(left) - tier(right);
     if (byTier !== 0) return byTier;
-    const byMeasurement = Number(hasMeasuredSize(right)) - Number(hasMeasuredSize(left));
-    if (byMeasurement !== 0) return byMeasurement;
-    const bySize = left.additions + left.deletions - (right.additions + right.deletions);
-    return bySize !== 0 ? bySize : right.updatedAt.localeCompare(left.updatedAt);
+    const measured = Number(hasMeasuredSize(right)) - Number(hasMeasuredSize(left));
+    const sized = left.additions + left.deletions - (right.additions + right.deletions);
+    return measured || sized || right.updatedAt.localeCompare(left.updatedAt);
   });
+}
+
+function rankByTierThenRecency<Entry extends PullRequestListEntry>(
+  entries: ReadonlyArray<Entry>,
+  tier: (entry: Entry) => number,
+): ReadonlyArray<Entry> {
+  const timestamp = (entry: Entry) => toSortableTimestamp(entry.updatedAt);
+  return entries.toSorted((left, right) => {
+    const byTier = tier(left) - tier(right);
+    if (byTier !== 0) return byTier;
+    const leftUpdated = timestamp(left);
+    const rightUpdated = timestamp(right);
+    const measured = Number(leftUpdated === null) - Number(rightUpdated === null);
+    if (measured !== 0) return measured;
+    if (leftUpdated === null || rightUpdated === null) return 0;
+    return rightUpdated - leftUpdated;
+  });
+}
+
+export function rankPullRequestsBlockedOnAuthor<Entry extends PullRequestListEntry>(
+  entries: ReadonlyArray<Entry>,
+): ReadonlyArray<Entry> {
+  return rankByTierThenRecency(entries, (entry) => {
+    if (entry.state !== "open") return 6;
+    if (entry.mergeability === "conflicting") return 0;
+    if (entry.reviewDecision === "changes-requested") return 1;
+    if (entry.checksState === "failing") return 2;
+    if (entry.isDraft) return 3;
+    if (entry.checksState === "passing" && entry.reviewDecision === "approved") return 5;
+    return 4;
+  });
+}
+
+export function rankPullRequestsBlockedOnReviewer<Entry extends PullRequestListEntry>(
+  entries: ReadonlyArray<Entry>,
+): ReadonlyArray<Entry> {
+  return rankByTierThenRecency(entries, (entry) => (entry.state === "open" ? 0 : 1));
 }
 
 /** Keeps authored work first while applying the selected ordering inside every involvement group. */
@@ -1036,6 +1077,7 @@ export function sortPullRequestGroups<Entry extends PullRequestListEntry>(
   sort: PullRequestListSort,
   searchText: string,
   hasMeasuredSize: (entry: Entry) => boolean = (entry) => entry.additions + entry.deletions > 0,
+  involvement: PullRequestInvolvement = "all",
 ): ReadonlyArray<PullRequestGroup<Entry>> {
   const sortWithinGroups = (rank: (entries: ReadonlyArray<Entry>) => ReadonlyArray<Entry>) =>
     groups.map((group) => ({ ...group, entries: rank(group.entries) }));
@@ -1044,6 +1086,20 @@ export function sortPullRequestGroups<Entry extends PullRequestListEntry>(
     return searchText.trim().length === 0
       ? sortWithinGroups((entries) => rankPullRequestsByMergeReadiness(entries, hasMeasuredSize))
       : groups;
+  }
+  if (sort === "blocked") {
+    if (searchText.trim().length > 0) return groups;
+    const role = (key: PullRequestGroupKey) =>
+      key === "others" ? involvement : key === "authored" ? "authored" : "reviewing";
+    return groups.map((group) => {
+      const groupRole = role(group.key);
+      if (groupRole === "all") return group;
+      const rank =
+        groupRole === "authored"
+          ? rankPullRequestsBlockedOnAuthor
+          : rankPullRequestsBlockedOnReviewer;
+      return { ...group, entries: rank(group.entries) };
+    });
   }
   if (sort === "updated") return groups;
 

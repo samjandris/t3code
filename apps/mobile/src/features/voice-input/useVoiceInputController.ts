@@ -7,14 +7,15 @@ import {
   type RecordingStatus,
 } from "expo-audio";
 import { File } from "expo-file-system";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
-import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
+import { getChatGptVoiceTranscriber } from "../dictation/chatgptVoiceTranscriber";
 import {
   VoiceInputController,
   VOICE_RECORDING_LIMIT_SECONDS,
@@ -71,6 +72,8 @@ export function useVoiceInputController(input: {
 }) {
   const [state, setState] = useState<VoiceInputState>(INITIAL_STATE);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const keepAwakeId = useId();
+  const keepAwakeSessionRef = useRef(0);
   const elapsedSecondsRef = useRef(0);
   const audioLevelsRef = useRef(Array<number>(VOICE_WAVEFORM_SAMPLE_COUNT).fill(0));
   const audioLevels = useSharedValue(audioLevelsRef.current);
@@ -100,7 +103,8 @@ export function useVoiceInputController(input: {
   if (!controllerRef.current) {
     controllerRef.current = new VoiceInputController({
       recorder,
-      getTranscriber: getLocalVoiceTranscriber,
+      getTranscriber: () =>
+        getChatGptVoiceTranscriber(latestInputRef.current.draftMessage, getLocalVoiceTranscriber()),
       requestPermission: async () => {
         const permission = await requestRecordingPermissionsAsync();
         return { granted: permission.granted, canAskAgain: permission.canAskAgain };
@@ -157,6 +161,18 @@ export function useVoiceInputController(input: {
   useEffect(() => () => controller.dispose(), [controller]);
 
   useEffect(() => {
+    if (state.phase !== "recording") return;
+
+    const tag = `voice-input:${keepAwakeId}:${++keepAwakeSessionRef.current}`;
+    const activation = activateKeepAwakeAsync(tag);
+    void activation.catch(() => {});
+    return () => {
+      // Release after activation settles, even if the recording ends immediately.
+      void activation.then(() => deactivateKeepAwake(tag)).catch(() => {});
+    };
+  }, [keepAwakeId, state.phase]);
+
+  useEffect(() => {
     if (state.phase !== "preparing" && state.phase !== "recording") return;
 
     if (audioLevelsRef.current.some((level) => level !== 0)) {
@@ -204,9 +220,7 @@ export function useVoiceInputController(input: {
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
   return {
-    // Store screenshots show the dictation button even on simulators, whose
-    // on-device transcription is unavailable.
-    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
+    isAvailable: true,
     state,
     audioLevels,
     elapsedSeconds,
