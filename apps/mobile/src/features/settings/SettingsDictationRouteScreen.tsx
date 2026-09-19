@@ -174,7 +174,7 @@ export function SettingsDictationRouteScreen() {
           </Text>
         </View>
 
-        <SettingsSection title="ChatGPT account" card>
+        <SettingsSection title="ChatGPT account">
           {loading ? (
             <View className="items-center gap-3 px-6 py-8">
               <ActivityIndicator />
