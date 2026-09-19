@@ -271,10 +271,6 @@ export function SettingsDictationRouteScreen() {
             {error}
           </Text>
         ) : null}
-
-        <Text className="px-2 text-sm leading-normal text-foreground-muted">
-          Dictation uses Codex's private service, which OpenAI may change or remove.
-        </Text>
       </ScrollView>
     </View>
   );
