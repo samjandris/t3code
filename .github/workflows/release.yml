@@ -356,9 +356,9 @@ jobs:
               jq -er --arg key "$1" '.[$key] | if type == "object" then .__redacted__ else . end | select(. != null and . != "")' <<<"$output" \
                 || { echo "Relay stack output is missing $1" >&2; exit 1; }
             }
-            url="$(field clientTracingUrl)"
-            dataset="$(field clientTracingDataset)"
-            token="$(field clientTracingToken)"
+            url="$(field clientTracingUrl)" || exit 1
+            dataset="$(field clientTracingDataset)" || exit 1
+            token="$(field clientTracingToken)" || exit 1
             echo "::add-mask::$token"
             {
               echo "T3CODE_RELAY_CLIENT_OTLP_TRACES_URL=$url"
