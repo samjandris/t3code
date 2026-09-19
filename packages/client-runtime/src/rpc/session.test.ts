@@ -30,6 +30,7 @@ import {
   ConnectionBlockedError,
   ConnectionTransientError,
   PrimaryConnectionTarget,
+  RelayConnectionTarget,
   type PreparedConnection,
 } from "../connection/model.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
@@ -37,6 +38,7 @@ import * as Persistence from "../platform/persistence.ts";
 import * as RpcSession from "./session.ts";
 import { makeEnvironmentServerConfigState } from "../state/server.ts";
 import { applyServerConfigProjection } from "../state/serverConfigProjection.ts";
+import { NETWORK_BLOCKING_HINT } from "../errors/network.ts";
 
 type SocketEventType = "open" | "message" | "close" | "error";
 type SocketEvent = {
@@ -147,6 +149,7 @@ const SERVER_CONFIG: ServerConfigType = {
     localTracingEnabled: false,
     otlpTracesEnabled: false,
     otlpMetricsEnabled: false,
+    otlpLogsEnabled: false,
   },
   settings: DEFAULT_SERVER_SETTINGS,
 };
@@ -1055,6 +1058,37 @@ describe("RpcSessionFactory", () => {
       ),
   );
 
+  it.effect("rejects a server config for a different environment", () =>
+    Effect.gen(function* () {
+      const { factory, sockets } = yield* makeFactory();
+      const session = yield* factory.connect(PREPARED);
+      const readyFiber = yield* Effect.forkChild(Effect.flip(session.ready));
+      const configFiber = yield* session
+        .subscribeServerConfig({})
+        .pipe(Stream.runHead, Effect.flip, Effect.forkChild);
+      const customConfigFiber = yield* session
+        .subscribeServerConfig({ environmentThemes: true })
+        .pipe(Stream.runHead, Effect.flip, Effect.forkChild);
+      const socket = yield* awaitSocket(sockets);
+      socket.open();
+      yield* completeInitialConfig(socket, {
+        ...ENCODED_SERVER_CONFIG,
+        environment: {
+          ...ENCODED_SERVER_CONFIG.environment,
+          environmentId: "environment-2",
+        },
+      });
+
+      const error = yield* Fiber.join(readyFiber);
+      expect(error).toMatchObject({
+        reason: "configuration",
+        message: "Connected environment environment-2 does not match environment-1.",
+      });
+      expect((yield* Fiber.join(configFiber))._tag).toBe("RpcClientError");
+      expect((yield* Fiber.join(customConfigFiber))._tag).toBe("RpcClientError");
+    }),
+  );
+
   it.effect("tolerates two missed pong windows before closing the session", () =>
     Effect.gen(function* () {
       const { factory, sockets } = yield* makeFactory();
@@ -1157,27 +1191,37 @@ describe("RpcSessionFactory", () => {
     ),
   );
 
-  it.effect("fails readiness when the websocket never opens", () =>
-    Effect.gen(function* () {
-      const { factory, sockets } = yield* makeFactory();
+  for (const relay of [false, true]) {
+    it.effect(`fails readiness when the ${relay ? "relay" : "direct"} websocket never opens`, () =>
+      Effect.gen(function* () {
+        const { factory, sockets } = yield* makeFactory();
 
-      const error = yield* Effect.scoped(
-        Effect.gen(function* () {
-          const session = yield* factory.connect(PREPARED);
-          const readyFiber = yield* Effect.forkChild(Effect.flip(session.ready));
-          yield* awaitSocket(sockets);
+        const error = yield* Effect.scoped(
+          Effect.gen(function* () {
+            const session = yield* factory.connect({
+              ...PREPARED,
+              target: relay
+                ? new RelayConnectionTarget({
+                    environmentId: TARGET.environmentId,
+                    label: TARGET.label,
+                  })
+                : TARGET,
+            });
+            const readyFiber = yield* Effect.forkChild(Effect.flip(session.ready));
+            yield* awaitSocket(sockets);
 
-          yield* TestClock.adjust("15 seconds");
-          return yield* Fiber.join(readyFiber);
-        }),
-      );
+            yield* TestClock.adjust("15 seconds");
+            return yield* Fiber.join(readyFiber);
+          }),
+        );
 
-      expect(error).toBeInstanceOf(ConnectionTransientError);
-      expect(error).toMatchObject({
-        reason: "transport",
-        message: "Test environment could not establish a WebSocket connection.",
-      });
-      expect(sockets[0]?.readyState).toBe(TestWebSocket.CLOSED);
-    }).pipe(Effect.provide(TestClock.layer())),
-  );
+        expect(error).toBeInstanceOf(ConnectionTransientError);
+        expect(error).toMatchObject({
+          reason: "transport",
+          message: `Test environment could not establish a WebSocket connection.${relay ? ` ${NETWORK_BLOCKING_HINT}` : ""}`,
+        });
+        expect(sockets[0]?.readyState).toBe(TestWebSocket.CLOSED);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  }
 });

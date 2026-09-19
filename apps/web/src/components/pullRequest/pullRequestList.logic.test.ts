@@ -21,6 +21,8 @@ import {
   readPullRequestListSnapshot,
   writePullRequestListSnapshot,
   rankPullRequestMatches,
+  rankPullRequestsBlockedOnAuthor,
+  rankPullRequestsBlockedOnReviewer,
   rankPullRequestsByMergeReadiness,
   scorePullRequestMatch,
   sortPullRequestGroups,
@@ -69,8 +71,30 @@ function entry(
 }
 
 describe("visible pull request line-count targets", () => {
+  it("reuses counts supplied by the listing and only requests missing counts", () => {
+    const entries = [
+      entry({ number: 1, additions: 12, deletions: 0 }),
+      entry({ number: 2, additions: 0, deletions: 7 }),
+      entry({ number: 3, additions: 0, deletions: 0 }),
+    ];
+    const entriesByKey = new Map(entries.map((item) => [pullRequestEntryKey(item), item]));
+    const keys = pullRequestStatsKeysToRequest(
+      entriesByKey,
+      new Set(entries.map(pullRequestEntryKey)),
+      [],
+      new Map(),
+    );
+
+    expect(pullRequestStatsBatches(entriesByKey, keys)[0]?.input.refs).toEqual([
+      { projectId: "project-1", repository: "pingdotgg/t3code", number: 3 },
+    ]);
+  });
+
   it("does not request a row again after its received batch is pruned", () => {
-    const entries = [entry({ number: 1 }), entry({ number: 2 })];
+    const entries = [
+      entry({ additions: 0, deletions: 0, number: 1 }),
+      entry({ additions: 0, deletions: 0, number: 2 }),
+    ];
     const entriesByKey = new Map(entries.map((item) => [pullRequestEntryKey(item), item]));
     const firstKey = pullRequestEntryKey(entries[0]!);
     const secondKey = pullRequestEntryKey(entries[1]!);
@@ -97,7 +121,9 @@ describe("visible pull request line-count targets", () => {
   });
 
   it("drops historical rows after a long scroll so refresh stays bounded to the viewport", () => {
-    const entries = Array.from({ length: 500 }, (_, index) => entry({ number: index + 1 }));
+    const entries = Array.from({ length: 500 }, (_, index) =>
+      entry({ additions: 0, deletions: 0, number: index + 1 }),
+    );
     const entriesByKey = new Map(entries.map((item) => [pullRequestEntryKey(item), item]));
     const batches = entries.map(
       (item) => pullRequestStatsBatches(entriesByKey, new Set([pullRequestEntryKey(item)]))[0]!,
@@ -112,7 +138,9 @@ describe("visible pull request line-count targets", () => {
   });
 
   it("keeps every per-environment batch within the stats contract limit", () => {
-    const entries = Array.from({ length: 501 }, (_, index) => entry({ number: index + 1 }));
+    const entries = Array.from({ length: 501 }, (_, index) =>
+      entry({ additions: 0, deletions: 0, number: index + 1 }),
+    );
     const entriesByKey = new Map(entries.map((item) => [pullRequestEntryKey(item), item]));
     const batches = pullRequestStatsBatches(
       entriesByKey,
@@ -125,9 +153,9 @@ describe("visible pull request line-count targets", () => {
 
   it("selects visible rows for date modes and every uncached row for size modes", () => {
     const entries = [
-      entry({ number: 1 }),
-      entry({ number: 2 }),
-      entry({ number: 3, environmentId: "env-2" as EnvironmentId }),
+      entry({ additions: 0, deletions: 0, number: 1 }),
+      entry({ additions: 0, deletions: 0, number: 2 }),
+      entry({ additions: 0, deletions: 0, number: 3, environmentId: "env-2" as EnvironmentId }),
     ];
     const entriesByKey = new Map(entries.map((item) => [pullRequestEntryKey(item), item]));
     const [firstKey, secondKey] = entries.map(pullRequestEntryKey);
@@ -162,7 +190,11 @@ describe("visible pull request line-count targets", () => {
   });
 
   it("refreshes only visible rows unless size sorting needs every loaded row", () => {
-    const entries = [entry({ number: 1 }), entry({ number: 2 }), entry({ number: 3 })];
+    const entries = [
+      entry({ additions: 0, deletions: 0, number: 1 }),
+      entry({ additions: 0, deletions: 0, number: 2 }),
+      entry({ additions: 0, deletions: 0, number: 3 }),
+    ];
     const entriesByKey = new Map(entries.map((item) => [pullRequestEntryKey(item), item]));
     const visibleKeys = new Set([pullRequestEntryKey(entries[1]!)]);
     const cachedStats = mergePullRequestDiffStats(
@@ -198,7 +230,10 @@ describe("visible pull request line-count targets", () => {
   });
 
   it("ignores a late refresh after the filter or stats policy changes", () => {
-    const entries = [entry({ number: 1 }), entry({ number: 2 })];
+    const entries = [
+      entry({ additions: 0, deletions: 0, number: 1 }),
+      entry({ additions: 0, deletions: 0, number: 2 }),
+    ];
     const entriesByKey = new Map(entries.map((item) => [pullRequestEntryKey(item), item]));
     const visibleKeys = new Set([pullRequestEntryKey(entries[1]!)]);
     const requestedScope = { key: "open", policy: "visible" } as const;
@@ -217,7 +252,10 @@ describe("visible pull request line-count targets", () => {
   });
 
   it("does not add request batches again while rows are active or cached", () => {
-    const entries = [entry({ number: 1 }), entry({ number: 2 })];
+    const entries = [
+      entry({ additions: 0, deletions: 0, number: 1 }),
+      entry({ additions: 0, deletions: 0, number: 2 }),
+    ];
     const entriesByKey = new Map(entries.map((item) => [pullRequestEntryKey(item), item]));
     const first = pullRequestStatsRequestBatches({
       entriesByKey,
@@ -687,6 +725,7 @@ describe("default merge-readiness ranking", () => {
       number: 4,
       checksState: "passing",
       reviewDecision: "approved",
+      additions: 1_000,
       updatedAt: "2026-06-01T00:00:00Z",
     });
     const draft = entry({
@@ -711,7 +750,7 @@ describe("default merge-readiness ranking", () => {
     ).toEqual([4, 3, 5, 2, 6, 1]);
   });
 
-  it("uses recency inside one readiness tier", () => {
+  it("uses recency when readiness and diff size tie", () => {
     const older = entry({ number: 1, checksState: "passing" });
     const newer = entry({
       number: 2,
@@ -724,13 +763,13 @@ describe("default merge-readiness ranking", () => {
     ]);
   });
 
-  it("puts the smallest measured change first inside a readiness tier", () => {
+  it("ranks smaller measured diffs first within a readiness tier as counts arrive", () => {
     const larger = entry({
       number: 1,
       checksState: "passing",
       reviewDecision: "approved",
-      additions: 40,
-      deletions: 10,
+      additions: 1,
+      deletions: 49,
       updatedAt: "2026-09-01T00:00:00Z",
     });
     const smaller = entry({
@@ -753,6 +792,29 @@ describe("default merge-readiness ranking", () => {
     expect(
       rankPullRequestsByMergeReadiness([larger, unknown, smaller]).map((row) => row.number),
     ).toEqual([2, 1, 3]);
+    expect(
+      rankPullRequestsByMergeReadiness([
+        larger,
+        { ...unknown, additions: 1, deletions: 0 },
+        smaller,
+      ]).map((row) => row.number),
+    ).toEqual([3, 2, 1]);
+  });
+
+  it("distinguishes measured empty diffs from missing counts when sorting groups", () => {
+    const unknown = entry({ number: 1, additions: 0, deletions: 0 });
+    const measured = entry({ number: 2 });
+    const empty = entry({ number: 3, additions: 0, deletions: 0 });
+    const groups = [
+      { key: "others", label: "Others", entries: [unknown, measured, empty] },
+    ] as const;
+
+    const sorted = sortPullRequestGroups(groups, "ready", "", (row) => row.number !== 1);
+
+    expect(sorted[0]!.entries.map((row) => row.number)).toEqual([3, 2, 1]);
+    expect(sortPullRequestGroups(groups, "ready", "sidebar", (row) => row.number !== 1)).toEqual(
+      groups,
+    );
   });
 
   it("keeps authored work first and ranks each group by readiness", () => {
@@ -810,6 +872,108 @@ describe("default merge-readiness ranking", () => {
 
     expect(sorted.map((group) => group.key)).toEqual(["authored", "others"]);
     expect(sorted[0]!.entries.map((row) => row.number)).toEqual(order);
+  });
+});
+
+describe("blocked-on-me ranking", () => {
+  it("ranks authored work by how surely it is the author's to unblock, newest first within a tier", () => {
+    const conflict = entry({
+      number: 1,
+      mergeability: "conflicting",
+      checksState: "failing",
+      updatedAt: "2026-08-01T00:00:00Z",
+    });
+    const olderFailing = entry({
+      number: 2,
+      checksState: "failing",
+      updatedAt: "2026-08-01T00:00:00Z",
+    });
+    const changesRequested = entry({
+      number: 3,
+      reviewDecision: "changes-requested",
+      checksState: "failing",
+      updatedAt: "2026-08-02T00:00:00Z",
+    });
+    const approved = entry({ number: 4, checksState: "passing", reviewDecision: "approved" });
+    const draft = entry({ number: 5, isDraft: true, checksState: "passing" });
+    const waiting = entry({ number: 6 });
+    const merged = entry({ number: 7, state: "merged", updatedAt: "2026-08-01T00:00:00Z" });
+    const newerClosed = entry({ number: 8, state: "closed", updatedAt: "2026-08-03T00:00:00Z" });
+    const newerFailing = entry({
+      number: 9,
+      checksState: "failing",
+      updatedAt: "2026-08-03T00:00:00Z",
+    });
+
+    expect(
+      rankPullRequestsBlockedOnAuthor([
+        waiting,
+        merged,
+        olderFailing,
+        draft,
+        approved,
+        changesRequested,
+        newerClosed,
+        conflict,
+        newerFailing,
+      ]).map((row) => row.number),
+    ).toEqual([1, 3, 9, 2, 5, 6, 4, 8, 7]);
+  });
+
+  it("ranks reviewer work with open rows first, newest first", () => {
+    const olderOpen = entry({ number: 1, updatedAt: "2026-08-01T00:00:00Z" });
+    const newerOpen = entry({ number: 2, updatedAt: "2026-08-02T00:00:00Z" });
+    const olderFinished = entry({ number: 3, state: "merged", updatedAt: "2026-08-01T00:00:00Z" });
+    const newerFinished = entry({ number: 4, state: "closed", updatedAt: "2026-08-03T00:00:00Z" });
+
+    expect(
+      rankPullRequestsBlockedOnReviewer([newerFinished, newerOpen, olderFinished, olderOpen]).map(
+        (row) => row.number,
+      ),
+    ).toEqual([2, 1, 4, 3]);
+  });
+
+  it("ranks blocked groups according to their involvement", () => {
+    const authored = [
+      entry({ number: 1, isDraft: true }),
+      entry({ number: 2, checksState: "failing" }),
+    ];
+    const reviewing = [
+      entry({ number: 3, updatedAt: "2026-08-02T00:00:00Z" }),
+      entry({ number: 4, updatedAt: "2026-08-01T00:00:00Z" }),
+    ];
+    const others = [
+      entry({ number: 5, updatedAt: "2026-08-02T00:00:00Z" }),
+      entry({ number: 6, isDraft: true }),
+    ];
+    const groups = [
+      { key: "authored", label: "Authored", entries: authored },
+      { key: "reviewRequested", label: "Review requested", entries: reviewing },
+      { key: "others", label: "Others", entries: others },
+    ] as const;
+
+    expect(
+      sortPullRequestGroups(groups, "blocked", "", undefined, "all").map((group) =>
+        group.entries.map((row) => row.number),
+      ),
+    ).toEqual([
+      [2, 1],
+      [3, 4],
+      [5, 6],
+    ]);
+    expect(
+      sortPullRequestGroups([groups[2]], "blocked", "", undefined, "authored")[0]!.entries.map(
+        (row) => row.number,
+      ),
+    ).toEqual([6, 5]);
+    expect(
+      sortPullRequestGroups([groups[2]], "blocked", "", undefined, "reviewing")[0]!.entries.map(
+        (row) => row.number,
+      ),
+    ).toEqual([5, 6]);
+    expect(sortPullRequestGroups(groups, "blocked", "needle", undefined, "authored")).toEqual(
+      groups,
+    );
   });
 });
 
