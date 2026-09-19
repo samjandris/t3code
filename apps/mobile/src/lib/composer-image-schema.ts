@@ -8,7 +8,7 @@ export const DraftComposerImageAttachmentSchema = Schema.Struct({
   name: Schema.String,
   mimeType: Schema.String,
   sizeBytes: Schema.Number,
-  // New images use owned files. Older drafts keep their inline bytes.
+  // Keep reading owned files from earlier fork builds; new images use inline bytes.
   fileUri: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
   dataUrl: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
   uploadedAttachmentId: Schema.optional(Schema.String),
