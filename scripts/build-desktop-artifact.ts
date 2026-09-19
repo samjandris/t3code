@@ -2626,7 +2626,7 @@ export function resolveDesktopProductName(version: string): string {
 }
 
 export const resolveDesktopAppId = Effect.fn("resolveDesktopAppId")(function* () {
-  const configuredAppId = yield* Config.string("T3CODE_DESKTOP_APP_ID").pipe(Config.option);
+  const configuredAppId = yield* Config.String("T3CODE_DESKTOP_APP_ID").pipe(Config.option);
   return Option.match(configuredAppId, {
     onNone: () => DEFAULT_DESKTOP_APP_ID,
     onSome: (value) => value.trim() || DEFAULT_DESKTOP_APP_ID,
