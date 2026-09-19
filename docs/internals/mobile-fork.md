@@ -48,9 +48,11 @@ Keep upstream's bounded native photo conversion in `composerImages.ts`. Do not r
 picker `base64: true` option or fork compression stages; full-resolution camera exports stalled
 the composer before those stages could run.
 
-The fork persists the resulting bytes in owned files instead of draft JSON. Keep the fingerprint
-storage-baseline salt so file-backed writers cannot OTA into binaries without the matching readers
-and storage guards. The shared 10 MB provider limit still applies.
+New image drafts use upstream's inline storage for picked, pasted, and shared images. Do not
+restore the fork's file-backed image writers during a rebase. Keep upstream's file-backed readers
+and cleanup guards so drafts and queued messages saved by earlier fork builds remain usable.
+Keep the existing fingerprint storage-baseline salt for compatibility with those builds. Files
+and videos still use owned files. The shared 10 MB image limit still applies.
 
 ### Temporary HDR HEIC compatibility patch
 
@@ -59,7 +61,7 @@ and storage guards. The shared 10 MB provider limit still applies.
 [Expo issue #49953](https://github.com/expo/expo/issues/49953). Its orientation transformer
 creates a bitmap context that rejects 10-bit HDR HEIC screenshots before resizing or JPEG
 encoding. The patch keeps upright images unchanged and uses UIKit's renderer for other
-orientations. Keep the existing bounded conversion and file-backed persistence.
+orientations. Keep the existing bounded conversion and upstream draft storage.
 
 The mobile `expo.autolinking.buildFromSource` entry for `expo-image-manipulator` is required:
 otherwise a prebuilt native module can bypass the patched Swift code. This needs a new binary;
