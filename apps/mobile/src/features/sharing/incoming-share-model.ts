@@ -14,6 +14,8 @@ import type { ResolvedSharePayload, SharePayload } from "expo-sharing";
 import { DraftComposerAttachmentSchema } from "../../lib/composer-image-schema";
 import type { DraftComposerAttachment } from "../../lib/composerImages";
 import { estimateBase64ByteSize } from "../../lib/base64";
+import { videoMimeType } from "@t3tools/shared/video";
+import type { DraftComposerFileAttachment } from "../../lib/composerImages";
 
 export interface IncomingShareDraft {
   readonly schemaVersion: 1;
@@ -101,6 +103,12 @@ export function isShareFileUriUnderOwnedRoots(
 }
 
 export interface IncomingShareFileReader {
+  readonly prepareVideo?: (input: {
+    uri: string;
+    name: string;
+    mimeType: string;
+    maxBytes: number;
+  }) => Promise<DraftComposerFileAttachment>;
   readonly readBase64: (uri: string) => Promise<string>;
   readonly removeOwnedFile: (uri: string) => Promise<void> | void;
   readonly persistFile?: (uri: string, name: string) => Promise<string>;
@@ -307,6 +315,21 @@ export async function buildIncomingShareDraft(input: {
       let persistedFileUri: string | undefined;
       let retainedFileUri: string | undefined;
       try {
+        const videoType = videoMimeType({ name, mimeType });
+        if (
+          (payload.shareType === "video" || videoType !== null) &&
+          input.fileReader.prepareVideo
+        ) {
+          const attachment = await input.fileReader.prepareVideo({
+            uri,
+            name,
+            mimeType: videoType ?? "video/mp4",
+            maxBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+          });
+          attachments.push({ ...attachment, id: `${input.id}:file:${index}` });
+          retainedFileUri = attachment.fileUri;
+          continue;
+        }
         let sizeBytes = resolved?.contentSize ?? (await input.fileReader.readSize?.(uri)) ?? null;
         if (
           (sizeBytes === null || (sizeBytes === 0 && uri.startsWith("content:"))) &&
@@ -405,29 +428,60 @@ export async function buildIncomingShareDraft(input: {
       continue;
     }
 
+    const imageName = resolved?.originalName ?? fallbackName(uri, index, mimeType);
+    let persistedImageUri: string | undefined;
     try {
+      if (input.fileReader.persistFile) {
+        // The share provider's file is temporary. Copy it into the durable
+        // attachment directory so the composer stays valid after the source
+        // file and App Group entry are gone, without inlining the bytes.
+        persistedImageUri = await input.fileReader.persistFile(uri, imageName);
+        const sizeBytes = (await input.fileReader.readSize?.(persistedImageUri)) ?? null;
+        if (sizeBytes === null || sizeBytes <= 0) {
+          warnings.push(`'${imageName}' is empty or could not be read.`);
+          await releaseOwnedFiles(input.fileReader, [persistedImageUri]);
+          continue;
+        }
+        if (sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+          warnings.push(`'${imageName}' exceeds the 10 MB attachment limit.`);
+          await releaseOwnedFiles(input.fileReader, [persistedImageUri]);
+          continue;
+        }
+        attachments.push({
+          id: `${input.id}:image:${index}`,
+          type: "image",
+          name: imageName,
+          mimeType,
+          sizeBytes,
+          fileUri: persistedImageUri,
+          previewUri: persistedImageUri,
+        });
+        continue;
+      }
+      // Readers without persistFile keep the legacy inline shape.
       const base64 = await input.fileReader.readBase64(uri);
       const sizeBytes = resolved?.contentSize ?? estimateBase64ByteSize(base64);
       if (sizeBytes <= 0 || sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-        warnings.push(
-          `'${resolved?.originalName ?? fallbackName(uri, index, mimeType)}' exceeds the 10 MB attachment limit.`,
-        );
+        warnings.push(`'${imageName}' exceeds the 10 MB attachment limit.`);
         continue;
       }
       const dataUrl = `data:${mimeType};base64,${base64}`;
       attachments.push({
         id: `${input.id}:image:${index}`,
         type: "image",
-        name: resolved?.originalName ?? fallbackName(uri, index, mimeType),
+        name: imageName,
         mimeType,
         sizeBytes,
         dataUrl,
-        // The share provider's file is temporary. A data-backed preview keeps
-        // the composer valid after its source file and App Group entry are gone.
         previewUri: dataUrl,
       });
     } catch {
       warnings.push(`Could not read '${fallbackName(uri, index, mimeType)}'.`);
+      // A copy persisted before the failure has no attachment referencing it;
+      // release it or it leaks in the app's attachment directory.
+      if (persistedImageUri !== undefined) {
+        await releaseOwnedFiles(input.fileReader, [persistedImageUri]);
+      }
     } finally {
       await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
     }

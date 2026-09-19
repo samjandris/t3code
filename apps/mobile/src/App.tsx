@@ -13,6 +13,7 @@ import { ConfirmDialogHost } from "./components/ConfirmDialogHost";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
 import { IncomingShareProvider } from "./features/sharing/IncomingShareProvider";
+import { VideoCompressionDialog } from "./components/VideoCompressionDialog";
 import {
   AppearancePreferencesProvider,
   useAppearancePreferences,
@@ -90,6 +91,7 @@ function AppContent() {
                 <Navigation linking={appLinking} theme={navigationTheme} />
               </IncomingShareProvider>
               <ConfirmDialogHost />
+              <VideoCompressionDialog />
               <ThreadArrangementHost />
             </View>
             {/* Anchored-menu overlays render here — in-window, so the
