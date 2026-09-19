@@ -52,6 +52,26 @@ The fork persists the resulting bytes in owned files instead of draft JSON. Keep
 storage-baseline salt so file-backed writers cannot OTA into binaries without the matching readers
 and storage guards. The shared 10 MB provider limit still applies.
 
+### Temporary HDR HEIC compatibility patch
+
+`expo-image-manipulator@57.0.17` has a version-pinned native patch backported from
+[Expo PR #50011](https://github.com/expo/expo/pull/50011), for
+[Expo issue #49953](https://github.com/expo/expo/issues/49953). Its orientation transformer
+creates a bitmap context that rejects 10-bit HDR HEIC screenshots before resizing or JPEG
+encoding. The patch keeps upright images unchanged and uses UIKit's renderer for other
+orientations. Keep the existing bounded conversion and file-backed persistence.
+
+The mobile `expo.autolinking.buildFromSource` entry for `expo-image-manipulator` is required:
+otherwise a prebuilt native module can bypass the patched Swift code. This needs a new binary;
+JavaScript tests and an OTA update cannot verify or deliver it.
+
+When Expo ships an equivalent fix and upstream T3 adopts that version, prefer it. Remove the
+patch file, its `pnpm-workspace.yaml` entry, and this patch's `buildFromSource` entry together,
+then regenerate the lockfile and remove this subsection. If another patch needs source builds,
+retain that entry. Before removal, verify the actual installed native source and run a 10-bit
+HDR HEIC conversion plus ordinary JPEG orientation checks against the replacement binary.
+Do not carry this patch forward merely because a dependency upgrade conflicts with it.
+
 ## Video attachments
 
 Oversized videos use native compression before file-backed persistence, including Photos, Files,
