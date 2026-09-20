@@ -356,6 +356,24 @@ describe("thread outbox", () => {
     expect(decodeQueuedThreadMessage(encodeQueuedThreadMessage(message))).toEqual(message);
   });
 
+  it("preserves a compressed video's upload progress phase across an outbox round trip", () => {
+    const message = {
+      ...queuedMessage({ messageId: "compressed-video", createdAt: "2026-09-20T00:00:00.000Z" }),
+      attachments: [
+        {
+          id: "video",
+          type: "file" as const,
+          name: "clip.mp4",
+          mimeType: "video/mp4",
+          sizeBytes: 600,
+          fileUri: "file:///documents/t3-composer-attachments/clip.mp4",
+          wasCompressed: true,
+        },
+      ],
+    } satisfies QueuedThreadMessage;
+    expect(decodeQueuedThreadMessage(encodeQueuedThreadMessage(message))).toEqual(message);
+  });
+
   it("reads file-backed images from v4 queued messages", () => {
     const message = {
       ...queuedMessage({

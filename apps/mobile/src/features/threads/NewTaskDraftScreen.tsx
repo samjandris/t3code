@@ -1,3 +1,5 @@
+import { useIsVideoCompressing } from "../../lib/useVideoCompression";
+import { isVideoCompressing } from "../../lib/composerVideo";
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -180,6 +182,7 @@ export function NewTaskDraftScreen(props: {
   /** Durable native share inbox item to merge into this project draft. */
   readonly incomingShareId?: string;
 }) {
+  const compressingVideo = useIsVideoCompressing();
   const projects = useProjects();
   const flow = useNewTaskFlow();
   const navigation = useNavigation();
@@ -995,6 +998,7 @@ export function NewTaskDraftScreen(props: {
     const capabilities = selectedEnvironmentServerConfig?.environment.capabilities;
     const insertion = flow.draftKey ? captureComposerDraftInsertion(flow.draftKey) : undefined;
     const result = await pickComposerMedia({
+      ownerKey: flow.draftKey ?? undefined,
       existingCount:
         flow.draftKey && insertion
           ? countComposerDraftAttachmentsAfterSelection(flow.draftKey, insertion)
@@ -1029,6 +1033,7 @@ export function NewTaskDraftScreen(props: {
     }
     const insertion = flow.draftKey ? captureComposerDraftInsertion(flow.draftKey) : undefined;
     const result = await pickComposerFiles({
+      ownerKey: flow.draftKey ?? undefined,
       existingCount:
         flow.draftKey && insertion
           ? countComposerDraftAttachmentsAfterSelection(flow.draftKey, insertion)
@@ -1170,7 +1175,12 @@ export function NewTaskDraftScreen(props: {
   );
 
   async function handleStart(): Promise<void> {
-    if (voiceInput.blocksSubmission || pendingPastedTextAttachmentCountRef.current > 0) return;
+    if (
+      isVideoCompressing() ||
+      voiceInput.blocksSubmission ||
+      pendingPastedTextAttachmentCountRef.current > 0
+    )
+      return;
     const selectedProject = flow.selectedProject;
     const draftKey = flow.draftKey;
     if (!selectedProject || !draftKey) {
@@ -1335,6 +1345,7 @@ export function NewTaskDraftScreen(props: {
 
   const isAndroid = Platform.OS === "android";
   const canStart =
+    !compressingVideo &&
     !isImportingContext &&
     !cloneBlocksStart &&
     attachmentBlockReason === null &&
@@ -1609,9 +1620,10 @@ export function NewTaskDraftScreen(props: {
           paddingTop: 14,
         }}
       >
-        {stripAttachments.length > 0 ? (
+        {stripAttachments.length > 0 || compressingVideo ? (
           <View className="px-[14px] pb-2.5">
             <ComposerAttachmentStrip
+              compressionOwnerKey={flow.draftKey ?? undefined}
               environmentId={selectedProject.environmentId}
               attachments={stripAttachments}
               imageBorderRadius={16}
@@ -1727,6 +1739,7 @@ export function NewTaskDraftScreen(props: {
               {voicePresentation.showsSend ? (
                 <ComposerActionButton
                   accessibilityLabel={
+                    (compressingVideo ? "Compressing video" : null) ??
                     attachmentBlockReason ??
                     (cloneBlocksStart
                       ? projectClone === null || projectClone.phase === "running"

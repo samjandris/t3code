@@ -23,6 +23,7 @@ export const DraftComposerImageAttachmentSchema = Schema.Struct({
 );
 
 export const DraftComposerFileAttachmentSchema = Schema.Struct({
+  wasCompressed: Schema.optional(Schema.Boolean),
   id: Schema.String,
   type: Schema.Literal("file"),
   name: Schema.String,
