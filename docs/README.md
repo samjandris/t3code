@@ -62,6 +62,8 @@ anything.
 - [16 · Performance regression checks](./internals/16_performance-regressions.md)
 - [17 · Scripts](./internals/17_scripts.md)
 
+- [Mobile fork decisions](./internals/mobile-fork.md)
+
 ### Runbooks
 
 - [00 · Development and local builds](./operations/00_development.md)
