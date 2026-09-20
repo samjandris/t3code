@@ -4,6 +4,11 @@
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 
+The fork releases integrated `dev`. Publishing outside GitHub is opt-in through repository variables
+set to `true`: `PUBLISH_CLI_TO_NPM`, `PUBLISH_AUR`, `DEPLOY_HOSTED_WEB`, `DEPLOY_MARKETING`,
+`FINALIZE_STABLE_RELEASE`, and `ANNOUNCE_DISCORD_RELEASES`. Hosted deployments also require the
+fork's own provider credentials and project configuration.
+
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`
