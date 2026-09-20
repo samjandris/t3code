@@ -3,9 +3,12 @@ import type { RelayDeviceRegistrationRequest } from "@t3tools/contracts/relay";
 import type { Preferences } from "../../persistence/mobile-preferences";
 import { supportsAgentAwarenessPush } from "./capabilities";
 
-// Development builds use sandbox APNs; distribution builds use production APNs.
-export function resolveApsEnvironment(appVariant: unknown): "sandbox" | "production" {
-  return appVariant === "development" ? "sandbox" : "production";
+// Local development signing uses sandbox APNs for any app variant.
+export function resolveApsEnvironment(
+  appVariant: unknown,
+  iosDevelopmentSigning: unknown = false,
+): "sandbox" | "production" {
+  return appVariant === "development" || iosDevelopmentSigning === true ? "sandbox" : "production";
 }
 
 export function makeRelayDeviceRegistrationRequest(
