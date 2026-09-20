@@ -1,0 +1,105 @@
+diff --git a/android/src/main/java/com/reactnativecompressor/Video/VideoMain.kt b/android/src/main/java/com/reactnativecompressor/Video/VideoMain.kt
+index 6fa97ce59ce32fcaf89302add4986bde6669e840..b96b3ade58050c0caeea3162b0788c7280cb196e 100644
+--- a/android/src/main/java/com/reactnativecompressor/Video/VideoMain.kt
++++ b/android/src/main/java/com/reactnativecompressor/Video/VideoMain.kt
+@@ -1,6 +1,8 @@
+ package com.reactnativecompressor.Video
+ 
+ import android.media.MediaMetadataRetriever
++import android.media.MediaExtractor
++import android.media.MediaFormat
+ import android.net.Uri
+ import android.util.Log
+ import com.facebook.react.bridge.Arguments
+@@ -76,6 +78,23 @@ class VideoMain(private val reactContext: ReactApplicationContext) {
+       params.putInt("width", actualWidth)
+       params.putInt("height", actualHeight)
+       params.putDouble("duration", duration / 1000)
++      val extractor = MediaExtractor()
++      try {
++        extractor.setDataSource(srcPath)
++        for (index in 0 until extractor.trackCount) {
++          val format = extractor.getTrackFormat(index)
++          if (format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
++            if (format.containsKey(MediaFormat.KEY_FRAME_RATE)) {
++              params.putDouble("frameRate", format.getInteger(MediaFormat.KEY_FRAME_RATE).toDouble())
++            }
++            break
++          }
++        }
++      } catch (_: Exception) {
++        // Frame rate is optional; retain the rest of the metadata.
++      } finally {
++        extractor.release()
++      }
+       params.putString("extension", extension)
+       params.putString("creationTime", creationTime.toString())
+       promise.resolve(params)
+diff --git a/ios/Video/NextLevelSessionExporter.swift b/ios/Video/NextLevelSessionExporter.swift
+index e25af6987e811f1b83d2c475409213883d4742cc..0d0c99bc00d9e484d745ce022070224318ce64de 100644
+--- a/ios/Video/NextLevelSessionExporter.swift
++++ b/ios/Video/NextLevelSessionExporter.swift
+@@ -501,9 +501,12 @@ extension NextLevelSessionExporter {
+             }
+             
+             if frameRate == 0 {
++                frameRate = videoTrack.nominalFrameRate
++            }
++            if !frameRate.isFinite || frameRate <= 0 {
+                 frameRate = 30
+             }
+-            videoComposition.frameDuration = CMTimeMake(value: 1, timescale: Int32(frameRate))
++            videoComposition.frameDuration = CMTimeMake(value: 1000, timescale: Int32((frameRate * 1000).rounded()))
+             
+             // determine the appropriate size and transform
+             
+diff --git a/ios/Video/VideoMain.swift b/ios/Video/VideoMain.swift
+index 4c6dd1a7d6bfc1174760b34bd3ba8111704a1420..f4f159fdf7185ac33e8a7b75c391da679d23417e 100644
+--- a/ios/Video/VideoMain.swift
++++ b/ios/Video/VideoMain.swift
+@@ -300,7 +300,7 @@ class VideoCompressor {
+         let maxSize = (options["maxSize"] as? NSNumber)?.floatValue ?? Float(1920)
+         let profile = createCompressionProfile(track: track, maxSize: CGFloat(maxSize), requestedBitrate: bitRate)
+ 
+-        exportVideoHelper(url: url, asset: asset, bitRate: profile.bitrate, frameRate: profile.frameRate, resultWidth: profile.width, resultHeight: profile.height,uuid: uuid,progressDivider: progressDivider, stripAudio: stripAudio) { progress in
++        exportVideoHelper(url: url, asset: asset, bitRate: profile.bitrate, frameRate: profile.frameRate, resultWidth: profile.width, resultHeight: profile.height,uuid: uuid,progressDivider: progressDivider, stripAudio: stripAudio, codec: AVAssetExportSession.exportPresets(compatibleWith: asset).contains(AVAssetExportPresetHEVCHighestQuality) ? .hevc : .h264) { progress in
+             onProgress(progress)
+         } onCompletion: { outputURL in
+             onCompletion(outputURL)
+@@ -309,7 +309,7 @@ class VideoCompressor {
+         }
+       }
+ 
+-    func exportVideoHelper(url: URL,asset: AVAsset, bitRate: Int, frameRate: Int, resultWidth:Int,resultHeight:Int,uuid:String,progressDivider: Int, stripAudio: Bool = false, onProgress: @escaping (Float) -> Void,  onCompletion: @escaping (URL) -> Void, onFailure: @escaping (Error) -> Void){
++    func exportVideoHelper(url: URL,asset: AVAsset, bitRate: Int, frameRate: Int, resultWidth:Int,resultHeight:Int,uuid:String,progressDivider: Int, stripAudio: Bool = false, codec: AVVideoCodecType = .h264, onProgress: @escaping (Float) -> Void,  onCompletion: @escaping (URL) -> Void, onFailure: @escaping (Error) -> Void){
+         var currentVideoCompression:Int=0
+ 
+         var tmpURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+@@ -327,13 +327,13 @@ class VideoCompressor {
+         // `canApply(...)` check still returns true, the iOS encoder silently
+         // drops the video track, producing an audio-only MP4 that still reports
+         // success. See issue #400.
+-        let compressionDict: [String: Any] = [
+-          AVVideoAverageBitRateKey: bitRate,
+-          AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+-        ]
++        var compressionDict: [String: Any] = [AVVideoAverageBitRateKey: bitRate]
++        if codec == .h264 {
++            compressionDict[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
++        }
+         exporter.optimizeForNetworkUse = true;
+         exporter.videoOutputConfiguration = [
+-          AVVideoCodecKey: AVVideoCodecType.h264,
++          AVVideoCodecKey: codec,
+           AVVideoWidthKey:  resultWidth,
+           AVVideoHeightKey:  resultHeight,
+           AVVideoScalingModeKey: AVVideoScalingModeResizeAspect,
+@@ -438,6 +438,8 @@ class VideoCompressor {
+                         result["extension"] = _extension
+                         result["size"] = fileSizeString
+                         result["duration"] = seconds
++                        result["frameRate"] = avAsset.nominalFrameRate
++                        result["compressionCodec"] = AVAssetExportSession.exportPresets(compatibleWith: asset).contains(AVAssetExportPresetHEVCHighestQuality) ? "hevc" : "h264"
+ 
+                         var commonMetadata: [AVMetadataItem] = []
+                         for key in self.metadatas {
