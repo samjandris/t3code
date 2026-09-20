@@ -24,6 +24,7 @@ import { fitComposerImage, renderPhoto } from "./composerImageFit";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
 import { writeFileAtomically } from "./atomic-file";
+import { withComposerVideo } from "./composerVideo";
 
 export interface DraftComposerImageAttachment extends Omit<UploadChatImageAttachment, "dataUrl"> {
   readonly id: string;
@@ -35,6 +36,7 @@ export interface DraftComposerImageAttachment extends Omit<UploadChatImageAttach
 }
 
 export interface DraftComposerFileAttachment {
+  readonly wasCompressed?: boolean;
   readonly id: string;
   readonly type: "file";
   readonly name: string;
@@ -226,6 +228,29 @@ export async function createComposerFileAttachment(input: {
   readonly mimeType: string;
   readonly sizeBytes: number | null;
   readonly maxBytes: number;
+  readonly ownerKey?: string | undefined;
+}): Promise<DraftComposerFileAttachment> {
+  const mimeType = videoMimeType(input);
+  if (mimeType !== null) {
+    return withComposerVideo({ ...input, mimeType }, async (video) => {
+      const attachment = await persistComposerFileAttachment({
+        ...video,
+        maxBytes: input.maxBytes,
+      });
+      return video.compressionId
+        ? { ...attachment, id: video.compressionId, wasCompressed: true }
+        : attachment;
+    });
+  }
+  return persistComposerFileAttachment(input);
+}
+
+async function persistComposerFileAttachment(input: {
+  readonly uri: string;
+  readonly name: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number | null;
+  readonly maxBytes: number;
 }): Promise<DraftComposerFileAttachment> {
   if (input.sizeBytes !== null && input.sizeBytes > input.maxBytes) {
     throw new Error(fileAttachmentTooLargeMessage(input.name, input.maxBytes));
@@ -255,6 +280,7 @@ export async function createComposerFileAttachment(input: {
 }
 
 export async function pickComposerFiles(input: {
+  readonly ownerKey?: string | undefined;
   readonly existingCount: number;
   readonly maxBytes?: number;
 }): Promise<{
@@ -303,6 +329,7 @@ export async function pickComposerFiles(input: {
     try {
       const mimeType = imageMimeType({ name, mimeType: file.mimeType ?? "" });
       const attachment = await createComposerFileAttachment({
+        ownerKey: input.ownerKey,
         uri: file.uri,
         name,
         mimeType: file.mimeType || "application/octet-stream",
@@ -375,6 +402,7 @@ export async function pickComposerImages(input: { readonly existingCount: number
 }
 
 export async function pickComposerMedia(input: {
+  readonly ownerKey?: string | undefined;
   readonly existingCount: number;
   readonly maxVideoBytes?: number;
 }): Promise<{
@@ -447,6 +475,7 @@ export async function pickComposerMedia(input: {
         const file = new File(asset.uri);
         attachments.push(
           await createComposerFileAttachment({
+            ownerKey: input.ownerKey,
             uri: asset.uri,
             name: asset.fileName?.trim() || file.name || "video",
             mimeType: mimeType || file.type || "application/octet-stream",
