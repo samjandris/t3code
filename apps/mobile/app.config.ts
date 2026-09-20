@@ -316,6 +316,7 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    "react-native-compressor",
     "expo-asset",
     "react-native-pdf-jsi",
     [

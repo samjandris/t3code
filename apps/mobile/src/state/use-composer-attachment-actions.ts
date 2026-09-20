@@ -64,6 +64,7 @@ export function useComposerAttachmentActions(props: {
     if (!key || props.locked) return;
     const insertion = captureComposerDraftInsertion(key);
     const result = await pickComposerMedia({
+      ownerKey: key,
       existingCount: countComposerDraftAttachmentsAfterSelection(key, insertion),
       maxVideoBytes: capabilities?.attachmentUploads
         ? capabilities.fileAttachments?.maxUploadBytes
@@ -85,6 +86,7 @@ export function useComposerAttachmentActions(props: {
     }
     const insertion = captureComposerDraftInsertion(key);
     const result = await pickComposerFiles({
+      ownerKey: key,
       existingCount: countComposerDraftAttachmentsAfterSelection(key, insertion),
       maxBytes,
     });

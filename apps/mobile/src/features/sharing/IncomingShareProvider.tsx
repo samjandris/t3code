@@ -20,7 +20,10 @@ import {
 } from "./incoming-share-model";
 import { createIncomingSharePayloadReader } from "./incoming-share-native";
 import { IncomingShareInbox } from "./incoming-share-inbox";
-import { persistComposerAttachmentFile } from "../../lib/composerImages";
+import {
+  createComposerFileAttachment,
+  persistComposerAttachmentFile,
+} from "../../lib/composerImages";
 import {
   loadIncomingShareDrafts,
   removeIncomingShareDraft,
@@ -166,6 +169,11 @@ const incomingShareInbox = new IncomingShareInbox({
       payloads,
       resolvedPayloads,
       fileReader: {
+        prepareVideo: async (input) => {
+          const attachment = await createComposerFileAttachment({ ...input, sizeBytes: null });
+          persistedUris.add(attachment.fileUri);
+          return attachment;
+        },
         readBase64,
         persistFile: async (uri, name) => {
           const persistedUri = await persistComposerAttachmentFile(
