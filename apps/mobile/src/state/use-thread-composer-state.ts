@@ -1,6 +1,7 @@
 import * as Dialog from "../components/ui/Dialog";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "./session";
+import { isVideoCompressing } from "../lib/composerVideo";
 import type { ComposerTextPaste } from "../native/T3ComposerEditor.types";
 import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
@@ -551,6 +552,7 @@ export function useThreadComposerState() {
         !readEnvironmentScope(selectedThreadShell.environmentId, AuthOrchestrationOperateScope)
       )
         return null;
+      if (isVideoCompressing()) return null;
       if (!selectedThreadShell) {
         return null;
       }
@@ -760,6 +762,7 @@ export function useThreadComposerState() {
     const insertion = captureComposerDraftInsertion(threadKey);
     const capabilities = selectedEnvironmentRuntime?.serverConfig?.environment.capabilities;
     const result = await pickComposerMedia({
+      ownerKey: threadKey,
       existingCount: countComposerDraftAttachmentsAfterSelection(threadKey, insertion),
       maxVideoBytes:
         capabilities?.attachmentUploads === true
@@ -796,6 +799,7 @@ export function useThreadComposerState() {
     const threadKey = activeComposerDraftKey(selectedThreadShell);
     const insertion = captureComposerDraftInsertion(threadKey);
     const result = await pickComposerFiles({
+      ownerKey: threadKey,
       existingCount: countComposerDraftAttachmentsAfterSelection(threadKey, insertion),
       maxBytes,
     });
