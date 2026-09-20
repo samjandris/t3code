@@ -1,5 +1,6 @@
 import { T, useGT, useMessages, Var } from "gt-react-native";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
+import { isVideoCompressing } from "../../lib/composerVideo";
 import { DraftEnvironmentControl } from "./DraftEnvironmentControl";
 import { NativeScrollEdgeEffectsContext } from "../../native/NativeScrollViewMarker";
 import { DraftThreadHeader } from "./DraftThreadHeader";
@@ -609,6 +610,7 @@ export function NewTaskDraftScreen(props: {
   });
 
   async function handleStart(): Promise<import("@t3tools/contracts").MessageId | null> {
+    if (isVideoCompressing()) return null;
     const selectedProject = flow.selectedProject;
     const draftKey = flow.draftKey;
     if (
