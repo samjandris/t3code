@@ -225,6 +225,11 @@ For [cloud dictation](./voice-input.md#choose-where-audio-goes), open **Cloud pr
 under the environment in **Settings → Voice** and confirm which provider may receive recordings.
 On Android, keep T3 Code open while recording and transcribing.
 
+To use ChatGPT transcription and cleanup, choose **ChatGPT** under **Settings > Voice > Transcribe on**
+and confirm. Open **ChatGPT account** on that page to sign in. ChatGPT receives the recording and a
+short excerpt of your draft for cleanup context. If cleanup fails, the raw transcript is kept.
+An existing ChatGPT sign-in stays selected after upgrading; choosing another destination overrides it.
+
 On-device dictation may need a network connection to download a speech model the
 first time. After that it works offline for that language. iPhone dictates in the
 first of your preferred languages (**Settings → General → Language & Region**)

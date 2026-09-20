@@ -90,13 +90,14 @@ export class VoiceInputSession {
       resolve: m,
       ...dependencies,
       onStateChange: (state) => this.handleStateChange(state),
-      // The target's selection is fixed at start, so a draft changed since refuses the transcript.
-      readDraft: () => {
-        const draft = this.target?.readDraft() ?? null;
-        return draft?.text === this.startText ? draft : null;
-      },
+      readDraft: () => this.readDraft(),
       commitDraft: (text, selection) => this.target?.commitDraft(text, selection),
     });
+  }
+
+  readDraft(): VoiceDraftSnapshot | null {
+    const draft = this.target?.readDraft() ?? null;
+    return draft?.text === this.startText ? draft : null;
   }
 
   get ownerKey(): string | null {
