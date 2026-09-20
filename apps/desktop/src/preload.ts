@@ -30,7 +30,14 @@ function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
   );
 }
 
-exposeClerkBridge({ passkeys: true });
+declare const __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__: boolean | undefined;
+
+const clerkPasskeysEnabled =
+  typeof __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__ === "undefined"
+    ? true
+    : __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__;
+
+exposeClerkBridge({ passkeys: clerkPasskeysEnabled });
 
 // Runs before any app script reads localStorage. See DesktopLegacyLocalStorage.
 try {
