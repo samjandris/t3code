@@ -20,10 +20,13 @@ const devElectronCommand =
   NodeOS.platform() === "win32"
     ? "node scripts/dev-electron.mjs"
     : "exec node scripts/dev-electron.mjs";
+const clerkPasskeysEnabled =
+  repoEnv.T3CODE_CLERK_PASSKEYS_ENABLED?.trim().toLowerCase() !== "false";
 const publicConfigDefine = {
   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
     repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
   ),
+  __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__: JSON.stringify(clerkPasskeysEnabled),
 };
 
 export default defineConfig({
