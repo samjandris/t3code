@@ -1,3 +1,4 @@
+import { SettingsDictationRouteScreen } from "./features/settings/SettingsDictationRouteScreen";
 import { isDraftThreadRoute } from "./features/threads/thread-route-state";
 import { ComponentCatalogScreen } from "./features/development/ComponentCatalogScreen";
 import { PullRequestGuideStopScreen } from "./features/pull-requests/guide/PullRequestGuideScreen";
@@ -364,6 +365,11 @@ const SETTINGS_SCREENS = {
       ...SETTINGS_PAGE_OPTIONS,
       title: "Keyboard",
     },
+  }),
+  SettingsDictation: createNativeStackScreen({
+    screen: SettingsDictationRouteScreen,
+    linking: "settings/dictation",
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "Voice Dictation" },
   }),
   SettingsMicrophone: createNativeStackScreen({
     screen: SettingsMicrophoneRouteScreen,
