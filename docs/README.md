@@ -55,6 +55,7 @@ source alone does not explain. Most code changes do not need an internal documen
 - [T3 Connect](./internals/t3-connect.md)
 - [Assistant citations](./internals/assistant-citations.md)
 - [Mobile layout](./internals/mobile-layout.md)
+- [Mobile fork decisions](./internals/mobile-fork.md)
 - [Mobile navigation](./internals/mobile-navigation.md)
 - [Mobile development lifecycle](./internals/mobile-development.md)
 - [Terminal runtime](./internals/terminal-runtime.md)
