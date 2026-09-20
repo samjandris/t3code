@@ -145,6 +145,7 @@
     },
     "autolinking": {
       "buildFromSource": [
+        "expo-image-manipulator",
         "expo-notifications",
         "react-native-screens",
         "react-native-reanimated",
