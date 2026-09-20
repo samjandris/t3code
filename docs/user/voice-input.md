@@ -10,6 +10,8 @@ Dictate into the composer, citation comments, diff/file annotations, PR comments
   - **Cloud providers (OpenAI, Grok Voice Transcribe, OpenRouter)**: Configure an API key (or [secret reference](./secrets.md)) on an environment to forward recordings to that provider. OpenRouter lets each user pick a model from its live STT catalog and requests zero data retention.
 - **Mobile (iOS and Android)**: Transcribes on-device by default (iOS 26+ or Android 12+ with compatible Google speech services; first use may download a speech model, then works offline). To transcribe on a paired environment or cloud provider instead, configure **Settings → Voice → Transcribe on**. Keep T3 Code open while dictating on Android.
 
+On the fork's mobile app, choose **ChatGPT** under **Settings → Voice → Transcribe on** and confirm. Open **ChatGPT account** on that page to sign in. ChatGPT receives the recording and a short excerpt of your draft for cleanup. If cleanup fails, the app inserts the raw transcript. An existing sign-in is used on upgrade when no other destination has been saved.
+
 ## Set up a local transcription model
 
 In **Settings → Voice → Transcription**, filter by language, download a model, and select **Use model** (reuses matching files from Handy or the Hugging Face cache, or link an existing file via **Use existing**—Core ML/ONNX/MLX builds aren't supported).

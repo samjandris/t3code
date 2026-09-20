@@ -16,6 +16,7 @@ import {
   rememberMicrophones,
 } from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
+import { getChatGptVoiceTranscriber } from "../dictation/chatgptVoiceTranscriber";
 import { createVoiceRecorder } from "../../native/voiceRecorder";
 import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
@@ -68,7 +69,7 @@ export const localVoiceTranscriberAtom = makePermissionStatusAtom<
 
 const voiceInputAvailableAtom = Atom.make((get) => {
   const route = get(voiceRouteAtom);
-  if (route) return route.transcriber !== null;
+  if (route) return route.kind === "chatgpt" || route.transcriber !== null;
   const transcriber = get(localVoiceTranscriberAtom);
   return transcriber !== null && transcriber !== "checking";
 });
@@ -91,7 +92,7 @@ export const voiceInputAtom = Atom.make((get) => {
     void session.controller.appMovedToBackground();
   });
   const recorder = createLazyVoiceRecorder({
-    getDestination: () => (registry.get(voiceRouteAtom) === null ? "local" : "environment"),
+    getDestination: () => registry.get(voiceRouteAtom)?.kind ?? "local",
     create: (destination) =>
       destination === "local"
         ? createVoiceRecorder(VOICE_RECORDING_OPTIONS)
@@ -122,6 +123,8 @@ export const voiceInputAtom = Atom.make((get) => {
     recorder,
     getTranscriber: () => {
       const route = registry.get(voiceRouteAtom);
+      if (route?.kind === "chatgpt")
+        return getChatGptVoiceTranscriber(session.readDraft()?.text ?? "");
       if (route) return route.transcriber;
       const transcriber = registry.get(localVoiceTranscriberAtom);
       return transcriber === "checking" ? null : transcriber;

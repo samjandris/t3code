@@ -59,7 +59,9 @@ const SETTINGS_SEARCH_TERMS = {
     msg("new line", { $context: "settings search keyword" }),
     msg("hardware keyboard", { $context: "settings search keyword" }),
   ],
+  SettingsDictation: ["ChatGPT", msg("sign in", { $context: "settings search keyword" })],
   SettingsVoice: [
+    "ChatGPT",
     msg("microphone", { $context: "settings search keyword" }),
     msg("dictation", { $context: "settings search keyword" }),
     msg("transcription", { $context: "settings search keyword" }),
