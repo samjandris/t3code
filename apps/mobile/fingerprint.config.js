@@ -22,5 +22,12 @@ module.exports = {
       filePath: "../../native/apple-speech/AppleSpeechEngine.swift",
       reasons: ["appleSpeech"],
     },
+    // Keep the published storage baseline stable after restoring upstream image writers.
+    {
+      type: "contents",
+      id: "composer-storage-baseline",
+      contents: "file-backed-images-v1",
+      reasons: ["Require an embedded file-backed image reader and storage guards"],
+    },
   ],
 };
