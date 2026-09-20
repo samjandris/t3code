@@ -29,7 +29,10 @@ const SETTINGS_SEARCH_TERMS = {
   ],
   SettingsNavigation: ["tabs", "tab order", "reorder", "hide tabs"],
   SettingsKeyboard: ["return key", "send message", "new line", "hardware keyboard"],
+  SettingsDictation: ["ChatGPT account", "sign in"],
   SettingsVoice: [
+    "ChatGPT",
+    "cleanup",
     "microphone",
     "dictation",
     "transcription",

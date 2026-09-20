@@ -1,3 +1,4 @@
+import { SettingsDictationRouteScreen } from "./features/settings/SettingsDictationRouteScreen";
 import { isDraftThreadRoute } from "./features/threads/thread-route-state";
 import { ComponentCatalogScreen } from "./features/development/ComponentCatalogScreen";
 import { PullRequestGuideStopScreen } from "./features/pull-requests/guide/PullRequestGuideScreen";
@@ -265,6 +266,11 @@ const SETTINGS_SCREENS = {
     screen: SettingsKeyboardRouteScreen,
     linking: "settings/keyboard",
     options: settingsPage("Keyboard"),
+  }),
+  SettingsDictation: createNativeStackScreen({
+    screen: SettingsDictationRouteScreen,
+    linking: "settings/dictation",
+    options: settingsPage("ChatGPT account"),
   }),
   SettingsVoice: createNativeStackScreen({
     screen: SettingsVoiceRouteScreen,
