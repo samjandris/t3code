@@ -1,3 +1,8 @@
+import {
+  activityBridgeUrl,
+  activityBridgeRequest,
+  readActivityBridgeSnapshot,
+} from "./activityBridge";
 import { type LiveActivity } from "expo-widgets";
 import {
   configureAndroidAgentNotifications,
@@ -379,7 +384,7 @@ const registerDeviceWithRelay = Effect.fn("remoteRegistration.registerDeviceWith
     return;
   }
   const payload = body;
-  const signature = `${relayConfig.url}|${registrationSignature(payload)}`;
+  const signature = `${activityBridgeUrl ?? relayConfig.url}|${registrationSignature(payload)}`;
   // Android registration also silently replays the current card. Collapse
   // foreground bursts, but repair missed pushes on cold start or a return
   // after time away, just like re-registering an iOS activity token.
@@ -388,6 +393,7 @@ const registerDeviceWithRelay = Effect.fn("remoteRegistration.registerDeviceWith
     (androidDeviceReplayedAt === null ||
       Date.now() - androidDeviceReplayedAt >= ACTIVITY_TOKEN_REREGISTER_INTERVAL_MS);
   if (
+    !activityBridgeUrl &&
     persisted &&
     persisted.identity === identity &&
     persisted.signature === signature &&
@@ -404,10 +410,22 @@ const registerDeviceWithRelay = Effect.fn("remoteRegistration.registerDeviceWith
   logRegistrationDebug("relay device registration request started", {
     expectedGeneration,
   });
-  yield* client.registerDevice({
-    clerkToken: token,
-    payload,
-  });
+  if (activityBridgeUrl) {
+    yield* Effect.tryPromise(() => activityBridgeRequest("/v1/mobile/devices", "POST", payload));
+    yield* client.registerDevice({
+      clerkToken: token,
+      payload: {
+        ...payload,
+        preferences: {
+          ...payload.preferences,
+          liveActivitiesEnabled: false,
+          notificationsEnabled: false,
+        },
+      },
+    });
+  } else {
+    yield* client.registerDevice({ clerkToken: token, payload });
+  }
   if (expectedGeneration !== deviceRegistrationGeneration) {
     // Signed out while the request was in flight: the sign-out path already
     // reset the status and cleared the record for the next account, so a
@@ -453,6 +471,11 @@ const unregisterDeviceWithRelay = Effect.fn("remoteRegistration.unregisterDevice
     }
 
     const client = yield* ManagedRelay.ManagedRelayClient;
+    if (activityBridgeUrl) {
+      yield* Effect.tryPromise(() =>
+        activityBridgeRequest(`/v1/mobile/devices/${encodeURIComponent(input.deviceId)}`, "DELETE"),
+      );
+    }
     yield* client.unregisterDevice({
       clerkToken: token,
       deviceId: input.deviceId,
@@ -549,6 +572,7 @@ const readAgentActivitySnapshot: () => Effect.Effect<
       return null;
     }
     const client = yield* ManagedRelay.ManagedRelayClient;
+    if (activityBridgeUrl) return yield* Effect.tryPromise(readActivityBridgeSnapshot);
     return yield* client.getAgentActivitySnapshot({ clerkToken: token });
   },
   Effect.catch((error) =>
@@ -571,10 +595,13 @@ const registerLiveActivityWithRelay = Effect.fn("remoteRegistration.registerLive
     }
 
     const client = yield* ManagedRelay.ManagedRelayClient;
-    yield* client.registerLiveActivity({
-      clerkToken: token,
-      payload: body,
-    });
+    if (activityBridgeUrl) {
+      yield* Effect.tryPromise(() =>
+        activityBridgeRequest("/v1/mobile/live-activities", "POST", body),
+      );
+    } else {
+      yield* client.registerLiveActivity({ clerkToken: token, payload: body });
+    }
     return true;
   },
 );
