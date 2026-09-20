@@ -11,7 +11,7 @@ export interface AgentActivityAlert {
   readonly body: string;
 }
 
-const TERMINAL_NOTIFICATION_FRESHNESS_MS = 2 * 60 * 1_000;
+export const TERMINAL_NOTIFICATION_FRESHNESS_MS = 2 * 60 * 1_000;
 
 function isFreshTerminalNotification(updatedAt: string, nowMs: number): boolean {
   const timestamp = Option.getOrNull(DateTime.make(updatedAt));
