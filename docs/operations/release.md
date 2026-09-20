@@ -9,6 +9,11 @@ remain stable and nightly. To ship 0.1.0 Beta, use `channel=stable` and
 `version=0.1.0`. Removing the Beta label later is a branding change independent of
 the version.
 
+The fork releases integrated `dev`. Publishing outside GitHub is opt-in through repository variables
+set to `true`: `PUBLISH_CLI_TO_NPM`, `PUBLISH_AUR`, `DEPLOY_HOSTED_WEB`, `DEPLOY_MARKETING`,
+`FINALIZE_STABLE_RELEASE`, and `ANNOUNCE_DISCORD_RELEASES`. Hosted deployments also require the
+fork's own provider credentials and project configuration.
+
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`
@@ -653,8 +658,8 @@ Checklist:
    - preflight passes
    - release quality checks pass
    - `build_bundle` and all platform builds pass
-   - `publish_cli` publishes the exact release version before the release job
    - release job uploads expected files
+   - `publish_cli` publishes the exact release version afterward when `PUBLISH_CLI_TO_NPM` is enabled
 5. Smoke test downloaded artifacts.
 
 ## 5) Troubleshooting
