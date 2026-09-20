@@ -68,9 +68,10 @@ for (const [name, stdout, exitCode] of [
   ["malformed JSON", "{not JSON", 0],
   ["missing token", JSON.stringify({ ...config, clientTracingToken: null }, null, 2), 0],
 ]) {
-  test(`rejects ${name} without writing config`, () => {
+  test(`continues without tracing for ${name}`, () => {
     const result = runStep(stdout, exitCode);
-    assert.notEqual(result.status, 0);
-    assert.equal(result.envFile, undefined);
+    assert.equal(result.status, 0);
+    assert.equal(result.envFile, "");
+    assert.match(result.stdout, /continuing without relay client tracing config/);
   });
 }
