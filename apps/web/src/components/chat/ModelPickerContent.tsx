@@ -62,6 +62,7 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { useIsMobile } from "../../hooks/useMediaQuery";
 
 type ModelPickerItem = {
   slug: string;
@@ -443,6 +444,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const keybindings = providedKeybindings ?? serverKeybindings;
   const [searchHeight, setSearchHeight] = useState(0);
   const toggleFavorite = useToggleEnvironmentModelFavorite(props.environmentId);
+  const isMobile = useIsMobile();
 
   const focusSearchInput = () => {
     searchInputRef.current?.focus({ preventScroll: true });
@@ -456,6 +458,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   };
 
   useLayoutEffect(() => {
+    if (isMobile) {
+      return;
+    }
     focusSearchInput();
     const frame = window.requestAnimationFrame(() => {
       focusSearchInput();
@@ -467,7 +472,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timeout);
     };
-  }, [focusSearchInput]);
+  }, [focusSearchInput, isMobile]);
 
   const toggleLegacySection = (instanceId: ProviderInstanceId) => {
     setExpandedLegacyInstances((expanded) => {
