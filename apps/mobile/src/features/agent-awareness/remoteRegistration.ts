@@ -1,3 +1,8 @@
+import {
+  activityBridgeUrl,
+  activityBridgeRequest,
+  readActivityBridgeSnapshot,
+} from "./activityBridge";
 import { type LiveActivity } from "expo-widgets";
 import {
   configureAndroidAgentNotifications,
@@ -63,6 +68,10 @@ const AgentAwarenessOperation = Schema.Literals([
   "load-live-activity-prime-preferences",
   "prime-live-activity",
   "load-registration-record",
+  "register-bridge-device",
+  "unregister-bridge-device",
+  "read-bridge-snapshot",
+  "register-bridge-activity",
 ]);
 
 export class AgentAwarenessOperationError extends Schema.TaggedError<AgentAwarenessOperationError>()(
@@ -357,7 +366,7 @@ const registerDeviceWithRelay = Effect.fn("remoteRegistration.registerDeviceWith
     return;
   }
   const payload = body;
-  const signature = `${relayConfig.url}|${registrationSignature(payload)}`;
+  const signature = `${activityBridgeUrl ?? relayConfig.url}|${registrationSignature(payload)}`;
   // Android registration also silently replays the current card. Collapse
   // foreground bursts, but repair missed pushes on cold start or a return
   // after time away, just like re-registering an iOS activity token.
@@ -367,6 +376,7 @@ const registerDeviceWithRelay = Effect.fn("remoteRegistration.registerDeviceWith
     (androidDeviceReplayedAt === null ||
       now - androidDeviceReplayedAt >= ACTIVITY_TOKEN_REREGISTER_INTERVAL_MS);
   if (
+    !activityBridgeUrl &&
     persisted &&
     persisted.identity === identity &&
     persisted.signature === signature &&
@@ -377,10 +387,26 @@ const registerDeviceWithRelay = Effect.fn("remoteRegistration.registerDeviceWith
   }
 
   const client = yield* ManagedRelay.ManagedRelayClient;
-  yield* client.registerDevice({
-    clerkToken: token,
-    payload,
-  });
+  if (activityBridgeUrl) {
+    yield* Effect.tryPromise({
+      try: () => activityBridgeRequest("/v1/mobile/devices", "POST", payload),
+      catch: (cause) =>
+        new AgentAwarenessOperationError({ operation: "register-bridge-device", cause }),
+    });
+    yield* client.registerDevice({
+      clerkToken: token,
+      payload: {
+        ...payload,
+        preferences: {
+          ...payload.preferences,
+          liveActivitiesEnabled: false,
+          notificationsEnabled: false,
+        },
+      },
+    });
+  } else {
+    yield* client.registerDevice({ clerkToken: token, payload });
+  }
   if (expectedGeneration !== deviceRegistrationGeneration) {
     // Signed out while the request was in flight: the sign-out path already
     // reset the status and cleared the record for the next account, so a
@@ -418,6 +444,17 @@ const unregisterDeviceWithRelay = Effect.fn("remoteRegistration.unregisterDevice
     }
 
     const client = yield* ManagedRelay.ManagedRelayClient;
+    if (activityBridgeUrl) {
+      yield* Effect.tryPromise({
+        try: () =>
+          activityBridgeRequest(
+            `/v1/mobile/devices/${encodeURIComponent(input.deviceId)}`,
+            "DELETE",
+          ),
+        catch: (cause) =>
+          new AgentAwarenessOperationError({ operation: "unregister-bridge-device", cause }),
+      });
+    }
     yield* client.unregisterDevice({
       clerkToken: token,
       deviceId: input.deviceId,
@@ -508,6 +545,12 @@ const readAgentActivitySnapshot: () => Effect.Effect<
       return null;
     }
     const client = yield* ManagedRelay.ManagedRelayClient;
+    if (activityBridgeUrl)
+      return yield* Effect.tryPromise({
+        try: readActivityBridgeSnapshot,
+        catch: (cause) =>
+          new AgentAwarenessOperationError({ operation: "read-bridge-snapshot", cause }),
+      });
     return yield* client.getAgentActivitySnapshot({ clerkToken: token });
   },
   Effect.catch((error) =>
@@ -529,10 +572,15 @@ const registerLiveActivityWithRelay = Effect.fn("remoteRegistration.registerLive
     }
 
     const client = yield* ManagedRelay.ManagedRelayClient;
-    yield* client.registerLiveActivity({
-      clerkToken: token,
-      payload: body,
-    });
+    if (activityBridgeUrl) {
+      yield* Effect.tryPromise({
+        try: () => activityBridgeRequest("/v1/mobile/live-activities", "POST", body),
+        catch: (cause) =>
+          new AgentAwarenessOperationError({ operation: "register-bridge-activity", cause }),
+      });
+    } else {
+      yield* client.registerLiveActivity({ clerkToken: token, payload: body });
+    }
     return true;
   },
 );
@@ -683,7 +731,12 @@ const registerDevice = Effect.fn("remoteRegistration.registerDevice")(function* 
       appVersion: Constants.expoConfig?.version,
       ...(bundleId ? { bundleId } : {}),
       ...(Platform.OS === "ios"
-        ? { apsEnvironment: resolveApsEnvironment(Constants.expoConfig?.extra?.appVariant) }
+        ? {
+            apsEnvironment: resolveApsEnvironment(
+              Constants.expoConfig?.extra?.appVariant,
+              Constants.expoConfig?.extra?.iosDevelopmentSigning,
+            ),
+          }
         : {}),
       ...(pushTokenRegistration.pushToken ? { pushToken: pushTokenRegistration.pushToken } : {}),
       notificationsEnabled: pushTokenRegistration.notificationsEnabled,
