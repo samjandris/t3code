@@ -58,9 +58,13 @@ export class VoiceInputSession {
         }
         dependencies.onStateChange(state);
       },
-      readDraft: () => this.target?.readDraft() ?? null,
+      readDraft: () => this.readDraft(),
       commitDraft: (text, selection) => this.target?.commitDraft(text, selection),
     });
+  }
+
+  readDraft(): VoiceDraftSnapshot | null {
+    return this.target?.readDraft() ?? null;
   }
 
   get ownerKey(): string | null {
