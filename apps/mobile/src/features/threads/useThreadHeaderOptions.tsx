@@ -110,6 +110,12 @@ export function useThreadHeaderOptions(props: {
   };
   return {
     options,
+    // NativeStackScreenOptions stabilizes factories. Include their menu data so
+    // arriving Git status and action-state changes also refresh the native menu.
+    optionsVersion: [
+      layout.usesSplitView ? splitLeftHeaderItems : canGoBack ? undefined : compactHomeHeaderItems,
+      layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems,
+    ],
     sidebar: false,
     fallback:
       !layout.usesSplitView && !props.usesNativeHeaderGlass ? (

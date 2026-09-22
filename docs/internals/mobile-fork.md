@@ -54,6 +54,19 @@ entitlements use one team. The Personal Team mode is only a reduced-capability f
 the widget, share extension, push, App Group, and native Apple sign-in capabilities rather than
 pretending they can be signed.
 
+## Temporary native thread Git menu fix
+
+`useThreadHeaderOptions` passes the visible header item arrays through `optionsVersion` to
+`NativeStackScreenOptions`. Its stabilized factories otherwise hide arriving Git status from the
+options signature, leaving the initial unavailable action in the iPhone or split-view menu until
+another navigation update. Keep the existing status subscription and refresh behavior.
+
+[Upstream PR #6607](https://github.com/pingdotgg/t3code/pull/6607) proposed the same invalidation fix
+but was closed without merging. Remove this isolated fork commit and this section when upstream
+refreshes these menus from their current data. Verify opening a thread before status arrives,
+then reopening its branch menu without visiting a submenu. Also check action disabled states after
+a Git operation and the split-view header. Equivalent rerenders must still avoid a `setOptions` loop.
+
 ## Image attachments
 
 Keep upstream's bounded native photo conversion in `composerImages.ts`. Do not restore the old
