@@ -14,9 +14,13 @@ to keep a large paste editable in the composer instead.
 
 ## Attach files
 
-Attach up to eight files per message. Images can be up to 10 MB; other files can
-be up to 50 MB, subject to the environment's upload support and limit. The agent
-receives them on the environment's machine.
+Attach up to 100 files per message. Each image can be up to 10 MiB, with at most
+80 MiB of images in one message. Other files, including videos, can be up to
+50 MiB each, subject to the environment's upload support and limit. The agent
+receives them on the environment's machine. Provider and model limits still
+apply, including images already in the conversation. A video attachment gives
+the agent a file path; it does not enable native video input. Antigravity does
+not accept video attachments.
 
 Uploads begin when you add an attachment. All uploads must finish before the
 message can send. Retry or remove a failed upload. On web and desktop, reloading
@@ -26,6 +30,10 @@ You can drag or paste images into the web or desktop composer. HEIC and HEIF
 photos are converted to JPEG there and when selected from the mobile photo
 library; photos over the image limit are also resized to fit. On mobile, you can
 also send files to T3 Code through another app's system share sheet.
+
+On mobile, videos over the attachment limit are compressed before being attached.
+You can watch progress or cancel without changing the original video. If the
+compressed copy is still too large, trim the video and attach it again.
 
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 

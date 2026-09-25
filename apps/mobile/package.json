@@ -49,7 +49,6 @@
     "@clerk/expo": "catalog:",
     "@effect/atom-react": "catalog:",
     "@expo-google-fonts/dm-sans": "^0.4.2",
-    "@expo/metro-runtime": "~57.0.14",
     "@expo/ui": "~57.0.14",
     "@legendapp/list": "catalog:",
     "@material/material-color-utilities": "0.3.0",
@@ -112,6 +111,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
+    "react-native-compressor": "2.0.3",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-image-viewing": "^0.2.2",
     "react-native-keyboard-controller": "1.21.13",
@@ -137,9 +137,6 @@
     "tailwindcss": "^4.0.0",
     "typescript": "catalog:"
   },
-  "overrides": {
-    "react-native-nitro-markdown": "file:deps/react-native-nitro-markdown-0.5.0.tgz"
-  },
   "expo": {
     "install": {
       "exclude": [
@@ -148,6 +145,7 @@
     },
     "autolinking": {
       "buildFromSource": [
+        "expo-image-manipulator",
         "expo-notifications",
         "react-native-screens",
         "react-native-reanimated",
