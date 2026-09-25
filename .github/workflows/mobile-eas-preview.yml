@@ -1,19 +1,16 @@
 name: Mobile EAS Preview
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, labeled]
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-eas-preview-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   preview:
     name: EAS Preview
-    if: |
-      contains(github.event.pull_request.labels.*.name, '🚀 Mobile Continuous Deployment') &&
-      (github.event.action != 'labeled' || github.event.label.name == '🚀 Mobile Continuous Deployment')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    concurrency:
-      group: mobile-eas-preview-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write
@@ -78,7 +75,19 @@ jobs:
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas env:pull preview --non-interactive
+        run: |
+          eas env:pull preview --non-interactive
+          # EAS Update disables dotenv loading. Keep the downloaded native config
+          # in its process environment so Android build and OTA fingerprints match.
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          import { parseEnv } from "node:util";
+          const env = parseEnv(readFileSync(".env.local", "utf8"));
+          const googleServicesFile = env.T3CODE_ANDROID_GOOGLE_SERVICES_FILE;
+          if (googleServicesFile) {
+            appendFileSync(process.env.GITHUB_ENV, `T3CODE_ANDROID_GOOGLE_SERVICES_FILE=${googleServicesFile}\n`);
+          }
+          NODE
 
       - name: Deploy with fingerprint check
         if: steps.expo-token.outputs.present == 'true'
@@ -86,9 +95,9 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         with:
-          profile: preview:dev
-          branch: pr-${{ github.event.pull_request.number }}
-          platform: all
+          profile: preview
+          branch: preview
+          platform: ios
           environment: preview
           working-directory: apps/mobile
           github-token: ${{ secrets.GITHUB_TOKEN }}
