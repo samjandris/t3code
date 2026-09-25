@@ -1,3 +1,4 @@
+import { useVideoCompression } from "../lib/useVideoCompression";
 import { SymbolView } from "../components/AppSymbol";
 import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
@@ -25,6 +26,7 @@ import {
 } from "../state/composer-attachment-uploads";
 
 export interface ComposerAttachmentStripProps {
+  readonly compressionOwnerKey?: string | undefined;
   readonly environmentId?: EnvironmentId;
   /** Attachments to display. */
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
@@ -62,19 +64,48 @@ type ComposerAttachmentThumbnailProps = {
 
 export function ComposerAttachmentThumbnail(props: ComposerAttachmentThumbnailProps) {
   const upload = useComposerAttachmentUploadState(props.environmentId, props.attachment.id);
+  const compression = useVideoCompression();
+  const compressing = compression?.attachment.id === props.attachment.id ? compression : null;
+  const compressed = props.attachment.type === "file" && props.attachment.wasCompressed === true;
+  const progress = compressing
+    ? compressing.progress / 2
+    : upload?.status === "uploading"
+      ? compressed
+        ? 0.5 + upload.progress / 2
+        : upload.progress
+      : 0.5;
+  const percentage = Math.floor(progress * 100);
+  const phase = compressing ? "Compressing" : "Uploading";
+  const showProgress =
+    compressing !== null ||
+    (upload
+      ? upload.status !== "ready"
+      : compressed && props.attachment.uploadedAttachmentId === undefined);
   return (
     <View style={{ width: props.size, height: props.size }}>
-      <ComposerAttachmentContent {...props} />
-      {upload && upload.status !== "ready" ? (
+      {compressing ? (
+        <VideoAttachmentTile
+          name={compressing.attachment.name}
+          sourceIdentifier={`draft:${compressing.attachment.id}`}
+          thumbnailSource={compressing.attachment.fileUri}
+          compact={props.compact}
+          disabled
+          onPress={() => undefined}
+          style={{ width: props.size, height: props.size, borderRadius: props.borderRadius }}
+        />
+      ) : (
+        <ComposerAttachmentContent {...props} />
+      )}
+      {showProgress ? (
         <Pressable
-          accessibilityRole={upload.status === "failed" ? "button" : "text"}
+          accessibilityRole={upload?.status === "failed" ? "button" : "text"}
           accessibilityLabel={
-            upload.status === "failed"
+            upload?.status === "failed"
               ? `Retry uploading ${props.attachment.name}`
-              : `Uploading ${props.attachment.name}, ${Math.floor(upload.progress * 100)}%`
+              : `${phase} ${props.attachment.name}, ${percentage}%`
           }
-          accessibilityHint={upload.status === "failed" ? upload.reason : undefined}
-          disabled={upload.status !== "failed"}
+          accessibilityHint={upload?.status === "failed" ? upload.reason : undefined}
+          disabled={upload?.status !== "failed"}
           onPress={() =>
             props.environmentId &&
             retryComposerAttachmentUpload(props.environmentId, props.attachment.id)
@@ -82,14 +113,14 @@ export function ComposerAttachmentThumbnail(props: ComposerAttachmentThumbnailPr
           className="absolute bottom-0.5 left-0.5 flex-row items-center gap-0.5 rounded-full bg-black/70 px-1 py-0.5"
         >
           <SymbolView
-            name={upload.status === "failed" ? "arrow.clockwise" : "arrow.up"}
+            name={upload?.status === "failed" ? "arrow.clockwise" : "arrow.up"}
             size={props.compact ? 8 : 10}
             tintColor="#ffffff"
             type="monochrome"
           />
           {!props.compact ? (
             <Text className="text-2xs text-white">
-              {upload.status === "failed" ? "Retry" : `${Math.floor(upload.progress * 100)}%`}
+              {upload?.status === "failed" ? "Retry" : `${percentage}%`}
             </Text>
           ) : null}
         </Pressable>
@@ -332,12 +363,22 @@ function ComposerVideoAttachment(props: {
  * Attachment thumbnails used by the thread composer and the new-task draft screen.
  */
 export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
+  const active = useVideoCompression();
+  const compression =
+    props.compressionOwnerKey !== undefined && active?.ownerKey === props.compressionOwnerKey
+      ? active
+      : null;
+  const attachments =
+    compression &&
+    !props.attachments.some((attachment) => attachment.id === compression.attachment.id)
+      ? [...props.attachments, compression.attachment]
+      : props.attachments;
   const size = props.imageSize ?? 72;
   const radius = props.imageBorderRadius ?? 16;
   const removeButtonPlacement = props.removeButtonPlacement ?? "overlay";
   const removeButtonGutter = removeButtonPlacement === "gutter" ? 10 : 0;
 
-  if (props.attachments.length === 0) {
+  if (attachments.length === 0) {
     return null;
   }
 
@@ -349,7 +390,7 @@ export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
       className="grow-0"
     >
       <View className="flex-row gap-2.5">
-        {props.attachments.map((attachment) => (
+        {attachments.map((attachment) => (
           <View
             key={attachment.id}
             className="relative"
@@ -374,7 +415,13 @@ export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
                 right: removeButtonPlacement === "gutter" ? 0 : 4,
               }}
               hitSlop={6}
-              onPress={() => props.onRemove(attachment.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${attachment.name}`}
+              onPress={() =>
+                compression?.attachment.id === attachment.id
+                  ? compression.cancel()
+                  : props.onRemove(attachment.id)
+              }
             >
               <SymbolView
                 name="xmark"

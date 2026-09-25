@@ -60,6 +60,19 @@ vi.mock("./androidNotifications", () => ({
   clearAndroidAgentNotifications: vi.fn(),
 }));
 
+const bridgeMock = vi.hoisted(() => ({
+  url: undefined as string | undefined,
+  request: vi.fn(async () => ({ ok: true })),
+  snapshot: vi.fn(async () => ({ aggregate: null })),
+}));
+vi.mock("./activityBridge", () => ({
+  get activityBridgeUrl() {
+    return bridgeMock.url;
+  },
+  activityBridgeRequest: bridgeMock.request,
+  readActivityBridgeSnapshot: bridgeMock.snapshot,
+}));
+
 const secureStore = vi.hoisted(() => new Map<string, string>());
 const widgetMocks = vi.hoisted(() => ({
   getInstances: vi.fn(() => []),
@@ -256,6 +269,9 @@ const runBackgroundOperations = Effect.fn("TestRemoteRegistration.runBackgroundO
 describe("makeRelayDeviceRegistrationRequest", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    bridgeMock.url = undefined;
+    bridgeMock.request.mockReset();
+    bridgeMock.request.mockResolvedValue({ ok: true });
     vi.mocked(Notifications.getDevicePushTokenAsync).mockResolvedValue({
       type: "ios",
       data: "apns-token",
@@ -276,6 +292,78 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     widgetMocks.getInstances.mockReturnValue([]);
     widgetMocks.start.mockClear();
     environmentConfigsMock.configs.clear();
+  });
+
+  it.effect("routes both push types privately and disables upstream delivery", () => {
+    bridgeMock.url = "https://helper.example.test";
+    Constants.expoConfig!.extra = { relay: { url: "https://relay.example.test/" } };
+    const relayRequests: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        relayRequests.push({
+          url: request.url,
+          body: request.url.endsWith("/v1/mobile/devices") ? await request.json() : null,
+        });
+        return new Response(
+          JSON.stringify(
+            request.url.includes("/dpop-token")
+              ? {
+                  access_token: "relay-access-token",
+                  issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+                  token_type: "DPoP",
+                  expires_in: 300,
+                  scope: "mobile:registration",
+                }
+              : { ok: true },
+          ),
+        );
+      }),
+    );
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+    return Effect.gen(function* () {
+      yield* runBackgroundOperations();
+      yield* refreshAgentAwarenessRegistration();
+      const activity = {
+        getPushToken: async () => "private-activity-token",
+        addPushTokenListener: vi.fn(),
+      };
+      expect(yield* registerLiveActivityPushToken({ activity: activity as never })).toBe(true);
+      expect(bridgeMock.request).toHaveBeenCalledWith("/v1/mobile/live-activities", "POST", {
+        deviceId: "device-1",
+        activityPushToken: "private-activity-token",
+      });
+      expect(bridgeMock.request).toHaveBeenCalledWith(
+        "/v1/mobile/devices",
+        "POST",
+        expect.objectContaining({
+          pushToken: expect.any(String),
+          preferences: expect.objectContaining({ notificationsEnabled: true }),
+        }),
+      );
+      const upstream = relayRequests.filter((request) =>
+        request.url.endsWith("/v1/mobile/devices"),
+      );
+      expect(upstream.length).toBeGreaterThan(0);
+      expect(upstream.at(-1)?.body).toMatchObject({
+        preferences: { liveActivitiesEnabled: false, notificationsEnabled: false },
+      });
+      expect(
+        relayRequests.some((request) => request.url.endsWith("/v1/mobile/live-activities")),
+      ).toBe(false);
+      yield* updateAgentAwarenessRegistrationPreferences({ liveActivitiesEnabled: false });
+      expect(bridgeMock.request).toHaveBeenCalledWith(
+        "/v1/mobile/devices",
+        "POST",
+        expect.objectContaining({
+          preferences: expect.objectContaining({ liveActivitiesEnabled: false }),
+        }),
+      );
+    }).pipe(
+      Effect.provideService(FetchHttpClient.Fetch, globalThis.fetch),
+      Effect.provide(relayTestLayer),
+    );
   });
 
   it("preserves disabled Live Activity preferences in relay registrations", () => {
@@ -900,56 +988,64 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     },
   );
 
-  it("skips the Live Activity seed when the environment reports publishing disabled", async () => {
-    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
-    vi.mocked(loadPreferences).mockResolvedValueOnce({
-      liveActivitiesEnabled: true,
-    } as Preferences);
-    environmentConfigsMock.configs.set("env-1", {
-      environment: { capabilities: { agentActivityPublishing: false } },
-    });
+  it.each([undefined, "https://helper.example.test"])(
+    "skips disabled publishing with helper %s",
+    async (helperUrl) => {
+      bridgeMock.url = helperUrl;
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+      vi.mocked(loadPreferences).mockResolvedValueOnce({
+        liveActivitiesEnabled: true,
+      } as Preferences);
+      environmentConfigsMock.configs.set("env-1", {
+        environment: { capabilities: { agentActivityPublishing: false } },
+      });
 
-    armAgentAwarenessLiveActivityForLocalWork({
-      environmentId: "env-1" as EnvironmentId,
-      threadTitle: "Fix the flaky test",
-      projectTitle: "t3code",
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      armAgentAwarenessLiveActivityForLocalWork({
+        environmentId: "env-1" as EnvironmentId,
+        threadTitle: "Fix the flaky test",
+        projectTitle: "t3code",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(widgetMocks.start).not.toHaveBeenCalled();
-  });
+      expect(widgetMocks.start).not.toHaveBeenCalled();
+    },
+  );
 
-  it("seeds the Live Activity for publishing and pre-capability environments", async () => {
-    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
-    environmentConfigsMock.configs.set("env-publishing", {
-      environment: { capabilities: { agentActivityPublishing: true } },
-    });
+  it.each([undefined, "https://helper.example.test"])(
+    "seeds publishing environments across boxes with helper %s",
+    async (helperUrl) => {
+      bridgeMock.url = helperUrl;
+      setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+      environmentConfigsMock.configs.set("env-publishing", {
+        environment: { capabilities: { agentActivityPublishing: true } },
+      });
 
-    vi.mocked(loadPreferences).mockResolvedValueOnce({
-      liveActivitiesEnabled: true,
-    } as Preferences);
-    armAgentAwarenessLiveActivityForLocalWork({
-      environmentId: "env-publishing" as EnvironmentId,
-      threadTitle: "Fix the flaky test",
-      projectTitle: "t3code",
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(widgetMocks.start).toHaveBeenCalledTimes(1);
+      vi.mocked(loadPreferences).mockResolvedValueOnce({
+        liveActivitiesEnabled: true,
+      } as Preferences);
+      armAgentAwarenessLiveActivityForLocalWork({
+        environmentId: "env-publishing" as EnvironmentId,
+        threadTitle: "Fix the flaky test",
+        projectTitle: "t3code",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(widgetMocks.start).toHaveBeenCalledTimes(1);
 
-    // An environment without the capability may run an older server that
-    // still publishes; only an explicit false skips the seed.
-    widgetMocks.start.mockClear();
-    vi.mocked(loadPreferences).mockResolvedValueOnce({
-      liveActivitiesEnabled: true,
-    } as Preferences);
-    armAgentAwarenessLiveActivityForLocalWork({
-      environmentId: "env-pre-capability" as EnvironmentId,
-      threadTitle: "Fix the flaky test",
-      projectTitle: "t3code",
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(widgetMocks.start).toHaveBeenCalledTimes(1);
-  });
+      // An environment without the capability may run an older server that
+      // still publishes; only an explicit false skips the seed.
+      widgetMocks.start.mockClear();
+      vi.mocked(loadPreferences).mockResolvedValueOnce({
+        liveActivitiesEnabled: true,
+      } as Preferences);
+      armAgentAwarenessLiveActivityForLocalWork({
+        environmentId: "env-pre-capability" as EnvironmentId,
+        threadTitle: "Fix the flaky test",
+        projectTitle: "t3code",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(widgetMocks.start).toHaveBeenCalledTimes(1);
+    },
+  );
   for (const os of ["ios", "android"] as const) {
     it.effect(
       `does not enable ${os} notifications when a token rotates after permission is revoked`,

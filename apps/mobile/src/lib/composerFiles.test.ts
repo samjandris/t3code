@@ -81,6 +81,12 @@ vi.mock("expo-file-system", () => {
 });
 
 vi.mock("expo-image-picker", () => ({ launchImageLibraryAsync: mocks.pickMedia }));
+vi.mock("react-native-compressor", () => ({
+  Video: { compress: async (uri: string) => uri },
+  getVideoMetaData: async () => {
+    throw new Error("metadata unavailable");
+  },
+}));
 vi.mock("expo-document-picker", () => ({ getDocumentAsync: mocks.pickFile }));
 vi.mock("expo-image-manipulator", () => ({
   SaveFormat: { JPEG: "jpeg", PNG: "png", WEBP: "webp" },
@@ -458,13 +464,15 @@ describe("composer file attachments", () => {
           canceled: false,
           assets: [{ ...video, fileSize: reported }, image],
         });
-        mocks.size.mockImplementation((uri: string) => (uri.endsWith("clip.mov") ? stored : 3));
+        mocks.size.mockImplementation((uri: string) =>
+          uri === video.uri ? Math.max(reported, stored) : uri.endsWith("clip.mov") ? stored : 3,
+        );
 
         const result = await pickComposerMedia({ existingCount: 0, maxVideoBytes: limit });
 
         expect(result).toEqual({
           attachments: [expect.objectContaining({ type: "image" })],
-          error,
+          error: stored === 0 ? error : `${error} Trim the video and try again.`,
         });
         if (stored === 0) {
           expect(mocks.delete).toHaveBeenCalledWith(
