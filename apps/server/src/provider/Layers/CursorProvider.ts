@@ -499,6 +499,7 @@ const makeCursorAcpProbeRuntime = (
   environment?: NodeJS.ProcessEnv,
 ) =>
   Effect.gen(function* () {
+    const spawnEnv = environment ?? process.env;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const acpContext = yield* Layer.build(
       AcpSessionRuntime.layer({
@@ -509,7 +510,10 @@ const makeCursorAcpProbeRuntime = (
             "acp",
           ],
           cwd: process.cwd(),
-          ...(environment ? { env: environment } : {}),
+          env: {
+            ...spawnEnv,
+            RAYON_NUM_THREADS: spawnEnv.RAYON_NUM_THREADS ?? "1",
+          },
         },
         cwd: process.cwd(),
         clientInfo: { name: "t3-code-provider-probe", version: "0.0.0" },
