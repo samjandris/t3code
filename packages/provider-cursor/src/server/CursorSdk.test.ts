@@ -94,7 +94,7 @@ function runProbe(mode: string): Promise<{ code: number | null; stdout: string; 
         probeProgram,
         mode,
       ],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: new URL("../../", import.meta.url), stdio: ["ignore", "pipe", "pipe"] },
     );
     let stdout = "";
     let stderr = "";
