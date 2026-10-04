@@ -1,3 +1,5 @@
+import { useIsVideoCompressing } from "../../lib/useVideoCompression";
+import { isVideoCompressing } from "../../lib/composerVideo";
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -32,6 +34,7 @@ import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
+import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
 
 import {
   ComposerEditor,
@@ -102,7 +105,7 @@ import {
   type ComposerDraft,
   waitForComposerDraftsLoaded,
 } from "../../state/use-composer-drafts";
-import { useEnvironmentServerConfig, useProjects } from "../../state/entities";
+import { useEnvironmentServerConfig, useProjects, useThreadShells } from "../../state/entities";
 import { useProjectClone } from "../../state/projectClones";
 import { projectEnvironment } from "../../state/projects";
 import { sourceControlEnvironment } from "../../state/sourceControl";
@@ -112,7 +115,6 @@ import {
   isModelSelectionUnavailable,
   resolveSelectableModelSelection,
 } from "../../lib/modelOptions";
-import { deriveThreadTitleFromPrompt } from "../../lib/projectThreadStartTurn";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
@@ -132,30 +134,40 @@ import { fileRoutePathSegments } from "../files/filePath";
 function NewTaskWorkspaceIcon(props: {
   readonly workspaceMode: "local" | "worktree";
   readonly worktreePath: string | null;
+  readonly size: number;
 }) {
   if (props.workspaceMode === "local" && props.worktreePath === null) {
     return (
       <SymbolView
         name="folder"
-        size={16}
+        size={props.size}
         tintColorClassName="accent-icon-muted"
         type="monochrome"
       />
     );
   }
 
+  const boxSize = (14 * props.size) / 16;
   return (
-    <View className="size-4">
+    <View
+      className="size-4"
+      style={Platform.OS === "android" ? { width: boxSize, height: boxSize } : undefined}
+    >
       <SymbolView
         name="folder"
-        size={16}
+        size={props.size}
         tintColorClassName="accent-icon-muted"
         type="monochrome"
       />
-      <View className="absolute -right-1 -bottom-1">
+      <View
+        className="absolute -right-1 -bottom-1"
+        style={
+          Platform.OS === "android" ? { right: -boxSize / 4, bottom: -boxSize / 4 } : undefined
+        }
+      >
         <SymbolView
           name="arrow.triangle.branch"
-          size={9}
+          size={Math.round((9 * props.size) / 16)}
           tintColorClassName="accent-icon-muted"
           type="monochrome"
         />
@@ -180,6 +192,7 @@ export function NewTaskDraftScreen(props: {
   /** Durable native share inbox item to merge into this project draft. */
   readonly incomingShareId?: string;
 }) {
+  const compressingVideo = useIsVideoCompressing();
   const projects = useProjects();
   const flow = useNewTaskFlow();
   const navigation = useNavigation();
@@ -447,6 +460,7 @@ export function NewTaskDraftScreen(props: {
     draftMessage: flow.prompt,
     ownerKey: flow.draftKey,
     environmentId: selectedProject?.environmentId ?? null,
+    threadShells: useThreadShells(),
     pullRequestProjectId: selectedEnvironmentServerConfig?.environment.capabilities.pullRequests
       ? (selectedProject?.id ?? null)
       : null,
@@ -995,6 +1009,7 @@ export function NewTaskDraftScreen(props: {
     const capabilities = selectedEnvironmentServerConfig?.environment.capabilities;
     const insertion = flow.draftKey ? captureComposerDraftInsertion(flow.draftKey) : undefined;
     const result = await pickComposerMedia({
+      ownerKey: flow.draftKey ?? undefined,
       existingCount:
         flow.draftKey && insertion
           ? countComposerDraftAttachmentsAfterSelection(flow.draftKey, insertion)
@@ -1029,6 +1044,7 @@ export function NewTaskDraftScreen(props: {
     }
     const insertion = flow.draftKey ? captureComposerDraftInsertion(flow.draftKey) : undefined;
     const result = await pickComposerFiles({
+      ownerKey: flow.draftKey ?? undefined,
       existingCount:
         flow.draftKey && insertion
           ? countComposerDraftAttachmentsAfterSelection(flow.draftKey, insertion)
@@ -1170,7 +1186,12 @@ export function NewTaskDraftScreen(props: {
   );
 
   async function handleStart(): Promise<void> {
-    if (voiceInput.blocksSubmission || pendingPastedTextAttachmentCountRef.current > 0) return;
+    if (
+      isVideoCompressing() ||
+      voiceInput.blocksSubmission ||
+      pendingPastedTextAttachmentCountRef.current > 0
+    )
+      return;
     const selectedProject = flow.selectedProject;
     const draftKey = flow.draftKey;
     if (!selectedProject || !draftKey) {
@@ -1271,7 +1292,10 @@ export function NewTaskDraftScreen(props: {
       // finds no work and ends the card within seconds.
       armAgentAwarenessLiveActivityForLocalWork({
         environmentId: selectedProject.environmentId,
-        threadTitle: deriveThreadTitleFromPrompt(initialMessageText),
+        threadTitle: deriveThreadTitleSeed({
+          text: initialMessageText,
+          attachments: draft.attachments,
+        }),
         projectTitle: selectedProject.title,
       });
     }
@@ -1335,6 +1359,7 @@ export function NewTaskDraftScreen(props: {
 
   const isAndroid = Platform.OS === "android";
   const canStart =
+    !compressingVideo &&
     !isImportingContext &&
     !cloneBlocksStart &&
     attachmentBlockReason === null &&
@@ -1445,7 +1470,49 @@ export function NewTaskDraftScreen(props: {
     navigation.dispatch(StackActions.push(routeName));
   };
 
-  const hero = (
+  const environmentControl = (
+    <ComposerInlineControl
+      accessibilityLabel={`Environment: ${selectedEnvironmentLabel}`}
+      chevronDirection="right"
+      disabled={isComposerInteractionLocked || voiceInput.isBusy}
+      renderIcon={(size) => (
+        <EnvironmentMachineSymbol
+          kind={resolveEnvironmentMachineKind(selectedEnvironmentServerConfig)}
+          size={size}
+          tintColorClassName="accent-icon-muted"
+        />
+      )}
+      label={`on ${selectedEnvironmentLabel}`}
+      maxWidth={flow.isScratchDraft ? 170 : 260}
+      onPress={
+        flow.environments.length > 1 ? () => openContextPicker("NewTaskEnvironment") : undefined
+      }
+      showChevron={flow.environments.length > 1}
+      static={flow.environments.length <= 1}
+    />
+  );
+  // A thread without a project has no project to name, so it asks plainly,
+  // like web, and puts the project picker beside the machine as a control.
+  const hero = flow.isScratchDraft ? (
+    <View className="items-center gap-2 px-6" testID="new-task-hero">
+      <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
+        What should we work on?
+      </Text>
+      {/* Wraps onto two lines only when a long machine name leaves no room. */}
+      <View className="flex-row flex-wrap items-center justify-center gap-x-1">
+        <ComposerInlineControl
+          accessibilityHint="Opens the project picker"
+          accessibilityLabel="Choose a project"
+          chevronDirection="right"
+          disabled={isComposerInteractionLocked}
+          icon="folder"
+          label="Choose a project"
+          onPress={chooseProject}
+        />
+        {environmentControl}
+      </View>
+    </View>
+  ) : (
     <View className="items-center gap-6 px-6" testID="new-task-hero">
       <View className="w-full items-center gap-1.5">
         <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
@@ -1455,7 +1522,7 @@ export function NewTaskDraftScreen(props: {
           <Text className="text-2xl font-t3-medium tracking-tight text-foreground">in </Text>
           <Pressable
             accessibilityHint="Opens the project picker"
-            accessibilityLabel={`Change project from ${selectedProject.title}`}
+            accessibilityLabel={selectedProject.title}
             accessibilityRole="button"
             disabled={isComposerInteractionLocked}
             onPress={chooseProject}
@@ -1472,25 +1539,7 @@ export function NewTaskDraftScreen(props: {
         </View>
       </View>
 
-      <ComposerInlineControl
-        accessibilityLabel={`Environment: ${selectedEnvironmentLabel}`}
-        chevronDirection="right"
-        disabled={isComposerInteractionLocked || voiceInput.isBusy}
-        iconNode={
-          <EnvironmentMachineSymbol
-            kind={resolveEnvironmentMachineKind(selectedEnvironmentServerConfig)}
-            size={16}
-            tintColorClassName="accent-icon-muted"
-          />
-        }
-        label={`on ${selectedEnvironmentLabel}`}
-        maxWidth={260}
-        onPress={
-          flow.environments.length > 1 ? () => openContextPicker("NewTaskEnvironment") : undefined
-        }
-        showChevron={flow.environments.length > 1}
-        static={flow.environments.length <= 1}
-      />
+      {environmentControl}
     </View>
   );
   const heroViewport = (
@@ -1517,12 +1566,13 @@ export function NewTaskDraftScreen(props: {
         accessibilityHint={`Switches to ${flow.workspaceMode === "local" ? "a new worktree" : "the current checkout"}`}
         accessibilityLabel={workspaceLabel}
         disabled={isComposerInteractionLocked || voiceInput.isBusy}
-        iconNode={
+        renderIcon={(size) => (
           <NewTaskWorkspaceIcon
             workspaceMode={flow.workspaceMode}
             worktreePath={flow.selectedWorktreePath}
+            size={size}
           />
-        }
+        )}
         label={workspaceLabel}
         maxWidth={flow.workspaceMode === "local" ? 220 : 148}
         onPress={() => flow.setWorkspaceMode(flow.workspaceMode === "local" ? "worktree" : "local")}
@@ -1587,7 +1637,7 @@ export function NewTaskDraftScreen(props: {
           />
         </View>
       ) : null}
-      <View className="pb-1">{workspaceControls}</View>
+      {flow.canChooseWorkspace ? <View className="pb-1">{workspaceControls}</View> : null}
 
       {modelUnavailable ? (
         <Pressable
@@ -1609,9 +1659,10 @@ export function NewTaskDraftScreen(props: {
           paddingTop: 14,
         }}
       >
-        {stripAttachments.length > 0 ? (
+        {stripAttachments.length > 0 || compressingVideo ? (
           <View className="px-[14px] pb-2.5">
             <ComposerAttachmentStrip
+              compressionOwnerKey={flow.draftKey ?? undefined}
               environmentId={selectedProject.environmentId}
               attachments={stripAttachments}
               imageBorderRadius={16}
@@ -1681,12 +1732,13 @@ export function NewTaskDraftScreen(props: {
                         accessibilityLabel="Model and reasoning settings"
                         disabled={isComposerInteractionLocked}
                         emphasized
-                        iconNode={
+                        renderIcon={(size) => (
                           <ProviderIcon
+                            iconUrl={flow.selectedModelOption?.providerIconUrl}
                             provider={flow.selectedModelOption?.providerDriver}
-                            size={16}
+                            size={size}
                           />
-                        }
+                        )}
                         label={flow.selectedModelOption?.label ?? "Choose model"}
                         maxWidth="100%"
                         onPress={settingsSheetPresentation.open}
@@ -1727,6 +1779,7 @@ export function NewTaskDraftScreen(props: {
               {voicePresentation.showsSend ? (
                 <ComposerActionButton
                   accessibilityLabel={
+                    (compressingVideo ? "Compressing video" : null) ??
                     attachmentBlockReason ??
                     (cloneBlocksStart
                       ? projectClone === null || projectClone.phase === "running"

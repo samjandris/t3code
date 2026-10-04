@@ -15,6 +15,58 @@ import {
 } from "./incoming-share-model";
 
 describe("incoming native shares", () => {
+  it.each([false, true])(
+    "prepares shared videos and releases the import, failure=%s",
+    async (fail) => {
+      const payload: SharePayload = {
+        shareType: "video",
+        value: "file:///shared/large.mov",
+        mimeType: "video/quicktime",
+      };
+      const attachment = {
+        id: "compressed",
+        type: "file" as const,
+        name: "large.mp4",
+        mimeType: "video/mp4",
+        sizeBytes: 1024,
+        fileUri: "file:///documents/compressed.mp4",
+      };
+      const prepareVideo = vi.fn(async () => {
+        if (fail) throw new Error("Video compression cancelled.");
+        return attachment;
+      });
+      const readBase64 = vi.fn(async () => "unused");
+      const removeOwnedFile = vi.fn(async (_uri: string) => undefined);
+      const result = await buildIncomingShareDraft({
+        id: "share-video",
+        createdAt: "2026-09-15T10:00:00.000Z",
+        payloads: [payload],
+        resolvedPayloads: [
+          {
+            ...payload,
+            contentUri: payload.value,
+            contentType: "video",
+            contentMimeType: "video/quicktime",
+            contentSize: PROVIDER_SEND_TURN_MAX_FILE_BYTES + 1,
+            originalName: "large.mov",
+          },
+        ],
+        fileReader: { prepareVideo, readBase64, removeOwnedFile },
+      });
+      expect(prepareVideo).toHaveBeenCalledWith({
+        uri: payload.value,
+        name: "large.mov",
+        mimeType: "video/quicktime",
+        maxBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+      });
+      expect(result.attachments).toEqual(fail ? [] : [{ ...attachment, id: "share-video:file:0" }]);
+      expect(result.warnings).toEqual(fail ? ["Video compression cancelled."] : []);
+      expect(readBase64).not.toHaveBeenCalled();
+      expect(removeOwnedFile).toHaveBeenCalledWith(payload.value);
+      expect(removeOwnedFile).not.toHaveBeenCalledWith(attachment.fileUri);
+    },
+  );
+
   it("converts shared text, URLs, and images into a durable composer draft", async () => {
     const image: SharePayload = {
       shareType: "image",

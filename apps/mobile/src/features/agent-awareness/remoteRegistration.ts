@@ -41,6 +41,12 @@ import { resolveCloudPublicConfig } from "../cloud/publicConfig";
 import { supportsAgentAwarenessPush } from "./capabilities";
 import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
 
+import {
+  activityBridgeUrl,
+  activityBridgeRequest,
+  readActivityBridgeSnapshot,
+} from "./activityBridge";
+
 const REMOTE_ACTIVITY_REGISTRATION_RETRY_MS = 15_000;
 
 const AgentAwarenessOperation = Schema.Literals([
@@ -83,6 +89,11 @@ const activityPushTokenListeners = new WeakSet<LiveActivity<AgentActivityProps>>
 // foreground after real time away still triggers a replay. Cleared on
 // sign-out/identity change alongside the device registration state.
 const ACTIVITY_TOKEN_REREGISTER_INTERVAL_MS = 60_000;
+// Locally started activities carry the same stale window the relay puts on
+// every push (STALE_AFTER_SECONDS in ApnsClient.ts), so a card whose relay
+// registration never lands still degrades instead of looking alive forever.
+const LIVE_ACTIVITY_STALE_AFTER_MS = 10 * 60_000;
+const liveActivityStaleDate = () => new Date(Date.now() + LIVE_ACTIVITY_STALE_AFTER_MS);
 const registeredActivityPushTokens = new Map<string, number>();
 let androidDeviceReplayedAt: number | null = null;
 let pushTokenSubscription: { remove: () => void } | null = null;
@@ -394,7 +405,7 @@ function registerDeviceWithRelay(
     const payload = body;
     // The relay URL participates so pointing the app at a different relay
     // invalidates the record and re-registers there.
-    const signature = `${relayConfig.url}|${registrationSignature(payload)}`;
+    const signature = `${activityBridgeUrl ?? relayConfig.url}|${registrationSignature(payload)}`;
     // Android registration also silently replays the current card. Collapse
     // foreground bursts, but repair missed pushes on cold start or a return
     // after time away, just like re-registering an iOS activity token.
@@ -403,6 +414,7 @@ function registerDeviceWithRelay(
       (androidDeviceReplayedAt === null ||
         Date.now() - androidDeviceReplayedAt >= ACTIVITY_TOKEN_REREGISTER_INTERVAL_MS);
     if (
+      !activityBridgeUrl &&
       persisted &&
       persisted.identity === identity &&
       persisted.signature === signature &&
@@ -419,10 +431,22 @@ function registerDeviceWithRelay(
     logRegistrationDebug("relay device registration request started", {
       expectedGeneration,
     });
-    yield* client.registerDevice({
-      clerkToken: token,
-      payload,
-    });
+    if (activityBridgeUrl) {
+      yield* Effect.tryPromise(() => activityBridgeRequest("/v1/mobile/devices", "POST", payload));
+      yield* client.registerDevice({
+        clerkToken: token,
+        payload: {
+          ...payload,
+          preferences: {
+            ...payload.preferences,
+            liveActivitiesEnabled: false,
+            notificationsEnabled: false,
+          },
+        },
+      });
+    } else {
+      yield* client.registerDevice({ clerkToken: token, payload });
+    }
     if (expectedGeneration !== deviceRegistrationGeneration) {
       // Signed out while the request was in flight: the sign-out path already
       // reset the status and cleared the record for the next account, so a
@@ -469,10 +493,14 @@ function unregisterDeviceWithRelay(input: {
     }
 
     const client = yield* ManagedRelay.ManagedRelayClient;
-    yield* client.unregisterDevice({
-      clerkToken: token,
-      deviceId: input.deviceId,
-    });
+    if (activityBridgeUrl) {
+      yield* Effect.tryPromise(() =>
+        activityBridgeRequest(`/v1/mobile/devices/${encodeURIComponent(input.deviceId)}`, "DELETE"),
+      );
+      yield* client.unregisterDevice({ clerkToken: token, deviceId: input.deviceId });
+    } else {
+      yield* client.unregisterDevice({ clerkToken: token, deviceId: input.deviceId });
+    }
   });
 }
 
@@ -527,25 +555,28 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
       return;
     }
     const nowIso = new Date(Date.now()).toISOString();
-    const activity = startAgentLiveActivity({
-      title: "T3 Code",
-      subtitle: "Agent work in progress",
-      activeCount: 1,
-      updatedAt: nowIso,
-      activities: [
-        {
-          environmentId: "",
-          threadId: "",
-          projectTitle: input.projectTitle,
-          threadTitle: input.threadTitle,
-          modelTitle: "",
-          phase: "starting",
-          status: "Connecting",
-          updatedAt: nowIso,
-          deepLink: "/",
-        },
-      ],
-    });
+    const activity = startAgentLiveActivity(
+      {
+        title: "T3 Code",
+        subtitle: "Agent work in progress",
+        activeCount: 1,
+        updatedAt: nowIso,
+        activities: [
+          {
+            environmentId: "",
+            threadId: "",
+            projectTitle: input.projectTitle,
+            threadTitle: input.threadTitle,
+            modelTitle: "",
+            phase: "starting",
+            status: "Connecting",
+            updatedAt: nowIso,
+            deepLink: "/",
+          },
+        ],
+      },
+      liveActivityStaleDate(),
+    );
     if (!activity) {
       return;
     }
@@ -573,6 +604,7 @@ function readAgentActivitySnapshot(): Effect.Effect<
       return null;
     }
     const client = yield* ManagedRelay.ManagedRelayClient;
+    if (activityBridgeUrl) return yield* Effect.tryPromise(readActivityBridgeSnapshot);
     return yield* client.getAgentActivitySnapshot({ clerkToken: token });
   }).pipe(
     Effect.catch((error) =>
@@ -596,10 +628,13 @@ function registerLiveActivityWithRelay(
     }
 
     const client = yield* ManagedRelay.ManagedRelayClient;
-    yield* client.registerLiveActivity({
-      clerkToken: token,
-      payload: body,
-    });
+    if (activityBridgeUrl) {
+      yield* Effect.tryPromise(() =>
+        activityBridgeRequest("/v1/mobile/live-activities", "POST", body),
+      );
+    } else {
+      yield* client.registerLiveActivity({ clerkToken: token, payload: body });
+    }
     return true;
   });
 }
@@ -1131,13 +1166,16 @@ export function refreshActiveLiveActivityRemoteRegistration(): Effect.Effect<
           const aggregate = snapshot.aggregate;
           const primed = yield* Effect.try({
             try: () =>
-              startAgentLiveActivity({
-                title: aggregate.title,
-                subtitle: aggregate.subtitle,
-                activeCount: aggregate.activeCount,
-                updatedAt: aggregate.updatedAt,
-                activities: aggregate.activities,
-              }),
+              startAgentLiveActivity(
+                {
+                  title: aggregate.title,
+                  subtitle: aggregate.subtitle,
+                  activeCount: aggregate.activeCount,
+                  updatedAt: aggregate.updatedAt,
+                  activities: aggregate.activities,
+                },
+                liveActivityStaleDate(),
+              ),
             catch: (cause) =>
               new AgentAwarenessOperationError({
                 operation: "prime-live-activity",
