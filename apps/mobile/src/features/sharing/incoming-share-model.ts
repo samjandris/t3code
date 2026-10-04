@@ -14,6 +14,8 @@ import type { ResolvedSharePayload, SharePayload } from "expo-sharing";
 import { DraftComposerAttachmentSchema } from "../../lib/composer-image-schema";
 import type { DraftComposerAttachment } from "../../lib/composerImages";
 import { estimateBase64ByteSize } from "../../lib/base64";
+import { videoMimeType } from "@t3tools/shared/video";
+import type { DraftComposerFileAttachment } from "../../lib/composerImages";
 
 export interface IncomingShareDraft {
   readonly schemaVersion: 1;
@@ -101,6 +103,12 @@ export function isShareFileUriUnderOwnedRoots(
 }
 
 export interface IncomingShareFileReader {
+  readonly prepareVideo?: (input: {
+    uri: string;
+    name: string;
+    mimeType: string;
+    maxBytes: number;
+  }) => Promise<DraftComposerFileAttachment>;
   readonly readBase64: (uri: string) => Promise<string>;
   readonly removeOwnedFile: (uri: string) => Promise<void> | void;
   readonly persistFile?: (uri: string, name: string) => Promise<string>;
@@ -307,6 +315,21 @@ export async function buildIncomingShareDraft(input: {
       let persistedFileUri: string | undefined;
       let retainedFileUri: string | undefined;
       try {
+        const videoType = videoMimeType({ name, mimeType });
+        if (
+          (payload.shareType === "video" || videoType !== null) &&
+          input.fileReader.prepareVideo
+        ) {
+          const attachment = await input.fileReader.prepareVideo({
+            uri,
+            name,
+            mimeType: videoType ?? "video/mp4",
+            maxBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+          });
+          attachments.push({ ...attachment, id: `${input.id}:file:${index}` });
+          retainedFileUri = attachment.fileUri;
+          continue;
+        }
         let sizeBytes = resolved?.contentSize ?? (await input.fileReader.readSize?.(uri)) ?? null;
         if (
           (sizeBytes === null || (sizeBytes === 0 && uri.startsWith("content:"))) &&

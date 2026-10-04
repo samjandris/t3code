@@ -127,10 +127,12 @@ export function QuestionAttachments(props: {
       const result =
         kind === "files"
           ? await pickComposerFiles({
+              ownerKey: key,
               existingCount,
               maxBytes: capabilities?.fileAttachments?.maxUploadBytes,
             })
           : await pickComposerMedia({
+              ownerKey: key,
               existingCount,
               maxVideoBytes: capabilities?.fileAttachments?.maxUploadBytes,
             });
@@ -163,6 +165,7 @@ export function QuestionAttachments(props: {
         />
       ) : null}
       <ComposerAttachmentStrip
+        compressionOwnerKey={key}
         environmentId={environmentId}
         attachments={attachments}
         onRemove={(id) => {
