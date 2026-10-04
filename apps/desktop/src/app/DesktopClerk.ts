@@ -20,6 +20,7 @@ import * as DesktopUserData from "./DesktopUserData.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
 declare const __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: string | undefined;
+declare const __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__: boolean | undefined;
 
 export class DesktopClerkBridgeInitializationError extends Schema.TaggedError<DesktopClerkBridgeInitializationError>()(
   "DesktopClerkBridgeInitializationError",
@@ -77,10 +78,15 @@ export const desktopClerkFrontendApiHostname = resolveDesktopClerkFrontendApiHos
     : __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__,
 );
 
+const desktopClerkPasskeysEnabled =
+  typeof __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__ === "undefined"
+    ? true
+    : __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__;
+
 function createDesktopClerkBridge(stateDir: string, isDevelopment: boolean) {
   return createClerkBridge({
     storage: storage({ path: stateDir }),
-    passkeys: true,
+    passkeys: desktopClerkPasskeysEnabled,
     renderer: {
       scheme: ElectronProtocol.getDesktopScheme(isDevelopment),
       host: ElectronProtocol.DESKTOP_HOST,
