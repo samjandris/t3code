@@ -54,7 +54,7 @@ import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const DESKTOP_APP_ID = "com.t3tools.t3code";
+const DEFAULT_DESKTOP_APP_ID = "com.samjandris.t3code";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -929,6 +929,7 @@ interface StagePackageJson {
   readonly private: true;
   readonly packageManager: string;
   readonly description: string;
+  readonly homepage: string;
   readonly author: string;
   readonly main: string;
   readonly build: Record<string, unknown>;
@@ -941,6 +942,11 @@ interface StagePackageJson {
 export const STAGE_INSTALL_ARGS = ["install", "--prod"] as const;
 export const DESKTOP_ELECTRON_LANGUAGES = ["en-US"] as const;
 export const DESKTOP_FILE_EXCLUSIONS = [
+  // Cursor finds platform assets by walking up from argv[1]. Keep them outside
+  // asar so spawning helpers and loading native addons both use real paths.
+  "!**/node_modules/@cursor/sdk-*/**/*",
+  "!apps/desktop/prod-resources/cursor-sdk",
+  "!apps/desktop/prod-resources/cursor-sdk/**/*",
   // T3 Code always passes the user's installed Claude executable to the SDK,
   // so the SDK's optional platform packages (each a ~200MB bundled executable)
   // are dead weight. The trailing dash keeps the SDK's own JS package.
@@ -1005,6 +1011,8 @@ export const WINDOWS_NATIVE_ASAR_UNPACK_GLOB =
 // are never spawned at runtime (and are symlinks on POSIX build hosts, which
 // the asar extraction path deliberately does not support).
 export const WINDOWS_SERVER_ASAR_IGNORE_GLOBS = [
+  "**/node_modules/@cursor/sdk-*",
+  "**/node_modules/@cursor/sdk-*/**",
   "**/node_modules/@anthropic-ai/claude-agent-sdk-*",
   "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
   "**/node_modules/.bin",
@@ -1065,6 +1073,10 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
   WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
 ] as const;
 export const DESKTOP_EXTRA_RESOURCES = [
+  {
+    from: "apps/desktop/prod-resources/cursor-sdk",
+    to: "node_modules/@cursor",
+  },
   {
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
@@ -1226,6 +1238,7 @@ function normalizePasskeyRpDomain(value: string): string {
 export function resolveMacPasskeySigningConfiguration(
   env: Readonly<Record<string, string | undefined>>,
 ): MacPasskeySigningConfiguration {
+  const appId = env.T3CODE_DESKTOP_APP_ID?.trim() || DEFAULT_DESKTOP_APP_ID;
   const teamId = env.T3CODE_APPLE_TEAM_ID?.trim().toUpperCase() ?? "";
   if (!APPLE_TEAM_ID_PATTERN.test(teamId)) {
     throw new InvalidAppleTeamIdError({ teamId });
@@ -1260,7 +1273,7 @@ export function resolveMacPasskeySigningConfiguration(
   }
 
   return {
-    appId: DESKTOP_APP_ID,
+    appId,
     teamId,
     rpDomains: uniqueRpDomains,
     provisioningProfilePath,
@@ -1348,9 +1361,33 @@ export function resolveMergedStageDependencies(input: {
   };
 }
 
+/** Cursor's helper lookup falls through the archive to this real resources tree. */
+export const stageCursorSdkPlatformPackages = Effect.fn("stageCursorSdkPlatformPackages")(
+  function* (nodeModulesDir: string, destination: string) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    yield* fs.makeDirectory(destination, { recursive: true });
+    const sdkDirectory = path.join(nodeModulesDir, "@cursor/sdk");
+    if (!(yield* fs.exists(sdkDirectory))) return;
+    // pnpm's isolated layout puts optional packages beside the real SDK directory.
+    const cursorDirectory = path.dirname(yield* fs.realPath(sdkDirectory));
+    for (const name of yield* fs.readDirectory(cursorDirectory)) {
+      if (!name.startsWith("sdk-")) continue;
+      const source = yield* fs.realPath(path.join(cursorDirectory, name));
+      yield* fs.copy(source, path.join(destination, name));
+    }
+  },
+);
+
 export interface ClerkPasskeyNativeArtifact {
   readonly packageName: string;
   readonly binaryFileName: string;
+}
+
+export function resolveClerkPasskeysEnabled(
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  return env.T3CODE_CLERK_PASSKEYS_ENABLED?.trim().toLowerCase() !== "false";
 }
 
 export function resolveClerkPasskeyNativeArtifacts(
@@ -2618,6 +2655,14 @@ export function resolveDesktopProductName(version: string): string {
     : (desktopPackageJson.productName ?? "T3 Code");
 }
 
+export const resolveDesktopAppId = Effect.fn("resolveDesktopAppId")(function* () {
+  const configuredAppId = yield* Config.String("T3CODE_DESKTOP_APP_ID").pipe(Config.option);
+  return Option.match(configuredAppId, {
+    onNone: () => DEFAULT_DESKTOP_APP_ID,
+    onSome: (value) => value.trim() || DEFAULT_DESKTOP_APP_ID,
+  });
+});
+
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   platform: typeof BuildPlatform.Type,
   target: string,
@@ -2637,8 +2682,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   wslRuntimeBundled = false,
   arch?: typeof BuildArch.Type,
 ) {
+  const desktopAppId = yield* resolveDesktopAppId();
   const buildConfig: Record<string, unknown> = {
-    appId: DESKTOP_APP_ID,
+    appId: desktopAppId,
     productName: resolveDesktopProductName(version),
     artifactName: "T3-Code-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
@@ -2733,10 +2779,17 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
 
   if (platform === "linux") {
     buildConfig.linux = {
-      target: [target],
+      // The .deb is built from the same unpacked app after the AppImage.
+      // electron-builder lists both in latest-linux.yml and writes
+      // resources/package-type into the .deb only, so electron-updater updates
+      // each install in its own format.
+      target: target === "AppImage" ? [target, "deb"] : [target],
       executableName: "t3code",
       icon: "icons",
       category: "Development",
+      synopsis: "Desktop GUI for coding agents",
+      // Required by the .deb control file.
+      maintainer: "T3 Tools <hello@t3.codes>",
       // electron-builder turns these into MimeType=x-scheme-handler/<scheme>;
       // in the .desktop entry (Exec already gets %U), so browsers can hand
       // t3code:// OAuth callbacks to the app.
@@ -2751,6 +2804,23 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           StartupWMClass: "t3code",
         },
       },
+    };
+    buildConfig.deb = {
+      // Electron's runtime libraries. Debian 13 and Ubuntu 24.04 renamed some
+      // for 64-bit time; the old name is the fallback for older releases.
+      depends: [
+        "libasound2t64 | libasound2",
+        "libatspi2.0-0t64 | libatspi2.0-0",
+        "libgbm1",
+        "libgtk-3-0t64 | libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libsecret-1-0",
+        "libuuid1",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+      ],
     };
   }
 
@@ -3266,13 +3336,16 @@ export const validateWindowsPackagedPayload = Effect.fn(
         ),
       );
     }
-    const requiredMembers = [
-      `${stem}/t3`,
-      `${stem}/client`,
-      `${stem}/node_modules`,
-      `${stem}/node_modules/node-pty/build/Release/pty.node`,
-    ];
+    const requiredMembers = [`${stem}/t3`, `${stem}/client`, `${stem}/node_modules`];
     const missingMembers = requiredMembers.filter((member) => !members.includes(member));
+    // node-pty can load a source build or the prebuild for the WSL target.
+    const ptyCandidates = [
+      `${stem}/node_modules/node-pty/build/Release/pty.node`,
+      `${stem}/node_modules/node-pty/prebuilds/linux-${input.targetArch}/pty.node`,
+    ];
+    if (!ptyCandidates.some((member) => members.includes(member))) {
+      missingMembers.push(...ptyCandidates);
+    }
     if (missingMembers.length > 0) {
       return yield* new WindowsPackagedPayloadValidationError({
         reason: "wsl-runtime-invalid",
@@ -3341,6 +3414,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       }),
     });
   }
+  const repoEnv = loadRepoEnv({ repoRoot });
   const workspaceConfig = yield* readWorkspaceConfig();
   const workspaceCatalog = workspaceConfig.catalog ?? {};
   const workspaceOverrides = workspaceConfig.overrides ?? {};
@@ -3587,7 +3661,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const configuredMacPasskeySigning =
     options.platform === "mac" && options.signed
       ? yield* Effect.try({
-          try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
+          try: () => resolveMacPasskeySigningConfiguration(repoEnv),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
         })
       : undefined;
@@ -3642,8 +3716,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     private: true,
     packageManager: rootPackageJson.packageManager,
     description: "T3 Code desktop build",
+    // Required by the .deb control file.
+    homepage: "https://t3.codes",
     author: "T3 Tools",
-    main: "apps/desktop/dist-electron/main.cjs",
+    main: "apps/desktop/dist-electron/boot.cjs",
     build: yield* createBuildConfig(
       options.platform,
       options.target,
@@ -3694,7 +3770,9 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     }),
     { label: "vp install --prod", verbose: options.verbose },
   );
-  yield* stageClerkPasskeyNativeBinaries(stageAppDir, options.platform, options.arch);
+  if (resolveClerkPasskeysEnabled(repoEnv)) {
+    yield* stageClerkPasskeyNativeBinaries(stageAppDir, options.platform, options.arch);
+  }
   yield* stageKeyringNativeBinaries(stageAppDir, options.platform, options.arch);
 
   // Only the Windows artifact carries the server sidecar and the WSL runtime;
@@ -3715,6 +3793,13 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       verbose: options.verbose,
     });
   }
+  yield* stageCursorSdkPlatformPackages(
+    path.join(
+      options.platform === "win" ? path.join(stageRoot, "server") : stageAppDir,
+      "node_modules",
+    ),
+    path.join(stageProdResourcesDir, "cursor-sdk"),
+  );
   if (
     options.wslRuntime !== undefined &&
     bundlesWslRuntime({ platform: options.platform, runtimeArchivePath: options.wslRuntime })
@@ -3737,6 +3822,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     if (value === "") {
       delete buildEnv[key];
     }
+  }
+  if (options.platform === "linux") {
+    // fpm compresses the .deb with the system xz through tar. Threaded mode
+    // takes seconds on a many-core runner instead of about two minutes.
+    buildEnv.XZ_DEFAULTS = "-T0";
   }
   if (!options.signed) {
     buildEnv.CSC_IDENTITY_AUTO_DISCOVERY = "false";
