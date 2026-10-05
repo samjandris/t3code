@@ -134,6 +134,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
         displayName: "Subscription usage",
         description: "Subscription quotas from your connected T3 Code environments.",
         ios: {
+          initialLayout: "./src/widgets/SubscriptionUsage.tsx",
           configuration: {
             title: "Subscription usage",
             description:

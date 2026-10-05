@@ -243,12 +243,14 @@ function SubscriptionUsage(
       spacing={accessory || dense ? 2 : 6}
       modifiers={[
         ...(props.url ? [widgetURL(props.url)] : []),
-        ...(palette
-          ? [
-              containerBackground(palette.background, "widget"),
-              environment("colorScheme", appearance),
-            ]
-          : []),
+        // WidgetKit requires this declaration even without an app theme or visible background.
+        containerBackground(
+          accessory || widgetEnvironment.showsContainerBackground === false
+            ? "clear"
+            : (palette?.background ?? (appearance === "dark" ? "#1c1c1e" : "#ffffff")),
+          "widget",
+        ),
+        ...(palette ? [environment("colorScheme", appearance)] : []),
       ]}
     >
       {providers.length === 0 ? (
@@ -278,4 +280,11 @@ function SubscriptionUsage(
   );
 }
 
-export default createWidget("SubscriptionUsage", SubscriptionUsage);
+export default createWidget<SubscriptionUsageProps, UsageConfiguration>(
+  "SubscriptionUsage",
+  SubscriptionUsage,
+  {
+    checkedAt: 0,
+    providers: [],
+  },
+);
