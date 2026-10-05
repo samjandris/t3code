@@ -2,6 +2,7 @@ import { HStack, ProgressView, Spacer, Text, VStack } from "@expo/ui/swift-ui";
 import {
   accessibilityElement,
   accessibilityLabel,
+  containerBackground,
   fixedSize,
   font,
   foregroundStyle,
@@ -233,7 +234,14 @@ function SubscriptionUsage(
     <VStack
       alignment="leading"
       spacing={accessory || dense ? 2 : 6}
-      modifiers={props.url ? [widgetURL(props.url)] : []}
+      modifiers={[
+        // WidgetKit replaces layouts without a container background on physical iPhones.
+        containerBackground(
+          accessory ? "clear" : environment.colorScheme === "dark" ? "#1c1c1e" : "#ffffff",
+          "widget",
+        ),
+        ...(props.url ? [widgetURL(props.url)] : []),
+      ]}
     >
       {providers.length === 0 ? (
         <Text modifiers={[font({ textStyle: "caption" }), foregroundStyle("secondary")]}>
@@ -262,4 +270,11 @@ function SubscriptionUsage(
   );
 }
 
-export default createWidget("SubscriptionUsage", SubscriptionUsage);
+export default createWidget<SubscriptionUsageProps, UsageConfiguration>(
+  "SubscriptionUsage",
+  SubscriptionUsage,
+  {
+    checkedAt: 0,
+    providers: [],
+  },
+);
