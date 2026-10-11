@@ -4,6 +4,11 @@
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 
+The fork releases integrated `dev`. Publishing outside GitHub is opt-in through repository variables
+set to `true`: `PUBLISH_CLI_TO_NPM`, `PUBLISH_AUR`, `DEPLOY_HOSTED_WEB`, `DEPLOY_MARKETING`,
+`FINALIZE_STABLE_RELEASE`, and `ANNOUNCE_DISCORD_RELEASES`. Hosted deployments also require the
+fork's own provider credentials and project configuration.
+
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`
@@ -523,14 +528,17 @@ Required repository variables:
 
 Optional repository variables:
 
+- `DESKTOP_APP_ID`: override the fork default bundle ID (`com.samjandris.t3code`).
 - `CLERK_PASSKEY_RP_DOMAINS`: comma-separated RP-domain override. By default, the build derives the
   domain from the production Clerk publishable key.
+- `CLERK_PASSKEYS_ENABLED`: set to `false` when the signed desktop app identifier is not registered
+  as a Native Application in the production Clerk instance.
 
 Checklist:
 
 1. Apple Developer account access:
    - Team has rights to create Developer ID certificates.
-2. Create an explicit App ID for `com.t3tools.t3code` and enable Associated Domains.
+2. Create an explicit App ID for `com.samjandris.t3code` and enable Associated Domains.
 3. Create a `Developer ID Application` certificate and a compatible provisioning profile for that
    App ID with Associated Domains enabled.
 4. Export the certificate + private key as `.p12` from Keychain.
@@ -610,7 +618,7 @@ Checklist:
 
 - macOS build unsigned when expected signed:
   - Check all Apple secrets plus `APPLE_TEAM_ID` are populated and non-empty.
-  - Confirm the provisioning profile belongs to `APPLE_TEAM_ID.com.t3tools.t3code` and includes
+  - Confirm the provisioning profile belongs to `APPLE_TEAM_ID.com.samjandris.t3code` and includes
     Associated Domains.
 - Windows build unsigned when expected signed:
   - Check all Azure ATS and auth secrets are populated and non-empty.
