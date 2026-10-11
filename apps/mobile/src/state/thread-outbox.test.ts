@@ -13,9 +13,9 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
-import * as RpcClientError from "effect/unstable/rpc/RpcClientError";
-import * as Socket from "effect/unstable/socket/Socket";
+import { AtomRegistry } from "effect/reactivity";
+import * as RpcClientError from "effect/rpc/RpcClientError";
+import * as Socket from "effect/socket/Socket";
 import { onTestFinished, vi } from "vite-plus/test";
 
 const outboxFiles = vi.hoisted(() => new Map<string, string | Error>());
@@ -135,6 +135,15 @@ describe("thread outbox", () => {
           },
         ],
       },
+    };
+    expect(
+      decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
+    ).toEqual(message);
+  });
+  it("retains queue mode when a queued provider switch reloads from storage", () => {
+    const message: QueuedThreadMessage = {
+      ...queuedMessage({ messageId: "queued-switch", createdAt: "2026-09-17T09:00:00.000Z" }),
+      dispatchMode: "queue",
     };
     expect(
       decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
@@ -353,6 +362,24 @@ describe("thread outbox", () => {
       ],
     } satisfies QueuedThreadMessage;
 
+    expect(decodeQueuedThreadMessage(encodeQueuedThreadMessage(message))).toEqual(message);
+  });
+
+  it("preserves a compressed video's upload progress phase across an outbox round trip", () => {
+    const message = {
+      ...queuedMessage({ messageId: "compressed-video", createdAt: "2026-09-20T00:00:00.000Z" }),
+      attachments: [
+        {
+          id: "video",
+          type: "file" as const,
+          name: "clip.mp4",
+          mimeType: "video/mp4",
+          sizeBytes: 600,
+          fileUri: "file:///documents/t3-composer-attachments/clip.mp4",
+          wasCompressed: true,
+        },
+      ],
+    } satisfies QueuedThreadMessage;
     expect(decodeQueuedThreadMessage(encodeQueuedThreadMessage(message))).toEqual(message);
   });
 
@@ -1421,6 +1448,26 @@ describe("thread outbox", () => {
       false,
     );
     expect(isQueuedThreadCreationSendable(base)).toBe(false);
+    expect(isQueuedThreadCreationSendable({ ...creationMessage, text: "  " })).toBe(false);
+    expect(
+      isQueuedThreadCreationSendable({
+        ...creationMessage,
+        text: "",
+        attachments: [
+          {
+            id: "image-1",
+            type: "image",
+            name: "photo.png",
+            mimeType: "image/png",
+            sizeBytes: 3,
+            fileUri: "file:///documents/t3-composer-attachments/photo.png",
+            previewUri: "file:///documents/t3-composer-attachments/photo.png",
+            uploadedAttachmentId: "pending-photo-png",
+            uploadEnvironmentId: EnvironmentId.make("environment-1"),
+          },
+        ],
+      }),
+    ).toBe(true);
   });
 
   it("retries transport failures but drops deterministic command failures", () => {
