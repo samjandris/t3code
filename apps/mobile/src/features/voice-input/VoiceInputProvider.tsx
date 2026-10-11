@@ -32,6 +32,7 @@ import {
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
+import { getChatGptVoiceTranscriber } from "../dictation/chatgptVoiceTranscriber";
 import {
   VOICE_RECORDING_LIMIT_SECONDS,
   voiceInputBlocksSubmission,
@@ -157,7 +158,11 @@ function useVoiceInputRuntime() {
     recorderRef.current = recorder;
     sessionRef.current = new VoiceInputSession({
       recorder,
-      getTranscriber: getLocalVoiceTranscriber,
+      getTranscriber: () =>
+        getChatGptVoiceTranscriber(
+          sessionRef.current?.readDraft()?.text ?? "",
+          getLocalVoiceTranscriber(),
+        ),
       requestPermission: async () => {
         const permission = await requestRecordingPermissionsAsync();
         return { granted: permission.granted, canAskAgain: permission.canAskAgain };
@@ -254,9 +259,7 @@ function useVoiceInputRuntime() {
   const cancel = useCallback(() => controller.cancel(), [controller]);
 
   return {
-    // Store screenshots show the dictation button even on simulators, whose
-    // on-device transcription is unavailable.
-    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
+    isAvailable: true,
     state,
     audioLevels,
     elapsedSeconds,
