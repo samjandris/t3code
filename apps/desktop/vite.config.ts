@@ -14,10 +14,13 @@ const repoEnv = loadRepoEnv();
 const isMainProcessExternal = (id: string) =>
   id === "electron" || id.startsWith("electron/") || isDesktopRuntimeExternalDependency(id);
 const shouldLaunchElectronAfterPack = process.env.T3CODE_DESKTOP_DEV === "1";
+const clerkPasskeysEnabled =
+  repoEnv.T3CODE_CLERK_PASSKEYS_ENABLED?.trim().toLowerCase() !== "false";
 const publicConfigDefine = {
   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
     repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
   ),
+  __T3CODE_BUILD_CLERK_PASSKEYS_ENABLED__: JSON.stringify(clerkPasskeysEnabled),
 };
 
 export default defineConfig({
@@ -83,6 +86,19 @@ export default defineConfig({
         alwaysBundle: (id) => !id.startsWith("node:") && !isMainProcessExternal(id),
         neverBundle: isMainProcessExternal,
         onlyBundle: false,
+      },
+    },
+    {
+      // boot.cjs requires the other two at runtime, so all three stay separate files.
+      format: "cjs",
+      outDir: "dist-electron",
+      dts: false,
+      sourcemap: true,
+      outExtensions: () => ({ js: ".cjs" }),
+      entry: ["src/boot.ts", "src/compileCache.ts"],
+      clean: false,
+      deps: {
+        neverBundle: (id) => id === "./main.cjs" || id === "./compileCache.cjs",
       },
     },
     {
