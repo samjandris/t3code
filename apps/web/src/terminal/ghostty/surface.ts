@@ -16,6 +16,7 @@ import {
 } from "./renderer";
 import symbolsFontUrl from "./fonts/SymbolsNerdFontMono-Regular.woff2?url";
 import { isMonospaceFamily } from "../../appearanceFonts";
+import { observeResize } from "../../lib/observeResize";
 
 export const DEFAULT_TERMINAL_FONT_SIZE = 12;
 const MIN_TERMINAL_FONT_SIZE = 6;
@@ -34,6 +35,7 @@ const TERMINAL_GLYPH_FALLBACKS =
 export const DEFAULT_TERMINAL_FONT_FAMILY =
   '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", ' + TERMINAL_GLYPH_FALLBACKS;
 const CONTENT_PADDING = 4;
+const TOUCH_SCROLL_THRESHOLD_PX = 6;
 const MIN_SCROLLBAR_THUMB_HEIGHT = 18;
 /** Half a blink cycle: the visible and hidden phases are equally long. */
 const CURSOR_BLINK_INTERVAL_MS = 500;
@@ -547,6 +549,7 @@ export interface GhosttyTerminalSurfaceOptions {
   readonly onSelectionChange: () => void;
   readonly beforeKey: (event: KeyboardEvent) => boolean;
   readonly onLinkActivate: (text: string, event: MouseEvent) => void;
+  readonly canActivateLink?: (text: string) => boolean;
   /**
    * A right-click the running application did not claim through mouse
    * reporting. The host owns the menu, so it also owns preventing the browser
@@ -574,7 +577,7 @@ export class GhosttyTerminalSurface {
   private fontSize: number;
   private fontEpoch = 0;
   private pendingFontEpoch: number | null = null;
-  private readonly resizeObserver: ResizeObserver;
+  private readonly stopObservingResize: () => void;
   private readonly scrollbarThumb: HTMLDivElement;
   private snapshot: GhosttySnapshot | null = null;
   private frame = 0;
@@ -631,6 +634,12 @@ export class GhosttyTerminalSurface {
   private wheelRemainder = 0;
   private lastMouseMotionData = "";
   private mouseAnyEventTracking = false;
+  private touchScrollState: {
+    id: number;
+    lastY: number;
+    residualRows: number;
+    hasScrolled: boolean;
+  } | null = null;
   private dprMedia: MediaQueryList | null = null;
   // Read live on every blink decision, and watched so that dropping the
   // preference restarts a blink cycle that has no timer left to notice it.
@@ -665,12 +674,11 @@ export class GhosttyTerminalSurface {
     this.fontFamily = fontFamily;
     this.requestedFontFamily = options.font?.family;
     this.fontSize = terminalFontSize(options.font?.size);
-    this.resizeObserver = new ResizeObserver(() => this.fit());
     this.installEvents();
     this.watchDevicePixelRatio();
     this.reducedMotionMedia?.addEventListener("change", this.onReducedMotionChange);
     document.fonts.addEventListener("loadingdone", this.onFontsLoaded);
-    this.resizeObserver.observe(mount);
+    this.stopObservingResize = observeResize(mount, () => this.fit());
   }
 
   static async create(
@@ -793,6 +801,12 @@ export class GhosttyTerminalSurface {
     this.requestRender();
   }
 
+  /** Re-evaluate link feedback after the host's available actions change. */
+  refreshLinkActivation(): void {
+    if (this.disposed) return;
+    this.refreshHoveredLink();
+  }
+
   async setFont(font: GhosttyTerminalFont): Promise<void> {
     if (this.disposed) return;
     const fontSize = terminalFontSize(font.size);
@@ -854,6 +868,12 @@ export class GhosttyTerminalSurface {
     }
     this.applyFontMetrics();
   };
+
+  /** Replay the measured grid after the host becomes ready to resize its PTY. */
+  resendSize(): void {
+    this.resizeNotified = false;
+    this.fit();
+  }
 
   fit(): boolean {
     if (this.disposed || !this.visible) return false;
@@ -969,6 +989,21 @@ export class GhosttyTerminalSurface {
     return this.core.selectionText();
   }
 
+  /** Select the active screen's entire history, including rows outside the viewport. */
+  selectAll(): void {
+    this.clearPrimedCopy();
+    const range = this.core.selectAll();
+    this.selectionAnchorScreen = range?.start ?? null;
+    this.selectionEndScreen = range?.end ?? null;
+    this.selectionEnd = range ? this.core.screenPointToViewport(range.end.x, range.end.y) : null;
+    this.selectionMode = "cell";
+    this.selectionBase = null;
+    this.setSelectionAutoscroll(0);
+    this.options.onSelectionChange();
+    this.forceFullRender = true;
+    this.requestRender();
+  }
+
   getSelectionPosition(): GhosttySelectionPosition | null {
     if (!this.selectionAnchorScreen || !this.selectionEndScreen || !this.hasSelection())
       return null;
@@ -985,7 +1020,15 @@ export class GhosttyTerminalSurface {
     const position = this.getSelectionPosition();
     if (!position) return null;
     const viewportEnd = this.core.screenPointToViewport(position.end.x, position.end.y);
-    if (!viewportEnd) return null;
+    if (
+      !viewportEnd ||
+      viewportEnd.x < 0 ||
+      viewportEnd.x >= this.cols ||
+      viewportEnd.y < 0 ||
+      viewportEnd.y >= this.rows
+    ) {
+      return null;
+    }
     const bounds = this.canvas.getBoundingClientRect();
     return {
       right: bounds.left + CONTENT_PADDING + (viewportEnd.x + 1) * this.metrics.width,
@@ -1022,7 +1065,7 @@ export class GhosttyTerminalSurface {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.resizeObserver.disconnect();
+    this.stopObservingResize();
     document.fonts.removeEventListener("loadingdone", this.onFontsLoaded);
     this.dprMedia?.removeEventListener("change", this.onDevicePixelRatioChange);
     this.dprMedia = null;
@@ -1060,6 +1103,55 @@ export class GhosttyTerminalSurface {
     if (isTerminalAltGraphText(event) || !this.options.beforeKey(event)) {
       this.suppressedKeyCodes.add(event.code);
       return;
+    }
+    // IME candidates belong to the textarea, even if the key also resembles
+    // a local shortcut. Safari signals the initial composition with code 229.
+    if (isTerminalCompositionKey(event, this.composing)) {
+      this.suppressedKeyCodes.add(event.code);
+      return;
+    }
+    const mac = isMacPlatform(navigator.platform);
+    const primaryModifier = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    const selectAllShortcut =
+      event.key.toLowerCase() === "a" &&
+      primaryModifier &&
+      !event.altKey &&
+      (mac ? !event.shiftKey : event.shiftKey);
+    if (selectAllShortcut) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.suppressedKeyCodes.add(event.code);
+      this.selectAll();
+      return;
+    }
+    // Shift+PageUp/Down pages history; Ctrl+Shift+Home/End (Cmd on macOS)
+    // jumps to its edges. Full-screen applications retain these keys.
+    const pageHistory =
+      event.shiftKey &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      (event.key === "PageUp" || event.key === "PageDown");
+    const jumpHistory =
+      event.shiftKey &&
+      !event.altKey &&
+      primaryModifier &&
+      (event.key === "Home" || event.key === "End");
+    if ((pageHistory || jumpHistory) && !this.core.isAlternateScreen()) {
+      const state = this.readScrollbarState();
+      if (state !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.suppressedKeyCodes.add(event.code);
+        const delta =
+          event.key === "Home"
+            ? -state.offset
+            : event.key === "End"
+              ? state.total - state.len - state.offset
+              : Math.max(1, state.len) * (event.key === "PageUp" ? -1 : 1);
+        this.scrollViewport(delta);
+        return;
+      }
     }
     if (isTerminalCopyShortcut(event) && this.hasSelection()) {
       // A plain Ctrl+C/Cmd+C fires the browser's native copy event, caught in
@@ -1137,12 +1229,6 @@ export class GhosttyTerminalSurface {
           },
         );
       }
-      return;
-    }
-    // keyCode 229 is Safari's only signal that this keydown opens an IME
-    // composition; encoding it would double the committed text. Do not blank
-    // the textarea first: onInput leaves the in-progress candidate there.
-    if (isTerminalCompositionKey(event, this.composing)) {
       return;
     }
     this.clearPrimedCopy();
@@ -1283,6 +1369,7 @@ export class GhosttyTerminalSurface {
 
   private readonly onPointerDown = (event: PointerEvent) => {
     this.focus();
+    if (event.pointerType === "touch") return;
     if (shouldReportTerminalMouse(this.core.isMouseTracking(), event)) {
       const button = ghosttyMouseButton(event.button);
       if (button === null) return;
@@ -1583,6 +1670,67 @@ export class GhosttyTerminalSurface {
     this.scrollViewport(delta.rows);
   };
 
+  private readonly onTouchStart = (event: TouchEvent) => {
+    if (event.touches.length !== 1) {
+      this.touchScrollState = null;
+      return;
+    }
+    const touch = event.touches.item(0);
+    if (!touch) {
+      this.touchScrollState = null;
+      return;
+    }
+    this.touchScrollState = {
+      id: touch.identifier,
+      lastY: touch.clientY,
+      residualRows: 0,
+      hasScrolled: false,
+    };
+  };
+
+  private readonly onTouchMove = (event: TouchEvent) => {
+    const state = this.touchScrollState;
+    if (!state || event.touches.length !== 1) return;
+    const touch = Array.from(event.touches).find(({ identifier }) => identifier === state.id);
+    if (!touch) {
+      this.touchScrollState = null;
+      return;
+    }
+
+    const deltaY = touch.clientY - state.lastY;
+    if (!state.hasScrolled && Math.abs(deltaY) < TOUCH_SCROLL_THRESHOLD_PX) return;
+
+    state.lastY = touch.clientY;
+    state.hasScrolled = true;
+    state.residualRows += -deltaY / this.metrics.height;
+    const rowDelta = Math.trunc(state.residualRows);
+    if (rowDelta === 0) return;
+
+    if (this.core.isAlternateScreen()) {
+      state.residualRows -= rowDelta;
+      this.options.onData(terminalWheelArrowData(rowDelta, this.core.isApplicationCursorKeys()));
+    } else {
+      const scrollState = this.readScrollbarState();
+      const maxOffset = scrollState === null ? 0 : Math.max(0, scrollState.total - scrollState.len);
+      const canScroll =
+        scrollState !== null &&
+        (rowDelta < 0 ? scrollState.offset > 0 : scrollState.offset < maxOffset);
+      if (!canScroll) {
+        state.residualRows = 0;
+        return;
+      }
+      state.residualRows -= rowDelta;
+      this.scrollViewport(rowDelta);
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  private readonly onTouchEnd = () => {
+    this.touchScrollState = null;
+  };
+
   private readonly onMouseDown = (event: MouseEvent) => {
     // Cancelling the middle button here stops autoscroll while still letting
     // the event bubble to the drawer handler that activates a split pane.
@@ -1689,6 +1837,10 @@ export class GhosttyTerminalSurface {
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    this.canvas.addEventListener("touchstart", this.onTouchStart, { passive: true });
+    this.canvas.addEventListener("touchmove", this.onTouchMove, { passive: false });
+    this.canvas.addEventListener("touchend", this.onTouchEnd);
+    this.canvas.addEventListener("touchcancel", this.onTouchEnd);
     this.canvas.addEventListener("mousedown", this.onMouseDown);
     this.canvas.addEventListener("mouseup", this.onMouseUp);
     this.canvas.addEventListener("contextmenu", this.onContextMenu);
@@ -1715,6 +1867,10 @@ export class GhosttyTerminalSurface {
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
     this.canvas.removeEventListener("wheel", this.onWheel);
+    this.canvas.removeEventListener("touchstart", this.onTouchStart);
+    this.canvas.removeEventListener("touchmove", this.onTouchMove);
+    this.canvas.removeEventListener("touchend", this.onTouchEnd);
+    this.canvas.removeEventListener("touchcancel", this.onTouchEnd);
     this.canvas.removeEventListener("mousedown", this.onMouseDown);
     this.canvas.removeEventListener("mouseup", this.onMouseUp);
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
@@ -1926,6 +2082,11 @@ export class GhosttyTerminalSurface {
   }
 
   private linkAt(clientX: number, clientY: number): TerminalLinkWithRange | null {
+    const link = this.findLinkAt(clientX, clientY);
+    return link && this.options.canActivateLink?.(link.text) !== false ? link : null;
+  }
+
+  private findLinkAt(clientX: number, clientY: number): TerminalLinkWithRange | null {
     if (!this.snapshot) return null;
     const cell = terminalGridCellAt({
       bounds: this.canvas.getBoundingClientRect(),
