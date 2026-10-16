@@ -1,4 +1,4 @@
-import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useNavigation } from "@react-navigation/native";
 import { useAtomValue } from "@effect/atom-react";
 import { managedRelaySessionAtom } from "@t3tools/client-runtime/relay";
@@ -8,8 +8,8 @@ import { Platform, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SettingsScreen } from "./components/SettingsScreen";
-import { AndroidAnchoredMenu } from "../../components/AndroidAnchoredMenu";
-import { AndroidHeaderIconButton } from "../../components/AndroidScreenHeader";
+import { AndroidAnchoredMenu } from "../../components/ui/AndroidAnchoredMenu";
+import { AndroidHeaderIconButton } from "../../components/ui/AndroidScreenHeader";
 import { CloudEnvironmentRows } from "../connection/CloudEnvironmentRows";
 import { LocalEnvironmentList } from "../connection/LocalEnvironmentList";
 import { GitHubRoutingSettings } from "../connection/GitHubRoutingSettings";
@@ -47,7 +47,6 @@ export function SettingsEnvironmentsRouteScreen() {
   const connectedCloudEnvironments = SHOWCASE_ENABLED
     ? SHOWCASE_CONNECTED_CLOUD_ENVIRONMENTS
     : environmentSections.connectedCloudEnvironments;
-  const [expandedId, setExpandedId] = useState<EnvironmentId | null>(null);
   const headerIconColor = useUniwindTheme()["--color-icon"];
   const relaySession = useAtomValue(managedRelaySessionAtom);
   const refreshRelayEnvironments = useAtomCommand(
@@ -68,9 +67,15 @@ export function SettingsEnvironmentsRouteScreen() {
     }
   }
 
-  const handleToggle = useCallback((environmentId: EnvironmentId) => {
-    setExpandedId((prev) => (prev === environmentId ? null : environmentId));
-  }, []);
+  const openEnvironment = useCallback(
+    (environmentId: EnvironmentId) => {
+      navigation.navigate("SettingsSheet", {
+        screen: "SettingsContent",
+        params: { screen: "SettingsEnvironmentDetail", params: { environmentId } },
+      });
+    },
+    [navigation],
+  );
   const handleUpdateEnvironment = useCallback(
     (
       environmentId: EnvironmentId,
@@ -159,8 +164,9 @@ export function SettingsEnvironmentsRouteScreen() {
       >
         <LocalEnvironmentList
           environments={localEnvironments}
-          expandedId={expandedId}
-          onToggle={handleToggle}
+          expandedId={null}
+          onToggle={openEnvironment}
+          opensDetails
           onReconnect={onReconnectEnvironment}
           onRemove={onRemoveEnvironmentPress}
           onSetEnabled={onSetEnvironmentEnabled}
@@ -172,6 +178,7 @@ export function SettingsEnvironmentsRouteScreen() {
             user is signed out — the component gates discovery itself. */}
         <CloudEnvironmentRows
           connectedCloudEnvironments={connectedCloudEnvironments}
+          onOpenEnvironment={openEnvironment}
           onSetEnvironmentEnabled={onSetEnvironmentEnabled}
           onRemoveEnvironment={onRemoveEnvironmentPress}
           {...(SHOWCASE_ENABLED

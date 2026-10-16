@@ -1,4 +1,7 @@
 import { SettingsGroup } from "./SettingsGroup";
+import { AuthSettingsWriteScope } from "@t3tools/contracts";
+import { usePrimaryEnvironmentId, usePrimaryEnvironment } from "../../state/environments";
+import { useEnvironmentScope, useEnvironmentsWithScope } from "../../state/session";
 import { InfoIcon, Undo2Icon } from "lucide-react";
 import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@t3tools/contracts";
 import * as Equal from "effect/Equal";
@@ -23,9 +26,11 @@ import { WorkspacePageContainer, type WorkspacePageWidth } from "../WorkspacePag
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
+import { SettingsScopeSentence } from "./SettingsScopeSentence";
 import {
   isProjectScopedSettingKey,
   listProjectOverrides,
+  type ProjectOverrideEntry,
   scopedSettingsAreMixed,
   scopedSettingsSource,
 } from "./scopedSettings";
@@ -96,14 +101,11 @@ function scrollAndFocusSettingsTarget(target: HTMLElement, highlight = true): vo
   if (!highlight || prefersReducedMotion) return;
   void target.offsetWidth;
   target.classList.add("settings-search-target-pulse");
-  // The class also suppresses the focus outline (the pulse is the destination
-  // indicator), so drop it once the element is no longer the destination.
   target.addEventListener("blur", () => target.classList.remove("settings-search-target-pulse"), {
     once: true,
   });
 }
 
-/** The row id a settings-search jump is currently trying to reach, if any. */
 export function useSettingsSearchTargetId(): string | null {
   return useContext(SettingsSearchTargetContext).targetId;
 }
@@ -136,15 +138,8 @@ export function SettingsSearchTarget({
   );
 }
 
-/**
- * Trigger classes for the composer model/traits pickers when they sit in a
- * settings row: match the `sm` control box (the composer pins them to 28px at
- * every breakpoint) and drop the composer's max-width.
- */
-export const SETTINGS_PICKER_TRIGGER_CLASSNAME =
-  "h-8 min-h-8 min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground sm:h-7 sm:min-h-7";
+export const SETTINGS_PICKER_TRIGGER_CLASSNAME = "min-w-0 max-w-none shrink-0";
 
-/** Info affordance explaining how a setting interacts with the shared background policy. */
 export function PolicyTooltip({ children }: { readonly children: string }) {
   return (
     <Tooltip>
@@ -156,14 +151,11 @@ export function PolicyTooltip({ children }: { readonly children: string }) {
           </Button>
         }
       />
-      <TooltipPopup side="top" className="max-w-72">
-        {children}
-      </TooltipPopup>
+      <TooltipPopup side="top">{children}</TooltipPopup>
     </Tooltip>
   );
 }
 
-/** Re-render every `intervalMs`; return a stable timestamp snapshot for render-time relative labels. */
 export function useRelativeTimeTick(intervalMs = 1_000) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -173,11 +165,11 @@ export function useRelativeTimeTick(intervalMs = 1_000) {
   return nowMs;
 }
 
-/** Muted section headings have no descriptions; explanatory copy belongs to individual settings. */
 export function SettingsSection({
   title,
   hideTitle = false,
   icon,
+  titleAction,
   headerAction,
   variant = "grouped",
   children,
@@ -187,6 +179,7 @@ export function SettingsSection({
   title: string;
   hideTitle?: boolean;
   icon?: ReactNode;
+  titleAction?: ReactNode;
   headerAction?: ReactNode;
   variant?: "grouped" | "plain";
   children: ReactNode;
@@ -207,11 +200,12 @@ export function SettingsSection({
           data-settings-scroll-target
           className="flex min-h-7 items-start justify-between gap-4 px-3 sm:px-4"
         >
-          <div className="min-w-0">
-            <h2 className="flex min-h-7 items-center gap-2 text-sm font-normal tracking-[-0.005em] text-foreground/70">
+          <div className="flex min-w-0 items-center gap-1">
+            <h2 className="flex min-h-7 items-center gap-2 text-sm font-normal text-foreground/70">
               {icon}
               {title}
             </h2>
+            {titleAction}
           </div>
           <div className="flex min-h-7 min-w-7 items-center justify-end">{headerAction}</div>
         </div>
@@ -234,7 +228,7 @@ export function SettingsUnavailableGroup({
 
   return (
     <div className="border-border/60 bg-muted/20 py-1.5">
-      <div className="flex items-start gap-2 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground sm:px-4">
+      <div className="flex items-start gap-2 px-3 py-2 text-xs leading-relaxed text-muted-foreground sm:px-4">
         <InfoIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
         <p>{message}</p>
       </div>
@@ -243,21 +237,6 @@ export function SettingsUnavailableGroup({
   );
 }
 
-/**
- * One setting. `serverScoped` marks rows whose value lives in the primary
- * environment's settings.json; where there is no primary (the hosted app)
- * the control goes inert with a tooltip instead of showing an editable
- * default that would never save.
- *
- * Keep descriptions short enough for one line where possible. Allow wrapping
- * for clarity or narrow screens instead of truncating or forcing no-wrap.
- *
- * Control sizing across settings follows three tiers so rows share a baseline:
- * - `control` slot: `size="sm"` (Button, Select, Input, NumberField) or `icon-sm`.
- * - Section `headerAction`s and buttons inside list items, cards, toolbars: `xs` / `icon-xs`.
- * - Inline affordances (reset arrows, info tooltips, table-cell buttons): `icon-micro`.
- * Dialog footers keep the app-wide default button size.
- */
 export function SettingsRow({
   title,
   description,
@@ -276,7 +255,6 @@ export function SettingsRow({
   description?: ReactNode;
   status?: ReactNode;
   resetAction?: ReactNode;
-  /** Replaces the default override clear for rows with side effects beyond the settings key. */
   onResetOverride?: () => void;
   control?: ReactNode;
   serverScoped?: boolean;
@@ -287,13 +265,22 @@ export function SettingsRow({
   const targetRef = useSettingsSearchTarget<HTMLDivElement>(rowProps.id);
   const primarySettingsAvailable = usePrimarySettingsAvailable();
   const context = useOptionalSettingsScope();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const primaryEnvironment = usePrimaryEnvironment();
+  const primaryCanWrite = useEnvironmentScope(primaryEnvironmentId, AuthSettingsWriteScope);
+  const writableIds = useEnvironmentsWithScope(
+    context?.connectedEnvironments ?? [],
+    AuthSettingsWriteScope,
+  );
+  const canWriteSettings = context
+    ? context.connectedEnvironments.length > 0 &&
+      context.connectedEnvironments.every((target) => writableIds.has(target.environmentId))
+    : primaryCanWrite;
   const clearOverrides = useClearScopedSettings();
   const clearProjectOverrides = useClearProjectOverrides();
   const isProjectScope =
     context !== null && (context.scope.kind === "project" || context.scope.kind === "checkout");
   const scopedKeys = settingKeys.filter(isProjectScopedSettingKey);
-  // A project scope can only edit keys that support overrides; the rest stay
-  // visible so the user sees the inherited value, but cannot change it here.
   const environmentWide = isProjectScope && serverScoped && scopedKeys.length === 0;
   const mixed =
     mixedOverride ?? (context !== null && scopedSettingsAreMixed(context.targets, settingKeys));
@@ -301,7 +288,8 @@ export function SettingsRow({
     context && isProjectScope ? scopedSettingsSource(context.targets, scopedKeys) : null;
   const unavailable =
     serverScoped &&
-    !(context ? context.connectedEnvironments.length > 0 : primarySettingsAvailable);
+    (!canWriteSettings ||
+      !(context ? context.connectedEnvironments.length > 0 : primarySettingsAvailable));
   const inheritedFrom =
     source === "environment" && context?.scope.environmentIds.length === 1
       ? (context.environments.find(
@@ -319,8 +307,6 @@ export function SettingsRow({
       ),
     [context?.connectedEnvironments],
   );
-  // At environment scope, projects with their own value keep it when the
-  // environment default changes; the chain names them and can reset them.
   const overridingProjects = useMemo((): SettingOverridingProject[] => {
     if (context === null || isProjectScope || scopedKeys.length === 0) return [];
     return listProjectOverrides(context.connectedEnvironments, scopedKeys).flatMap((entry) => {
@@ -358,10 +344,9 @@ export function SettingsRow({
     <Tooltip>
       <TooltipTrigger
         render={
-          // Focusable so keyboard users can still reach the explanation.
           <span
             tabIndex={0}
-            className="flex w-full items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring @min-[32rem]/settings-row:w-auto"
+            className="flex w-full items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @min-[32rem]/settings-row:w-auto"
           />
         }
       >
@@ -372,26 +357,28 @@ export function SettingsRow({
           {control}
         </div>
       </TooltipTrigger>
-      <TooltipPopup side="top" className="max-w-72">
-        {message}
-      </TooltipPopup>
+      <TooltipPopup side="top">{message}</TooltipPopup>
     </Tooltip>
   );
-  // A mixed selection keeps the real control with "Mixed" as its placeholder
-  // (the multi-selection inspector convention): the popover shows who has
-  // what, and picking a value applies it to every target.
   const renderedControl =
     unavailable && control
       ? inertControl(
-          context
-            ? "Reconnect the selected environment to change this setting."
-            : PRIMARY_SETTINGS_UNAVAILABLE_MESSAGE,
+          !canWriteSettings
+            ? `This connection lacks permission to change settings on ${
+                context
+                  ? context.connectedEnvironments
+                      .filter((target) => !writableIds.has(target.environmentId))
+                      .map((target) => target.label)
+                      .join(", ") || "the selected environment"
+                  : (primaryEnvironment?.label ?? "the primary environment")
+              }.`
+            : context
+              ? "Reconnect the selected environment to change this setting."
+              : PRIMARY_SETTINGS_UNAVAILABLE_MESSAGE,
         )
       : environmentWide && control
         ? inertControl("Environment-wide setting. Select an environment to change it.")
         : control;
-  // Server rows get an indicator beside the title that opens the resolution
-  // chain per target at every scope; client rows keep a plain status only.
   const customized =
     context !== null &&
     settingKeys.some((key) =>
@@ -407,11 +394,13 @@ export function SettingsRow({
     ? { state: "mixed", summary: "Mixed across selected environments" }
     : source === "project"
       ? { state: "overridden", summary: "Overridden for this project" }
-      : source === "environment" && scopedKeys.length > 0
-        ? { state: "inherited", summary: `Inherited from ${inheritedFrom}` }
-        : customized
-          ? { state: "environment", summary: "Set on the environment" }
-          : { state: "default", summary: "Built-in default" };
+      : source === "t3.json"
+        ? { state: "inherited", summary: "Inherited from the repository's t3.json" }
+        : source === "environment" && scopedKeys.length > 0
+          ? { state: "inherited", summary: `Inherited from ${inheritedFrom}` }
+          : customized
+            ? { state: "environment", summary: "Set on the environment" }
+            : { state: "default", summary: "Built-in default" };
   const renderedInheritance =
     context && serverScoped && settingKeys.length > 0 ? (
       <SettingInheritance
@@ -421,7 +410,12 @@ export function SettingsRow({
         environments={context.connectedEnvironments}
         keys={settingKeys}
         overridingProjects={overridingProjects}
-        onClearOverrides={(entries) => clearProjectOverrides(entries, scopedKeys)}
+        {...(canWriteSettings
+          ? {
+              onClearOverrides: (entries: readonly ProjectOverrideEntry[]) =>
+                clearProjectOverrides(entries, scopedKeys),
+            }
+          : {})}
       />
     ) : null;
   const renderedStatus = status;
@@ -433,7 +427,7 @@ export function SettingsRow({
       tabIndex={rowProps.id ? -1 : rowProps.tabIndex}
       data-slot="settings-row"
       className={cn(
-        "@container/settings-row rounded-xl px-3 sm:px-4 aria-disabled:opacity-50 aria-disabled:[&_*]:text-muted-foreground",
+        "@container/settings-row rounded-xl px-3 sm:px-4 aria-disabled:opacity-64 aria-disabled:[&_*]:text-muted-foreground",
         children ? "pt-3 pb-1" : "py-3",
         className,
       )}
@@ -441,7 +435,7 @@ export function SettingsRow({
       <div className="flex flex-col gap-3 @min-[32rem]/settings-row:grid @min-[32rem]/settings-row:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] @min-[32rem]/settings-row:items-center @min-[32rem]/settings-row:gap-8">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex min-h-5 items-center gap-1.5">
-            <h3 className="text-sm font-medium tracking-[-0.005em] text-foreground">{title}</h3>
+            <h3 className="text-sm font-medium text-foreground">{title}</h3>
             {renderedInheritance ? (
               <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
                 {renderedInheritance}
@@ -452,7 +446,7 @@ export function SettingsRow({
             </span>
           </div>
           {description ? (
-            <p className="max-w-xl text-[13px] leading-[1.45] text-muted-foreground/80">
+            <p className="max-w-xl text-xs leading-normal text-muted-foreground/80">
               {description}
             </p>
           ) : null}
@@ -547,6 +541,7 @@ export function SettingsPageContainer({
         data-settings-page-scroll
       >
         <WorkspacePageContainer width={width} className={cn("gap-8", className)}>
+          <SettingsScopeSentence />
           {children}
         </WorkspacePageContainer>
       </div>
