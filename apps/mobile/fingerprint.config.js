@@ -18,5 +18,14 @@ if (!majorVersion) {
 
 module.exports = {
   nativeModuleSourceType: "files",
-  extraSources: [{ type: "contents", id: "appMajorVersion", contents: majorVersion }],
+  extraSources: [
+    { type: "contents", id: "appMajorVersion", contents: majorVersion },
+    // Keep the published storage baseline stable after restoring upstream image writers.
+    {
+      type: "contents",
+      id: "composer-storage-baseline",
+      contents: "file-backed-images-v1",
+      reasons: ["Require an embedded file-backed image reader and storage guards"],
+    },
+  ],
 };
