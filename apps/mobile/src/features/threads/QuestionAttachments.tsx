@@ -1,16 +1,13 @@
+import * as Dialog from "../../components/ui/Dialog";
 import { TextInputWrapper } from "expo-paste-input";
-import { AppTextInput as TextInput } from "../../components/AppText";
+import { AppTextInput as TextInput } from "../../components/ui/AppText";
 import { useNativePaste } from "../../lib/useNativePaste";
 import { convertPastedImagesToAttachments } from "../../lib/composerImages";
-import {
-  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
-  type ApprovalRequestId,
-  type UserInputQuestion,
-} from "@t3tools/contracts";
+import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS, type UserInputQuestion } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 import { useEffect, useRef, useState } from "react";
-import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
+import { ComposerAttachmentButton } from "./ComposerAttachmentButton";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
 import { pickComposerFiles, pickComposerMedia } from "../../lib/composerImages";
 import { useThreadSelection } from "../../state/use-thread-selection";
@@ -32,7 +29,7 @@ import {
 } from "../../state/question-attachments";
 
 export function QuestionAttachments(props: {
-  requestId: ApprovalRequestId;
+  requestId: string;
   question: UserInputQuestion;
   questions: ReadonlyArray<UserInputQuestion>;
   disabled: boolean;
@@ -104,11 +101,14 @@ export function QuestionAttachments(props: {
           (appAtomRegistry.get(questionAttachmentPreparationAtom)[key] ?? 0) > 0
         ) {
           if (append(key, images) > 0)
-            Alert.alert("Could not paste image", "Too many attachments.");
+            Dialog.alert("Could not paste image", "Too many attachments.");
         } else await releaseUnusedComposerAttachmentFiles(images);
       })
       .catch((error) =>
-        Alert.alert("Could not paste image", error instanceof Error ? error.message : "Try again."),
+        Dialog.alert(
+          "Could not paste image",
+          error instanceof Error ? error.message : "Try again.",
+        ),
       )
       .finally(() => changeQuestionAttachmentPreparation(key, -1));
   });
@@ -131,10 +131,12 @@ export function QuestionAttachments(props: {
       const result =
         kind === "files"
           ? await pickComposerFiles({
+              ownerKey: key,
               existingCount,
               maxBytes: capabilities?.fileAttachments?.maxUploadBytes,
             })
           : await pickComposerMedia({
+              ownerKey: key,
               existingCount,
               maxVideoBytes: capabilities?.fileAttachments?.maxUploadBytes,
             });
@@ -149,9 +151,9 @@ export function QuestionAttachments(props: {
       }
       const rejected = append(key, picked);
       if (result.error || rejected > 0)
-        Alert.alert("Could not attach file", result.error ?? "Too many attachments.");
+        Dialog.alert("Could not attach file", result.error ?? "Too many attachments.");
     } catch (error) {
-      Alert.alert("Could not attach file", error instanceof Error ? error.message : "Try again.");
+      Dialog.alert("Could not attach file", error instanceof Error ? error.message : "Try again.");
     } finally {
       changeQuestionAttachmentPreparation(key, -1);
     }
@@ -167,6 +169,7 @@ export function QuestionAttachments(props: {
         />
       ) : null}
       <ComposerAttachmentStrip
+        compressionOwnerKey={key}
         environmentId={environmentId}
         attachments={attachments}
         onRemove={(id) => {
@@ -193,6 +196,8 @@ export function QuestionAttachments(props: {
       <TextInputWrapper onPaste={paste}>
         <TextInput
           value={props.value}
+          multiline={props.question.initialAnswer !== undefined}
+          submitBehavior={props.question.initialAnswer !== undefined ? "newline" : undefined}
           editable={!props.disabled}
           onChangeText={props.onChangeText}
           onFocus={() => props.onInputFocusChange?.(true)}

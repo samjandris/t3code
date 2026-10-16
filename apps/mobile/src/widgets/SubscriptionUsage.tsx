@@ -2,6 +2,7 @@ import { HStack, ProgressView, Spacer, Text, VStack } from "@expo/ui/swift-ui";
 import {
   accessibilityElement,
   accessibilityLabel,
+  containerBackground,
   fixedSize,
   font,
   foregroundStyle,
@@ -29,11 +30,10 @@ function SubscriptionUsage(
   // The extension evaluates this function without the app's module scope.
   const family = environment.widgetFamily;
   // Gallery snapshots can render an old timeline entry after it has expired.
-  const now = Math.max(environment.date.getTime(), Date.now());
+  const now = Math.max(environment.date?.getTime() ?? 0, Date.now());
   const accessory = family === "accessoryRectangular";
   const compact =
     family === "systemSmall" || accessory || environment.levelOfDetail === "simplified";
-  // Budget short cards for two quotas per provider, including their secondary text.
   const dense = family === "systemSmall" || family === "systemMedium";
   const limit = family === "systemExtraLarge" ? 6 : family === "systemLarge" ? 4 : 2;
   const monochrome =
@@ -50,7 +50,6 @@ function SubscriptionUsage(
     const windows = stale
       ? []
       : provider.windows.filter((window) => period === "auto" || window.kind === period);
-    // Lock Screen widgets surface the tightest selected limit.
     const tightest = windows.reduce<(typeof windows)[number] | undefined>(
       (result, window) => (!result || window.remaining < result.remaining ? window : result),
       undefined,
@@ -233,9 +232,20 @@ function SubscriptionUsage(
     <VStack
       alignment="leading"
       spacing={accessory || dense ? 2 : 6}
-      modifiers={props.url ? [widgetURL(props.url)] : []}
+      modifiers={[
+        // WidgetKit replaces layouts without a container background on physical iPhones.
+        containerBackground(
+          accessory ? "clear" : environment.colorScheme === "dark" ? "#1c1c1e" : "#ffffff",
+          "widget",
+        ),
+        ...(props.url ? [widgetURL(props.url)] : []),
+      ]}
     >
-      {compact ? (
+      {providers.length === 0 ? (
+        <Text modifiers={[font({ textStyle: "caption" }), foregroundStyle("secondary")]}>
+          No subscription limits available.
+        </Text>
+      ) : compact ? (
         <VStack alignment="leading" spacing={accessory || dense ? 4 : 8}>
           {columns}
         </VStack>
@@ -258,4 +268,11 @@ function SubscriptionUsage(
   );
 }
 
-export default createWidget("SubscriptionUsage", SubscriptionUsage);
+export default createWidget<SubscriptionUsageProps, UsageConfiguration>(
+  "SubscriptionUsage",
+  SubscriptionUsage,
+  {
+    checkedAt: 0,
+    providers: [],
+  },
+);
