@@ -83,6 +83,7 @@ export class DesktopSshEnvironmentRequestError extends Data.TaggedError(
   readonly cause: DesktopSshEnvironmentRequestCause;
   readonly sshHttpStatus: number | null;
 }> {
+  // The web client matches "[ssh_http:500]" to explain version-skewed SSH pairing.
   override get message() {
     const prefix = this.sshHttpStatus === null ? "" : `[ssh_http:${this.sshHttpStatus}] `;
     return `${prefix}SSH remote API request failed during ${this.operation}.`;
@@ -137,13 +138,11 @@ export const ensureSshEnvironment = DesktopIpc.makeIpcMethod({
   }) {
     const sshEnvironment = yield* DesktopSshEnvironment.DesktopSshEnvironment;
     return yield* sshEnvironment.ensureEnvironment(target, options).pipe(
-      Effect.catch((error) =>
-        DesktopSshEnvironment.isDesktopSshPasswordPromptCancellation(error)
-          ? Effect.succeed({
-              type: DesktopSshPasswordPromptCancelledType,
-              message: error.message,
-            })
-          : Effect.fail(error),
+      Effect.catchIf(DesktopSshEnvironment.isDesktopSshPasswordPromptCancellation, (error) =>
+        Effect.succeed({
+          type: DesktopSshPasswordPromptCancelledType,
+          message: error.message,
+        }),
       ),
     );
   }),
