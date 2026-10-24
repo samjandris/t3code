@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { ManagedRelayAuthProvider } from "../../cloud/managedAuth";
 import { clerkAppearance } from "./clerkAppearance";
 
+const clerkPasskeysEnabled = import.meta.env.VITE_CLERK_PASSKEYS_ENABLED;
+
 /**
  * The Electron provider statically bundles the full clerk-js runtime, so this
  * module must only ever load lazily, and only inside the desktop shell —
@@ -19,7 +21,11 @@ export default function ElectronManagedAuthShell({
   readonly children: ReactNode;
 }) {
   return (
-    <ClerkProvider appearance={clerkAppearance} publishableKey={publishableKey} passkeys={passkeys}>
+    <ClerkProvider
+      appearance={clerkAppearance}
+      publishableKey={publishableKey}
+      {...(clerkPasskeysEnabled ? { passkeys } : {})}
+    >
       <ManagedRelayAuthProvider>{children}</ManagedRelayAuthProvider>
     </ClerkProvider>
   );
