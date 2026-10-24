@@ -1,3 +1,5 @@
+import { useIsVideoCompressing } from "../../lib/useVideoCompression";
+import { isVideoCompressing } from "../../lib/composerVideo";
 import { useSidebarWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
@@ -444,6 +446,7 @@ export function ComposerSurface(props: {
 export const THREAD_COMPOSER_BOTTOM_GUTTER = 6;
 
 export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps) {
+  const compressingVideo = useIsVideoCompressing();
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const composerPanel = materialTheme["--color-composer-panel"];
@@ -597,7 +600,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     voiceInput.elapsedSeconds,
   );
   const isVoiceInputPresented = voicePresentation.statusLabel !== null;
-  const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
+  const isExpanded =
+    compressingVideo || isFocused || settingsSheetPresentation.keepsComposerExpanded;
   const { setComposerEditing } = useAdaptiveWorkspaceLayout();
   const hasSidebarTabBar = useSidebarWorkspaceTabs() === "picker";
   const [compactRowWidth, setCompactRowWidth] = useState(0);
@@ -606,6 +610,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const showsCompactDictation = isVoiceInputPresented;
   const isToolbarVisible = isVoiceInputPresented;
   const hasEditingAttachments =
+    compressingVideo ||
     (queuedEdit !== null && queuedEdit.existingAttachments.length > 0) ||
     stripAttachments.length > 0;
   const attachmentBlockReason = composerAttachmentUploadBlockReason({
@@ -617,6 +622,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   });
   const contextImports = useAtomValue(composerContextImportsAtom);
   const sendBlockedReason =
+    (compressingVideo ? "Compressing video" : null) ??
     (queuedEdit?.saving === true ? "Saving…" : null) ??
     props.sendBlockedReason ??
     (pendingPastedTextAttachmentCount > 0 ? "Attaching pasted text" : null) ??
@@ -672,6 +678,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     setComposerEditing(false);
   };
   const handleSend = async (followUp?: ActiveTurnComposerAction) => {
+    if (isVideoCompressing()) return;
     if (
       isSubmissionLocked ||
       sendBlockedReason !== null ||
@@ -821,13 +828,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           />
         </Animated.View>
       ) : null}
-      {stripAttachments.length > 0 ? (
+      {stripAttachments.length > 0 || compressingVideo ? (
         <Animated.View
           className="px-[14px] pb-2.5 pt-2"
           entering={COMPOSER_ATTACHMENT_ENTERING}
           exiting={FadeOut.duration(120)}
         >
           <ComposerAttachmentStrip
+            compressionOwnerKey={composerDraftKey}
             environmentId={props.environmentId}
             attachments={stripAttachments}
             onRemove={isSubmissionLocked ? () => undefined : props.onRemoveDraftImage}

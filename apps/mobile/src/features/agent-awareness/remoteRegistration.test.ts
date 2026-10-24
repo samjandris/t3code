@@ -46,6 +46,19 @@ vi.mock("./androidNotifications", () => ({
   clearAndroidAgentNotifications: vi.fn(),
 }));
 
+const bridgeMock = vi.hoisted(() => ({
+  url: undefined as string | undefined,
+  request: vi.fn(async () => ({ ok: true })),
+  snapshot: vi.fn(async () => ({ aggregate: null })),
+}));
+vi.mock("./activityBridge", () => ({
+  get activityBridgeUrl() {
+    return bridgeMock.url;
+  },
+  activityBridgeRequest: bridgeMock.request,
+  readActivityBridgeSnapshot: bridgeMock.snapshot,
+}));
+
 const secureStore = vi.hoisted(() => new Map<string, string>());
 const widgetMocks = vi.hoisted(() => ({
   dismissEnded: vi.fn(),
@@ -244,6 +257,9 @@ const runBackgroundOperations = Effect.fn("TestRemoteRegistration.runBackgroundO
 describe("makeRelayDeviceRegistrationRequest", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    bridgeMock.url = undefined;
+    bridgeMock.request.mockReset();
+    bridgeMock.request.mockResolvedValue({ ok: true });
     vi.mocked(Notifications.getDevicePushTokenAsync).mockResolvedValue({
       type: "ios",
       data: "apns-token",
@@ -265,6 +281,84 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     widgetMocks.start.mockClear();
     widgetMocks.dismissEnded.mockReset();
     environmentConfigsMock.configs.clear();
+  });
+
+  it.effect("routes both push types privately and disables upstream delivery", () => {
+    bridgeMock.url = "https://helper.example.test";
+    Constants.expoConfig!.extra = {
+      relay: { url: "https://relay.example.test/" },
+      appVariant: "preview",
+      iosDevelopmentSigning: true,
+    };
+    const relayRequests: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        relayRequests.push({
+          url: request.url,
+          body: request.url.endsWith("/v1/mobile/devices") ? await request.json() : null,
+        });
+        return new Response(
+          JSON.stringify(
+            request.url.includes("/dpop-token")
+              ? {
+                  access_token: "relay-access-token",
+                  issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+                  token_type: "DPoP",
+                  expires_in: 300,
+                  scope: "mobile:registration",
+                }
+              : { ok: true },
+          ),
+        );
+      }),
+    );
+    setAgentAwarenessRelayTokenProvider(() => Promise.resolve("clerk-token-user-a"));
+    return Effect.gen(function* () {
+      yield* runBackgroundOperations();
+      yield* refreshAgentAwarenessRegistration();
+      const activity = {
+        getId: () => "private-activity-id",
+        getPushToken: async () => "private-activity-token",
+        addPushTokenListener: vi.fn(),
+      };
+      expect(yield* registerLiveActivityPushToken({ activity: activity as never })).toBe(true);
+      expect(bridgeMock.request).toHaveBeenCalledWith("/v1/mobile/live-activities", "POST", {
+        deviceId: "device-1",
+        activityPushToken: "private-activity-token",
+      });
+      expect(bridgeMock.request).toHaveBeenCalledWith(
+        "/v1/mobile/devices",
+        "POST",
+        expect.objectContaining({
+          pushToken: expect.any(String),
+          apsEnvironment: "sandbox",
+          preferences: expect.objectContaining({ notificationsEnabled: true }),
+        }),
+      );
+      const upstream = relayRequests.filter((request) =>
+        request.url.endsWith("/v1/mobile/devices"),
+      );
+      expect(upstream.length).toBeGreaterThan(0);
+      expect(upstream.at(-1)?.body).toMatchObject({
+        preferences: { liveActivitiesEnabled: false, notificationsEnabled: false },
+      });
+      expect(
+        relayRequests.some((request) => request.url.endsWith("/v1/mobile/live-activities")),
+      ).toBe(false);
+      yield* updateAgentAwarenessRegistrationPreferences({ liveActivitiesEnabled: false });
+      expect(bridgeMock.request).toHaveBeenCalledWith(
+        "/v1/mobile/devices",
+        "POST",
+        expect.objectContaining({
+          preferences: expect.objectContaining({ liveActivitiesEnabled: false }),
+        }),
+      );
+    }).pipe(
+      Effect.provideService(FetchHttpClient.Fetch, globalThis.fetch),
+      Effect.provide(layerRelayTest),
+    );
   });
 
   it("disables push features in Personal Team relay registrations", () => {
