@@ -11,11 +11,16 @@ export type SettingsSheetTarget =
   | "SettingsEnvironmentSourceControl"
   | "SettingsEnvironmentAgentBehavior"
   | "SettingsEnvironmentMaintenance"
+  | "SettingsProviderAccounts"
   | "SettingsKeyboard"
+  | "SettingsMicrophone"
+  | "SettingsFollowUp"
+  | "SettingsScheduledTasks"
   | "SettingsProjectGrouping"
   | "SettingsClientStorage"
   | "SettingsDiagnostics"
   | "SettingsOpenSourceLicenses"
+  | "SettingsDictation"
   | "SettingsUsage";
 
 export type SettingsLegalDocumentTarget = "SettingsLegal";
