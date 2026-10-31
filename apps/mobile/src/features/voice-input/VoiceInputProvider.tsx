@@ -19,7 +19,7 @@ import {
 } from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
-import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
+import { getChatGptVoiceTranscriber } from "../dictation/chatgptVoiceTranscriber";
 import { voiceInputBlocksSubmission } from "@t3tools/client-runtime/voice-input";
 import { createLazyVoiceRecorder } from "./lazyVoiceRecorder";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
@@ -91,7 +91,8 @@ const voiceInputAtom = Atom.make((get) => {
   });
   const session: VoiceInputSession = new VoiceInputSession({
     recorder,
-    getTranscriber: getLocalVoiceTranscriber,
+    getTranscriber: () =>
+      getChatGptVoiceTranscriber(session.readDraft()?.text ?? "", getLocalVoiceTranscriber()),
     requestPermission: async () => {
       const permission = await requestRecordingPermissionsAsync();
       return { granted: permission.granted, canAskAgain: permission.canAskAgain };
@@ -139,7 +140,7 @@ export function useGlobalVoiceInput() {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return {
     ...snapshot,
-    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
+    isAvailable: true,
     audioLevels,
     isBusy: voiceInputBlocksSubmission(snapshot.state),
     session,
