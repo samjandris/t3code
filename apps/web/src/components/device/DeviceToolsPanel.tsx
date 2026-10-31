@@ -1,14 +1,8 @@
 import type { DeviceHubAccess } from "@t3tools/client-runtime/state/deviceHubAccess";
-import type {
-  DeviceActionInput,
-  DeviceDetail,
-  DevicePermission,
-  DeviceSummary,
-  DeviceTextSize,
-  EnvironmentId,
-} from "@t3tools/contracts";
+import type { DevicePermission, DeviceSummary, DeviceTextSize } from "@t3tools/contracts";
 import { ChevronDown, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
@@ -24,21 +18,8 @@ import { Spinner } from "~/components/ui/spinner";
 import { Switch } from "~/components/ui/switch";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
-import { deviceEnvironment } from "~/state/device";
-import { formatEnvironmentQueryError } from "~/state/query";
-import { useAtomCommand } from "~/state/use-atom-command";
-import {
-  type DeviceEventLogEntry,
-  type DeviceForegroundInfo,
-  subscribeDeviceEventLog,
-  subscribeDeviceForeground,
-} from "./deviceHubApi";
-
-type ActionBody = DeviceActionInput extends infer A
-  ? A extends { readonly type: string }
-    ? Omit<A, "hostId" | "deviceId">
-    : never
-  : never;
+import type { DeviceControls } from "./useDeviceControls";
+import { deviceEventLogAtom } from "./deviceHubAtoms";
 
 const TEXT_SIZES: ReadonlyArray<{ value: DeviceTextSize; label: string }> = [
   { value: "small", label: "Small" },
@@ -95,14 +76,9 @@ const LOCATION_PRESETS = [
   { label: "Tokyo", latitude: 35.6762, longitude: 139.6503 },
 ] as const;
 
-/**
- * The Tools drawer for one open device: current settings read from the device,
- * one control per supported action, and the read-only feeds the hub exposes.
- * Every change is a `device.action` round trip; the returned detail replaces
- * local state so the controls never show a value the device did not confirm.
- */
 export function DeviceToolsPanel(props: {
-  readonly environmentId: EnvironmentId;
+  readonly controls: DeviceControls;
+  readonly hostDiagnostics: string | undefined;
   readonly device: DeviceSummary;
   readonly access: DeviceHubAccess | null;
   readonly axOverlay: boolean;
@@ -110,62 +86,10 @@ export function DeviceToolsPanel(props: {
   readonly onClose: () => void;
   readonly className?: string;
 }) {
-  const { environmentId, device } = props;
-  const readDetail = useAtomCommand(deviceEnvironment.detail, { reportFailure: false });
-  const runAction = useAtomCommand(deviceEnvironment.action, { reportFailure: false });
-  const [detail, setDetail] = useState<DeviceDetail | null>(null);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [foreground, setForeground] = useState<DeviceForegroundInfo | null | undefined>(undefined);
-  const isIos = device.platform === "ios";
-
-  const target = useMemo(
-    () => ({ hostId: device.hostId, deviceId: device.id }),
-    [device.hostId, device.id],
-  );
-
-  // The panel is keyed by device, so a mount is always a fresh device.
-  useEffect(() => {
-    let cancelled = false;
-    void readDetail({ environmentId, input: target }).then((result) => {
-      if (cancelled) return;
-      if (result._tag === "Success") setDetail(result.value);
-      else setError(formatEnvironmentQueryError(result.cause));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId, readDetail, target]);
-
-  useEffect(() => {
-    if (!props.access) return;
-    return subscribeDeviceForeground(
-      { access: props.access, platform: device.platform, deviceId: device.id },
-      setForeground,
-    );
-  }, [device.id, device.platform, props.access]);
-
-  const act = useCallback(
-    async (body: ActionBody) => {
-      setPending(true);
-      setError(null);
-      try {
-        const result = await runAction({
-          environmentId,
-          input: { ...target, ...body } as DeviceActionInput,
-        });
-        if (result._tag === "Success") setDetail(result.value);
-        else setError(formatEnvironmentQueryError(result.cause));
-      } finally {
-        setPending(false);
-      }
-    },
-    [environmentId, runAction, target],
-  );
-
+  const { device, controls } = props;
+  const { detail, pending, error, foregroundApp, disabled, act } = controls;
   const settings = detail?.settings;
-  const foregroundApp = foreground === undefined ? (detail?.foregroundApp ?? null) : foreground;
-  const disabled = pending || detail === null;
+  const isIos = device.platform === "ios";
 
   return (
     <div
@@ -173,7 +97,7 @@ export function DeviceToolsPanel(props: {
     >
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <span className="font-medium">Tools</span>
-        {pending ? <Spinner className="size-3.5" /> : null}
+        {pending ? <Spinner size="sm" /> : null}
         <Button
           size="icon-xs"
           variant="ghost-muted"
@@ -190,13 +114,21 @@ export function DeviceToolsPanel(props: {
         ) : null}
         {detail === null && !error ? (
           <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
-            <Spinner className="size-3.5" /> Reading device settings…
+            <Spinner size="sm" /> Reading device settings…
           </div>
+        ) : null}
+
+        {props.hostDiagnostics ? (
+          <Section title="Host diagnostics">
+            <p className="whitespace-pre-line text-xs text-muted-foreground">
+              {props.hostDiagnostics}
+            </p>
+          </Section>
         ) : null}
 
         <Section title="App">
           <Row label="Foreground">
-            <span className="truncate font-mono text-xs">{foregroundApp?.id ?? "—"}</span>
+            <span className="truncate font-mono text-xs">{foregroundApp?.id ?? "-"}</span>
           </Row>
           {foregroundApp ? (
             <div className="flex gap-1.5">
@@ -398,9 +330,7 @@ export function DeviceToolsPanel(props: {
 function Section(props: { readonly title: string; readonly children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2 border-b px-3 py-2.5 last:border-b-0">
-      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {props.title}
-      </h3>
+      <h3 className="text-xs font-medium text-muted-foreground">{props.title}</h3>
       {props.children}
     </section>
   );
@@ -493,7 +423,8 @@ function SubmitRow(props: {
     >
       <Input
         size="compact"
-        className="min-w-0 flex-1 font-mono"
+        font="mono"
+        className="min-w-0 flex-1"
         placeholder={props.placeholder}
         value={value}
         disabled={props.disabled}
@@ -530,7 +461,8 @@ function LocationSection(props: {
       <div className="flex gap-1.5">
         <Input
           size="compact"
-          className="min-w-0 flex-1 font-mono"
+          font="mono"
+          className="min-w-0 flex-1"
           placeholder="Latitude"
           inputMode="decimal"
           value={latitude}
@@ -539,7 +471,8 @@ function LocationSection(props: {
         />
         <Input
           size="compact"
-          className="min-w-0 flex-1 font-mono"
+          font="mono"
+          className="min-w-0 flex-1"
           placeholder="Longitude"
           inputMode="decimal"
           value={longitude}
@@ -619,7 +552,7 @@ function PermissionsSection(props: {
     <Section title="Permissions">
       <Input
         size="compact"
-        className="font-mono"
+        font="mono"
         placeholder={props.defaultAppId || "App ID"}
         value={appId}
         disabled={props.disabled}
@@ -667,56 +600,51 @@ function PermissionsSection(props: {
   );
 }
 
-const EVENT_LOG_LIMIT = 100;
-
 function EventLogSection(props: {
   readonly access: DeviceHubAccess;
   readonly device: DeviceSummary;
 }) {
   const [open, setOpen] = useState(false);
-  const [entries, setEntries] = useState<ReadonlyArray<DeviceEventLogEntry>>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    const unsubscribe = subscribeDeviceEventLog(
-      { access: props.access, platform: props.device.platform, deviceId: props.device.id },
-      (incoming, reset) => {
-        setEntries((current) => {
-          const merged = reset ? [...incoming] : [...current, ...incoming];
-          return merged.length > EVENT_LOG_LIMIT ? merged.slice(-EVENT_LOG_LIMIT) : merged;
-        });
-      },
-    );
-    return () => {
-      unsubscribe();
-      setEntries([]);
-    };
-  }, [open, props.access, props.device.id, props.device.platform]);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex w-full items-center gap-1.5 border-b px-3 py-2.5 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      <CollapsibleTrigger className="flex w-full items-center gap-1.5 border-b px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">
         Event log
         <ChevronDown
           className={cn("ml-auto size-3.5 transition-transform", open && "rotate-180")}
         />
       </CollapsibleTrigger>
       <CollapsiblePanel>
-        <ol className="max-h-64 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed">
-          {entries.length === 0 ? (
-            <li className="text-muted-foreground">No events yet.</li>
-          ) : (
-            entries.map((entry) => (
-              <li key={entry.id} className="flex gap-2">
-                <span className="shrink-0 text-muted-foreground">
-                  {entry.timestamp.slice(11, 19)}
-                </span>
-                <span className="truncate">{entry.summary}</span>
-              </li>
-            ))
-          )}
-        </ol>
+        <EventLogEntries access={props.access} device={props.device} />
       </CollapsiblePanel>
     </Collapsible>
+  );
+}
+
+// The panel unmounts while closed, so the log streams only while it is open.
+function EventLogEntries(props: {
+  readonly access: DeviceHubAccess;
+  readonly device: DeviceSummary;
+}) {
+  const entries = useAtomValue(
+    deviceEventLogAtom({
+      access: props.access,
+      platform: props.device.platform,
+      deviceId: props.device.id,
+    }),
+  );
+  return (
+    <ol className="max-h-64 overflow-y-auto px-3 py-2 font-mono text-2xs leading-relaxed">
+      {entries.length === 0 ? (
+        <li className="text-muted-foreground">No events yet.</li>
+      ) : (
+        entries.map((entry) => (
+          <li key={entry.id} className="flex gap-2">
+            <span className="shrink-0 text-muted-foreground">{entry.timestamp.slice(11, 19)}</span>
+            <span className="truncate">{entry.summary}</span>
+          </li>
+        ))
+      )}
+    </ol>
   );
 }
