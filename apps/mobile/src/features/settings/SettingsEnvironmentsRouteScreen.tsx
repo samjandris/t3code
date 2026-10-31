@@ -1,18 +1,18 @@
-import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useNavigation } from "@react-navigation/native";
 import { useAtomValue } from "@effect/atom-react";
 import { managedRelaySessionAtom } from "@t3tools/client-runtime/relay";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Platform, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SettingsScreen } from "./components/SettingsScreen";
-import { AndroidAnchoredMenu } from "../../components/AndroidAnchoredMenu";
-import { AndroidHeaderIconButton } from "../../components/AndroidScreenHeader";
+import { AndroidAnchoredMenu } from "../../components/ui/AndroidAnchoredMenu";
+import { AndroidHeaderIconButton } from "../../components/ui/AndroidScreenHeader";
 import { CloudEnvironmentRows } from "../connection/CloudEnvironmentRows";
 import { LocalEnvironmentList } from "../connection/LocalEnvironmentList";
-import { GitHubRoutingSettings } from "../connection/GitHubRoutingSettings";
+import { PullRequestRoutingSettings } from "../connection/PullRequestRoutingSettings";
 import { splitEnvironmentSections } from "../connection/environmentSections";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
@@ -47,7 +47,6 @@ export function SettingsEnvironmentsRouteScreen() {
   const connectedCloudEnvironments = SHOWCASE_ENABLED
     ? SHOWCASE_CONNECTED_CLOUD_ENVIRONMENTS
     : environmentSections.connectedCloudEnvironments;
-  const [expandedId, setExpandedId] = useState<EnvironmentId | null>(null);
   const headerIconColor = useUniwindTheme()["--color-icon"];
   const relaySession = useAtomValue(managedRelaySessionAtom);
   const refreshRelayEnvironments = useAtomCommand(
@@ -60,43 +59,37 @@ export function SettingsEnvironmentsRouteScreen() {
     if (!relaySession || cloudRefreshPendingRef.current) return;
     cloudRefreshPendingRef.current = true;
     setIsRefreshingCloud(true);
-    try {
-      await refreshRelayEnvironments();
-    } finally {
-      cloudRefreshPendingRef.current = false;
-      setIsRefreshingCloud(false);
-    }
+    await refreshRelayEnvironments();
+    cloudRefreshPendingRef.current = false;
+    setIsRefreshingCloud(false);
   }
 
-  const handleToggle = useCallback((environmentId: EnvironmentId) => {
-    setExpandedId((prev) => (prev === environmentId ? null : environmentId));
-  }, []);
-  const handleUpdateEnvironment = useCallback(
-    (
-      environmentId: EnvironmentId,
-      updates: { readonly label: string; readonly displayUrl: string },
-    ) => {
-      if (!SHOWCASE_ENABLED) return onUpdateEnvironment(environmentId, updates);
-      const actualEnvironment = environmentSections.localEnvironments.find(
-        (environment) => environment.environmentId === environmentId,
-      );
-      const presentedEnvironment = localEnvironments.find(
-        (environment) => environment.environmentId === environmentId,
-      );
-      return onUpdateEnvironment(environmentId, {
-        ...updates,
-        displayUrl:
-          actualEnvironment && presentedEnvironment
-            ? resolveShowcaseEnvironmentUpdateDisplayUrl({
-                actualDisplayUrl: actualEnvironment.displayUrl,
-                presentedDisplayUrl: presentedEnvironment.displayUrl,
-                submittedDisplayUrl: updates.displayUrl,
-              })
-            : updates.displayUrl,
-      });
-    },
-    [environmentSections.localEnvironments, localEnvironments, onUpdateEnvironment],
-  );
+  const openEnvironment = (environmentId: EnvironmentId) => {
+    navigation.navigate("SettingsEnvironmentDetail", { environmentId });
+  };
+  const handleUpdateEnvironment = (
+    environmentId: EnvironmentId,
+    updates: { readonly label: string; readonly displayUrl: string },
+  ) => {
+    if (!SHOWCASE_ENABLED) return onUpdateEnvironment(environmentId, updates);
+    const actualEnvironment = environmentSections.localEnvironments.find(
+      (environment) => environment.environmentId === environmentId,
+    );
+    const presentedEnvironment = localEnvironments.find(
+      (environment) => environment.environmentId === environmentId,
+    );
+    return onUpdateEnvironment(environmentId, {
+      ...updates,
+      displayUrl:
+        actualEnvironment && presentedEnvironment
+          ? resolveShowcaseEnvironmentUpdateDisplayUrl({
+              actualDisplayUrl: actualEnvironment.displayUrl,
+              presentedDisplayUrl: presentedEnvironment.displayUrl,
+              submittedDisplayUrl: updates.displayUrl,
+            })
+          : updates.displayUrl,
+    });
+  };
 
   return (
     <SettingsScreen
@@ -131,11 +124,7 @@ export function SettingsEnvironmentsRouteScreen() {
           accessibilityLabel: "Add environment",
           icon: "plus",
           tintColor: headerIconColor,
-          onPress: () =>
-            navigation.navigate("SettingsSheet", {
-              screen: "SettingsContent",
-              params: { screen: "SettingsEnvironmentNew" },
-            }),
+          onPress: () => navigation.navigate("SettingsEnvironmentNew"),
         },
       ]}
     >
@@ -159,19 +148,19 @@ export function SettingsEnvironmentsRouteScreen() {
       >
         <LocalEnvironmentList
           environments={localEnvironments}
-          expandedId={expandedId}
-          onToggle={handleToggle}
+          expandedId={null}
+          onToggle={openEnvironment}
+          opensDetails
           onReconnect={onReconnectEnvironment}
           onRemove={onRemoveEnvironmentPress}
           onSetEnabled={onSetEnvironmentEnabled}
           onUpdate={handleUpdateEnvironment}
         />
 
-        {/* Always mounted: already-connected relay environments must stay
-            visible (and removable) even when cloud config is missing or the
-            user is signed out — the component gates discovery itself. */}
+        {/* Keep connected relays visible and removable without cloud config or sign-in; this component gates discovery. */}
         <CloudEnvironmentRows
           connectedCloudEnvironments={connectedCloudEnvironments}
+          onOpenEnvironment={openEnvironment}
           onSetEnvironmentEnabled={onSetEnvironmentEnabled}
           onRemoveEnvironment={onRemoveEnvironmentPress}
           {...(SHOWCASE_ENABLED
@@ -181,7 +170,7 @@ export function SettingsEnvironmentsRouteScreen() {
               }
             : {})}
         />
-        <GitHubRoutingSettings />
+        <PullRequestRoutingSettings />
       </ScrollView>
     </SettingsScreen>
   );
