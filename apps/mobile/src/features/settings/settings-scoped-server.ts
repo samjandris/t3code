@@ -1,4 +1,5 @@
 import {
+  isNullableProjectSettingsOverride,
   PROJECT_SCOPED_SERVER_SETTING_KEYS,
   type EnvironmentId,
   type ProjectId,
@@ -62,14 +63,20 @@ export function planMobileScopedSettingsPatch(
     return [];
   const writes = new Map<EnvironmentId, Record<string, unknown>>();
   for (const target of targets) {
-    if (
-      target.projectId === null ||
-      target.environment.serverConfig.environment.capabilities.projectSettingsOverrides !== true
-    )
-      continue;
+    if (target.projectId === null) continue;
     const current =
       target.environment.serverConfig.settings.projectSettingsOverrides[target.projectId] ?? {};
-    const next = { ...current, ...patch };
+    const next: Record<string, unknown> = { ...current };
+    for (const [key, value] of Object.entries(patch)) {
+      if (
+        value === null &&
+        !isNullableProjectSettingsOverride(key as ProjectScopedServerSettingKey)
+      ) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+    }
     const overrides = writes.get(target.environment.environmentId) ?? {};
     overrides[target.projectId] = next;
     writes.set(target.environment.environmentId, overrides);
@@ -80,17 +87,23 @@ export function planMobileScopedSettingsPatch(
   }));
 }
 
+export function uniformMobileSetting<K extends keyof ServerSettings>(
+  targets: readonly Pick<ScopedMobileSettingsTarget, "settings">[],
+  key: K,
+): ServerSettings[K] | null {
+  const reference = targets[0];
+  if (!reference) return null;
+  const value = reference.settings[key];
+  return targets.every((target) => target.settings[key] === value) ? value : null;
+}
+
 export function planMobileScopedSettingsClear(
   targets: readonly ScopedMobileSettingsTarget[],
   keys: readonly ProjectScopedServerSettingKey[],
 ) {
   const writes = new Map<EnvironmentId, Record<string, unknown>>();
   for (const target of targets) {
-    if (
-      target.projectId === null ||
-      target.environment.serverConfig.environment.capabilities.projectSettingsOverrides !== true
-    )
-      continue;
+    if (target.projectId === null) continue;
     const overrides = writes.get(target.environment.environmentId) ?? {};
     overrides[target.projectId] = clearProjectSettingsOverrides(
       target.environment.serverConfig.settings,
