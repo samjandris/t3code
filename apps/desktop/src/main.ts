@@ -116,7 +116,11 @@ const resolveDesktopSshCliRunner = (
       nodeEngineRange: serverPackageJson.engines.node,
     };
   }
-  return { archiveVersion: environment.appVersion };
+  return {
+    archiveVersion: environment.appVersion,
+    // Fork version numbers do not exist in upstream's release repository.
+    releaseBaseUrl: "https://github.com/samjandris/t3code/releases/download",
+  };
 };
 
 const layerDesktopSshEnvironment = Layer.unwrap(
