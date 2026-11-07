@@ -4,7 +4,7 @@ import {
 } from "@t3tools/client-runtime/voice-input";
 
 type Subscription = { remove(): void };
-type RecordingDestination = "local" | "environment";
+type RecordingDestination = "local" | "environment" | "chatgpt";
 
 export interface VoiceRecordingInput {
   readonly uid: string;

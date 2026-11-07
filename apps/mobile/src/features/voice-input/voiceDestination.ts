@@ -34,7 +34,7 @@ export const voiceGrantAtom = Atom.make((get) => {
   return AsyncResult.getOrElse(get(storedGrant), () => null);
 });
 
-export function chooseVoiceDestination(environmentId: EnvironmentId | null) {
+export function chooseVoiceDestination(environmentId: EnvironmentId | "chatgpt" | null) {
   // A failed change must not leave the old destination armed in this session.
   appAtomRegistry.set(choice, null);
   const grant: VoiceGrant | null =
@@ -42,7 +42,10 @@ export function chooseVoiceDestination(environmentId: EnvironmentId | null) {
       ? null
       : {
           id: uuidv4(),
-          destination: { kind: "environment", environmentId },
+          destination:
+            environmentId === "chatgpt"
+              ? { kind: "chatgpt" }
+              : { kind: "environment", environmentId },
         };
   writeVoiceGrant(grant);
   appAtomRegistry.set(choice, grant);
@@ -167,10 +170,13 @@ export const voiceSpeechBenchmarksAtom = Atom.family((id: EnvironmentId) =>
 export const voiceRouteAtom = Atom.make((get) => {
   const grant = get(voiceGrantAtom);
   if (!grant) return null;
+  // Cleanup context belongs to the recording session, which creates this transcriber.
+  if (grant.destination.kind === "chatgpt") return { kind: "chatgpt" as const, transcriber: null };
   const connectionAtom = voiceConnectionAtom(grant.destination.environmentId);
   const connection = get(connectionAtom);
   const registry = get.registry;
   return {
+    kind: "environment" as const,
     transcriber:
       connection &&
       environmentTranscriber(

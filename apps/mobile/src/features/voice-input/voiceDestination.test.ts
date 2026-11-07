@@ -12,7 +12,10 @@ const mocks = vi.hoisted(() => ({
   markerWrite: vi.fn<(id: string) => void>(),
   probe: vi.fn(),
   fetch: vi.fn<typeof fetch>(),
+  markerExists: vi.fn(() => false),
+  chatgptSession: vi.fn<() => Promise<object | null>>(async () => null),
 }));
+vi.mock("../dictation/chatgptAuthStore", () => ({ loadChatGptAuthSession: mocks.chatgptSession }));
 vi.mock("expo", () => ({
   requireOptionalNativeModule: () => ({ decodeRecording: async () => new Uint8Array([0, 0]) }),
 }));
@@ -20,6 +23,9 @@ vi.mock("expo/fetch", () => ({ fetch: mocks.fetch }));
 vi.mock("expo-file-system", () => ({
   Paths: { document: "file:///app/" },
   File: class {
+    get exists() {
+      return mocks.markerExists();
+    }
     textSync = mocks.markerRead;
     writeSync = mocks.markerWrite;
     write(id: string) {
@@ -87,7 +93,9 @@ it.each(["secure store", "marker"])(
     try {
       chooseVoiceDestination(host);
       expect(marker).toBe(appAtomRegistry.get(voiceGrantAtom)?.id);
-      expect((await readVoiceGrant())?.destination.environmentId).toBe(host);
+      expect(await readVoiceGrant()).toMatchObject({
+        destination: { kind: "environment", environmentId: host },
+      });
       mocks.markerRead.mockReturnValueOnce("");
       expect(await readVoiceGrant()).toBeNull();
       const old = { saved, marker };
@@ -122,8 +130,14 @@ it("keeps local as the default and never reuses consent for an offline or resele
   try {
     expect(appAtomRegistry.get(voiceRouteAtom)).toBeNull();
     expect(mocks.probe).not.toHaveBeenCalled();
+    chooseVoiceDestination("chatgpt");
+    expect(appAtomRegistry.get(voiceGrantAtom)?.destination).toEqual({ kind: "chatgpt" });
+    expect(appAtomRegistry.get(voiceRouteAtom)).toMatchObject({ kind: "chatgpt" });
+    expect(mocks.probe).not.toHaveBeenCalled();
+    chooseVoiceDestination(null);
+    expect(appAtomRegistry.get(voiceRouteAtom)).toBeNull();
     chooseVoiceDestination(EnvironmentId.make("offline"));
-    expect(appAtomRegistry.get(voiceRouteAtom)).toEqual({ transcriber: null });
+    expect(appAtomRegistry.get(voiceRouteAtom)).toMatchObject({ transcriber: null });
     const host = EnvironmentId.make("my-server");
     chooseVoiceDestination(host);
     const first = appAtomRegistry.get(voiceRouteAtom)?.transcriber;
@@ -172,3 +186,53 @@ it("keeps local as the default and never reuses consent for an offline or resele
     appAtomRegistry.reset();
   }
 });
+
+it.each([
+  { signedIn: true, saved: null, marker: "", exists: false, expected: "chatgpt" },
+  { signedIn: false, saved: null, marker: "", exists: false, expected: null },
+  { signedIn: true, saved: "null", marker: "", exists: true, expected: null },
+  { signedIn: true, saved: null, marker: "", exists: true, expected: null },
+  {
+    signedIn: true,
+    saved: JSON.stringify({
+      id: "saved",
+      destination: { kind: "environment", environmentId: "my-server" },
+    }),
+    marker: "saved",
+    exists: true,
+    expected: "environment",
+  },
+])(
+  "migrates ChatGPT sign-in without replacing a saved destination: $signedIn/$saved/$exists",
+  async ({ signedIn, saved, marker: initialMarker, exists, expected }) => {
+    let stored = saved;
+    let marker = initialMarker;
+    mocks.read.mockImplementation(async () => stored);
+    mocks.write.mockImplementation((_key: string, value: string) => {
+      stored = value;
+    });
+    mocks.markerRead.mockImplementation(() => marker);
+    mocks.markerWrite.mockImplementation((value) => {
+      marker = value;
+    });
+    mocks.markerExists.mockReturnValue(exists);
+    mocks.chatgptSession.mockResolvedValue(signedIn ? {} : null);
+    try {
+      const grant = await readVoiceGrant();
+      expect(grant?.destination.kind ?? null).toBe(expected);
+      if (expected === "chatgpt") {
+        expect(JSON.parse(stored!).destination).toEqual({ kind: "chatgpt" });
+        expect(marker).toBe(grant?.id);
+        await expect(readVoiceGrant()).resolves.toEqual(grant);
+      }
+    } finally {
+      mocks.read.mockReset();
+      mocks.write.mockReset();
+      mocks.markerRead.mockReset();
+      mocks.markerWrite.mockReset();
+      mocks.markerExists.mockReset();
+      mocks.chatgptSession.mockReset();
+      appAtomRegistry.reset();
+    }
+  },
+);

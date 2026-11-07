@@ -35,6 +35,7 @@ import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
 import { SettingsScreen } from "./components/SettingsScreen";
+import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import {
   deviceMicrophoneOrder,
@@ -112,7 +113,7 @@ const UNAVAILABLE_EXPLANATION =
     ? "Dictation on this device needs Android 12 or later and Google speech services that support your language. Your keyboard’s voice typing is separate."
     : "Dictation on this device needs iOS 26 or later, a supported device, and a supported language. Your keyboard’s dictation is separate.";
 
-function saveDestination(id: EnvironmentId | null) {
+function saveDestination(id: EnvironmentId | "chatgpt" | null) {
   try {
     chooseVoiceDestination(id);
   } catch {
@@ -169,11 +170,11 @@ export function SettingsVoiceRouteScreen() {
   const transcriber = useAtomValue(localVoiceTranscriberAtom);
   const grant = useAtomValue(voiceGrantAtom);
   const { environments, isReady } = useEnvironments();
-  const grantEnvironment = grant
-    ? environments.find(
-        (environment) => environment.environmentId === grant.destination.environmentId,
-      )
-    : undefined;
+  const destination = grant?.destination;
+  const grantEnvironment =
+    destination?.kind === "environment"
+      ? environments.find((environment) => environment.environmentId === destination.environmentId)
+      : undefined;
   const insets = useSafeAreaInsets();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
@@ -236,15 +237,34 @@ export function SettingsVoiceRouteScreen() {
             selected={!grant}
             onPress={() => saveDestination(null)}
           />
+          <ListChoiceRow
+            label="ChatGPT"
+            description="Transcribe and clean up recordings with your ChatGPT account."
+            selected={grant?.destination.kind === "chatgpt"}
+            separated
+            onPress={() => {
+              if (grant?.destination.kind !== "chatgpt")
+                Dialog.confirm({
+                  title: "Use ChatGPT for dictation?",
+                  message:
+                    "Finished recordings and a short excerpt of your draft will be sent to ChatGPT for transcription and cleanup. You can switch back to This device at any time.",
+                  confirmText: "Use ChatGPT",
+                  onConfirm: () => saveDestination("chatgpt"),
+                });
+            }}
+          />
           {hasEnvironmentVoiceCapture &&
             environments.map((environment) => (
               <EnvironmentChoice
                 key={environment.environmentId}
                 environment={environment}
-                selected={grant?.destination.environmentId === environment.environmentId}
+                selected={
+                  grant?.destination.kind === "environment" &&
+                  grant.destination.environmentId === environment.environmentId
+                }
               />
             ))}
-          {isReady && grant && !grantEnvironment ? (
+          {isReady && grant?.destination.kind === "environment" && !grantEnvironment ? (
             <ListChoiceRow
               label="Previously selected environment"
               description="No longer paired"
@@ -255,6 +275,15 @@ export function SettingsVoiceRouteScreen() {
             />
           ) : null}
         </SettingsSection>
+        {grant?.destination.kind === "chatgpt" ? (
+          <SettingsSection title="ChatGPT">
+            <SettingsRow
+              icon="person.crop.circle"
+              label="ChatGPT account"
+              target="SettingsDictation"
+            />
+          </SettingsSection>
+        ) : null}
         {grantEnvironment ? (
           <VoiceModelSection
             environmentId={grantEnvironment.environmentId}

@@ -102,9 +102,13 @@ export class VoiceInputSession {
     this.controller = new VoiceInputController({
       ...dependencies,
       onStateChange: (state) => this.handleStateChange(state),
-      readDraft: () => this.target?.readDraft() ?? null,
+      readDraft: () => this.readDraft(),
       commitDraft: (text, selection) => this.target?.commitDraft(text, selection),
     });
+  }
+
+  readDraft(): VoiceDraftSnapshot | null {
+    return this.target?.readDraft() ?? null;
   }
 
   get ownerKey(): string | null {

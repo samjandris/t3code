@@ -58,6 +58,10 @@ also send files to T3 Code through another app's system share sheet.
 On Android, you can also drag images from another app into the message input
 in split screen.
 
+On mobile, videos over the attachment limit are compressed before being attached.
+You can watch progress or cancel without changing the original video. If the
+compressed copy is still too large, trim the video and attach it again.
+
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 
 ## Send while the agent is working
@@ -204,6 +208,11 @@ even when a draft belongs to another one. This also works on phones without loca
 speech recognition. If the chosen environment disconnects, dictation stops; it never
 switches hosts. Choose **This device** to revoke access and discard pending audio.
 On Android, keep T3 Code open while recording and transcribing.
+
+To use ChatGPT transcription and cleanup, choose **ChatGPT** under **Settings > Voice > Transcribe on**
+and confirm. Open **ChatGPT account** on that page to sign in. ChatGPT receives the recording and a
+short excerpt of your draft for cleanup context. If cleanup fails, the raw transcript is kept.
+An existing ChatGPT sign-in stays selected after upgrading; choosing another destination overrides it.
 
 On-device dictation may need a network connection to download a speech model the
 first time. After that it works offline for that language. iPhone dictates in the

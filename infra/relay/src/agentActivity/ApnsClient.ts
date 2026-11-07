@@ -118,7 +118,9 @@ function liveActivityAlertPayload(alert: ApnsLiveActivityAlert) {
 // limit. Shorten titles and alert text until the encoded payload fits. Links
 // and ids can't shrink, so if the shortest text still overflows, drop the last
 // (lowest-priority) row and fit again.
-function makeLiveActivityRequest(input: MakeLiveActivityRequestInput): ApnsLiveActivityRequest {
+export function makeLiveActivityRequest(
+  input: MakeLiveActivityRequestInput,
+): ApnsLiveActivityRequest {
   let request = buildLiveActivityRequest(input);
   const state = input.state;
   if (state === null) {
