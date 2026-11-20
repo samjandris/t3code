@@ -1,3 +1,4 @@
+import { isVideoCompressing } from "../lib/composerVideo";
 import { useComposerAttachmentActions } from "./use-composer-attachment-actions";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import * as Effect from "effect/Effect";
@@ -625,6 +626,7 @@ export function useThreadComposerState(input: {
     ) => Promise<boolean | "responded">,
     onWillEnqueue?: () => void,
   ) => {
+    if (isVideoCompressing()) return null;
     if (
       selectedThreadShell &&
       selectedEnvironmentRuntime?.connectionState === "connected" &&

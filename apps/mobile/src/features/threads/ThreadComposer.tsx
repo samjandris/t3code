@@ -1,3 +1,5 @@
+import { useIsVideoCompressing } from "../../lib/useVideoCompression";
+import { isVideoCompressing } from "../../lib/composerVideo";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
@@ -259,6 +261,7 @@ function SendActionButton(props: {
 export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps) {
   const gt = useGT();
   const messages = useMessages();
+  const compressingVideo = useIsVideoCompressing();
   const project = useProject(scopeProjectRef(props.environmentId, props.selectedThread.projectId));
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const composerPanel = materialTheme["--color-composer-panel"];
@@ -463,7 +466,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     messages,
   );
   const isVoiceInputPresented = voicePresentation.statusKind === "active";
-  const isExpanded = isFocused || settingsSheetPresentation.keepsComposerExpanded;
+  const isExpanded =
+    compressingVideo || isFocused || settingsSheetPresentation.keepsComposerExpanded;
   const { usesLargeControls, paddingVertical: surfacePaddingVertical } = useComposerChrome();
   const [compactRowWidth, setCompactRowWidth] = useState(0);
   const compactAttachmentLimit = compactRowWidth >= 500 ? 3 : 1;
@@ -476,6 +480,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const showsCompactDictation = isVoiceInputPresented;
   const isToolbarVisible = isVoiceInputPresented;
   const hasEditingAttachments =
+    compressingVideo ||
     (queuedEdit !== null && queuedEdit.existingAttachments.length > 0) ||
     stripAttachments.length > 0;
   const attachmentBlockReason = composerAttachmentUploadBlockReason(
@@ -490,6 +495,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   );
   const contextImports = useAtomValue(composerContextImportsAtom);
   const sendBlockedReason =
+    (compressingVideo ? gt("Compressing video") : null) ??
     (queuedEdit?.saving === true ? gt("Saving…") : null) ??
     props.sendBlockedReason ??
     (pendingPastedTextAttachmentCount > 0 ? gt("Attaching pasted text") : null) ??
@@ -547,6 +553,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     onEditorFocusChange?.(false);
   };
   const handleSend = async (followUp?: ActiveTurnComposerAction) => {
+    if (isVideoCompressing()) return;
     if (isSubmissionLocked || sendBlockedReason !== null) return;
     // Sending now would leave a still-converting pasted image out of the turn, so wait for it.
     if (nativeImageSubmit.deferSend(followUp)) return;
@@ -651,13 +658,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
           />
         </Animated.View>
       ) : null}
-      {stripAttachments.length > 0 ? (
+      {stripAttachments.length > 0 || compressingVideo ? (
         <Animated.View
           className="px-[14px] pb-2.5 pt-2"
           entering={COMPOSER_ATTACHMENT_ENTERING}
           exiting={FadeOut.duration(120)}
         >
           <ComposerAttachmentStrip
+            compressionOwnerKey={composerDraftKey}
             environmentId={props.environmentId}
             attachments={stripAttachments}
             onRemove={isSubmissionLocked ? () => undefined : props.onRemoveDraftImage}
