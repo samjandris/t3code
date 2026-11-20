@@ -280,7 +280,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     .filter(Boolean)
     .join(" · ");
 
-  const triggerText = props.triggerLabel ?? multipleLabel ?? triggerTitle;
+  const triggerText = props.triggerLabel ?? multipleLabel ?? triggerLabel;
   const triggerTextProps = {
     className: cn(
       "min-w-0 flex-1 overflow-hidden truncate",
@@ -371,7 +371,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               openTarget(target);
             }}
             className={cn(
-              "min-w-0 shrink justify-between whitespace-nowrap",
+              "min-w-0 shrink justify-start overflow-hidden whitespace-nowrap",
               props.compact
                 ? "max-w-42 shrink-0"
                 : !props.isComposerOwned && "max-w-48 sm:max-w-56",
@@ -382,7 +382,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         }
       >
         <span
-          className={cn("flex min-w-0 flex-1 items-center", size === "xs" ? "gap-1" : "gap-1.5")}
+          className={cn(
+            "flex min-w-0 w-full box-border flex-1 items-center overflow-hidden",
+            size === "xs" ? "gap-1" : "gap-1.5",
+          )}
         >
           {selectedEntries && props.triggerLabel === undefined ? (
             <span
