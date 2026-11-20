@@ -1,13 +1,19 @@
 import { scopedProjectKey, scopeProjectRef } from "../environment/scoped.ts";
-import type {
-  EnvironmentId,
-  ScopedProjectRef,
-  SidebarProjectGroupingMode,
+import {
+  repositoryGroupingDisplayNameOf,
+  repositoryGroupingKeyOf,
+  type EnvironmentId,
+  type ScopedProjectRef,
+  type SidebarProjectGroupingMode,
 } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 
 import type { EnvironmentProject } from "./models.ts";
 import { normalizeProjectPathForComparison } from "./projects.ts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
+
+const SCRATCH_PROJECT_SCOPE_KEY = "\0no-project";
 
 export interface ProjectGroupingSettings {
   readonly sidebarProjectGroupingMode: SidebarProjectGroupingMode;
@@ -74,7 +80,7 @@ export function derivePhysicalProjectKey(
   return derivePhysicalProjectKeyFromPath(project.environmentId, project.workspaceRoot);
 }
 
-export function deriveProjectGroupingOverrideKey(
+function deriveProjectGroupingOverrideKey(
   project: Pick<EnvironmentProject, "environmentId" | "workspaceRoot">,
 ): string {
   return derivePhysicalProjectKey(project);
@@ -86,7 +92,7 @@ export function getProjectOrderKey(
   return derivePhysicalProjectKey(project);
 }
 
-export function resolveProjectGroupingMode(
+function resolveProjectGroupingMode(
   project: Pick<EnvironmentProject, "environmentId" | "workspaceRoot">,
   settings: ProjectGroupingSettings,
 ): SidebarProjectGroupingMode {
@@ -100,8 +106,11 @@ function deriveRepositoryScopedKey(
   project: Pick<EnvironmentProject, "workspaceRoot" | "repositoryIdentity">,
   groupingMode: SidebarProjectGroupingMode,
 ): string | null {
-  const canonicalKey = project.repositoryIdentity?.canonicalKey;
-  if (!canonicalKey) {
+  const canonicalKey = project.repositoryIdentity
+    ? repositoryGroupingKeyOf(project.repositoryIdentity)
+    : null;
+  // A NUL reserves the scratch key namespace outside valid repository identities.
+  if (!canonicalKey || canonicalKey.includes("\0")) {
     return null;
   }
 
@@ -119,15 +128,17 @@ function deriveRepositoryScopedKey(
     : `${canonicalKey}::${relativeProjectPath}`;
 }
 
-export function deriveLogicalProjectKey(
+function deriveLogicalProjectKey(
   project: Pick<
     EnvironmentProject,
-    "environmentId" | "id" | "workspaceRoot" | "repositoryIdentity"
+    "environmentId" | "id" | "workspaceRoot" | "repositoryIdentity" | "isScratch"
   >,
   options?: {
     readonly groupingMode?: SidebarProjectGroupingMode;
+    readonly groupScratchProjects?: boolean;
   },
 ): string {
+  if (options?.groupScratchProjects && project.isScratch) return SCRATCH_PROJECT_SCOPE_KEY;
   const groupingMode = options?.groupingMode ?? "repository";
   if (groupingMode === "separate") {
     return derivePhysicalProjectKey(project);
@@ -143,22 +154,64 @@ export function deriveLogicalProjectKey(
 export function deriveLogicalProjectKeyFromSettings(
   project: Pick<
     EnvironmentProject,
-    "environmentId" | "id" | "workspaceRoot" | "repositoryIdentity"
+    "environmentId" | "id" | "workspaceRoot" | "repositoryIdentity" | "isScratch"
   >,
   settings: ProjectGroupingSettings,
+  options?: { readonly groupScratchProjects?: boolean },
 ): string {
   return deriveLogicalProjectKey(project, {
     groupingMode: resolveProjectGroupingMode(project, settings),
+    groupScratchProjects: options?.groupScratchProjects ?? false,
   });
 }
 
+export function resolveScratchProjectScopeKey(
+  key: string | null,
+  projects: ReadonlyArray<
+    Pick<
+      EnvironmentProject,
+      "environmentId" | "id" | "workspaceRoot" | "repositoryIdentity" | "isScratch"
+    >
+  >,
+  settings: ProjectGroupingSettings = {
+    sidebarProjectGroupingMode: "repository",
+    sidebarProjectGroupingOverrides: {},
+  },
+): string | null {
+  if (key === null || key === SCRATCH_PROJECT_SCOPE_KEY) return key;
+  if (
+    projects.some(
+      (project) =>
+        deriveLogicalProjectKeyFromSettings(project, settings, { groupScratchProjects: true }) ===
+        key,
+    )
+  ) {
+    return key;
+  }
+  return projects.some((project) => {
+    if (!project.isScratch) return false;
+    const mode = resolveProjectGroupingMode(project, settings);
+    return (
+      derivePhysicalProjectKey(project) === key ||
+      (mode !== "separate" && deriveRepositoryScopedKey(project, mode) === key)
+    );
+  })
+    ? SCRATCH_PROJECT_SCOPE_KEY
+    : key;
+}
+
 export function deriveProjectGroupLabel(input: {
+  readonly groupKey: string;
   readonly representative: Pick<EnvironmentProject, "title" | "repositoryIdentity">;
-  readonly members: ReadonlyArray<Pick<EnvironmentProject, "title" | "repositoryIdentity">>;
+  readonly members: ReadonlyArray<
+    Pick<EnvironmentProject, "title" | "hasCustomTitle" | "repositoryIdentity">
+  >;
 }): string {
   const sharedTitles = uniqueNonEmptyValues(input.members.map((member) => member.title));
   const sharedDisplayNames = uniqueNonEmptyValues(
-    input.members.map((member) => member.repositoryIdentity?.displayName),
+    input.members.map((member) =>
+      member.repositoryIdentity ? repositoryGroupingDisplayNameOf(member.repositoryIdentity) : null,
+    ),
   );
   const sharedRepositoryNames = uniqueNonEmptyValues(
     input.members.map((member) => member.repositoryIdentity?.name),
@@ -167,8 +220,8 @@ export function deriveProjectGroupLabel(input: {
   if (
     sharedTitles.length === 1 &&
     sharedTitle !== undefined &&
-    !sharedDisplayNames.includes(sharedTitle) &&
-    !sharedRepositoryNames.includes(sharedTitle)
+    (input.members.some((member) => member.hasCustomTitle === true) ||
+      (!sharedDisplayNames.includes(sharedTitle) && !sharedRepositoryNames.includes(sharedTitle)))
   ) {
     return sharedTitle;
   }
@@ -180,6 +233,19 @@ export function deriveProjectGroupLabel(input: {
     return sharedRepositoryNames[0]!;
   }
 
+  // A whole-repository group is named for the repository, not one member's folder:
+  // clones can disagree on its casing. A subfolder group keeps its own title.
+  const representativeIdentity = input.representative.repositoryIdentity;
+  if (
+    representativeIdentity &&
+    input.groupKey === repositoryGroupingKeyOf(representativeIdentity)
+  ) {
+    return (
+      repositoryGroupingDisplayNameOf(representativeIdentity) ??
+      representativeIdentity.name ??
+      input.representative.title
+    );
+  }
   return input.representative.title;
 }
 
@@ -194,6 +260,21 @@ export interface ProjectGroup<TProject extends EnvironmentProject = EnvironmentP
   readonly representative: TProject;
   readonly members: ReadonlyArray<ProjectGroupMember<TProject>>;
   readonly memberProjectRefs: ReadonlyArray<ScopedProjectRef>;
+  /** Clients write every member together. When members still disagree, the project stays visible. */
+  readonly pinned: boolean;
+  readonly archived: boolean;
+}
+
+/** The groups a project picker offers: archived groups left out, pinned ones first. */
+export function pickableProjectGroups<
+  TGroup extends { readonly pinned: boolean; readonly archived: boolean },
+>(groups: ReadonlyArray<TGroup>): TGroup[] {
+  const open = groups.filter((group) => !group.archived);
+  return [...open.filter((group) => group.pinned), ...open.filter((group) => !group.pinned)];
+}
+
+export function isPickableProjectMember(member: Pick<EnvironmentProject, "archivedAt">): boolean {
+  return member.archivedAt == null;
 }
 
 function projectFreshnessTime(project: EnvironmentProject): number {
@@ -236,19 +317,15 @@ function selectProjectIdentitySource<TProject extends EnvironmentProject>(
   return freshestIdentifiedProject ?? winner;
 }
 
-/**
- * Builds logical project groups without losing the physical projects that
- * remain the actual navigation and task-creation targets.
- *
- * Presentation-specific metadata, filtering, and activity sorting stay in
- * each client. Grouping modes, overrides, physical deduplication, labels, and
- * member preservation live here so web and mobile cannot drift.
- */
-export function buildProjectGroups<TProject extends EnvironmentProject>(input: {
-  readonly projects: ReadonlyArray<TProject>;
-  readonly settings: ProjectGroupingSettings;
-  readonly preferredEnvironmentId?: EnvironmentId | null;
-}): ReadonlyArray<ProjectGroup<TProject>> {
+export function buildProjectGroups<TProject extends EnvironmentProject>(
+  input: {
+    readonly projects: ReadonlyArray<TProject>;
+    readonly settings: ProjectGroupingSettings;
+    readonly preferredEnvironmentId?: EnvironmentId | null;
+    readonly groupScratchProjects?: boolean;
+  },
+  resolve: MFunctionType = mFallback,
+): ReadonlyArray<ProjectGroup<TProject>> {
   const projectsByPhysicalKey = new Map<string, TProject[]>();
   for (const project of input.projects) {
     const physicalProjectKey = derivePhysicalProjectKey(project);
@@ -269,6 +346,7 @@ export function buildProjectGroups<TProject extends EnvironmentProject>(input: {
     const identitySource = selectProjectIdentitySource(physicalProjects, winner);
     const logicalKey = deriveLogicalProjectKey(identitySource, {
       groupingMode: resolveProjectGroupingMode(winner, input.settings),
+      groupScratchProjects: input.groupScratchProjects ?? false,
     });
     logicalKeyByPhysicalKey.set(physicalProjectKey, logicalKey);
     const member = { physicalProjectKey, project: winner };
@@ -286,7 +364,9 @@ export function buildProjectGroups<TProject extends EnvironmentProject>(input: {
     const physicalProjectKey = derivePhysicalProjectKey(project);
     const logicalKey =
       logicalKeyByPhysicalKey.get(physicalProjectKey) ??
-      deriveLogicalProjectKeyFromSettings(project, input.settings);
+      deriveLogicalProjectKeyFromSettings(project, input.settings, {
+        groupScratchProjects: input.groupScratchProjects ?? false,
+      });
     const projectRefKey = scopedProjectKey(scopeProjectRef(project.environmentId, project.id));
     if (seenProjectRefs.has(projectRefKey)) continue;
     seenProjectRefs.add(projectRefKey);
@@ -308,15 +388,42 @@ export function buildProjectGroups<TProject extends EnvironmentProject>(input: {
     return {
       key,
       label:
-        members.length > 1
-          ? deriveProjectGroupLabel({
-              representative,
-              members: members.map((member) => member.project),
-            })
-          : representative.title,
+        input.groupScratchProjects && representative.isScratch
+          ? resolve(msg("No project"))
+          : members.length > 1
+            ? deriveProjectGroupLabel({
+                groupKey: key,
+                representative,
+                members: members.map((member) => member.project),
+              })
+            : representative.title,
       representative,
       members,
       memberProjectRefs: projectRefsByLogicalKey.get(key) ?? [],
+      pinned: members.some((member) => member.project.pinnedAt != null),
+      archived: !members.some(({ project }) => isPickableProjectMember(project)),
     };
   });
+}
+
+export function sortProjectsByGroupOrder<
+  TProject extends { readonly id: string; readonly environmentId: string },
+>(
+  projects: ReadonlyArray<TProject>,
+  groups: ReadonlyArray<{
+    readonly memberProjectRefs: ReadonlyArray<ScopedProjectRef>;
+    readonly pinned: boolean;
+    readonly archived: boolean;
+  }>,
+): TProject[] {
+  const rankByProject = new Map<string, number>();
+  pickableProjectGroups(groups).forEach((group, rank) => {
+    for (const ref of group.memberProjectRefs) {
+      const key = `${ref.environmentId}\0${ref.projectId}`;
+      if (!rankByProject.has(key)) rankByProject.set(key, rank);
+    }
+  });
+  const rankOf = (project: TProject) =>
+    rankByProject.get(`${project.environmentId}\0${project.id}`) ?? groups.length;
+  return [...projects].sort((left, right) => rankOf(left) - rankOf(right));
 }

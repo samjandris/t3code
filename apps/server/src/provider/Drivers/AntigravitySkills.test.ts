@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
-import { discoverAntigravitySkills, resolveAntigravityUserHome } from "./AntigravitySkills.ts";
+import { discoverAntigravitySkills } from "./AntigravitySkills.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
 const writeSkill = Effect.fn("writeSkill")(function* (directory: string, contents: string) {
@@ -25,6 +25,7 @@ const makeWorkspace = Effect.fn("makeWorkspace")(function* () {
   return {
     cwd: path.join(temporaryDirectory, "workspace"),
     userHome: path.join(temporaryDirectory, "home"),
+    profileDirectory: path.join(temporaryDirectory, "profile"),
   };
 });
 
@@ -52,7 +53,6 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
           enabled: true,
         },
       ]);
-      // A project rooted at the home directory sees ~/.agents/skills as its own.
       assert.deepEqual(
         (yield* discoverAntigravitySkills({ ...input, cwd: input.userHome })).map((skill) => [
           skill.name,
@@ -94,31 +94,30 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
     }),
   );
 
-  it.effect("returns no skills when the native roots are missing", () =>
+  it.effect("reads skills from enabled plugins in the instance's Antigravity profile", () =>
     Effect.gen(function* () {
-      const input = yield* makeWorkspace();
-      assert.deepEqual(yield* discoverAntigravitySkills(input), []);
-    }),
-  );
-
-  it.effect("discovers skills from the legacy workspace root", () =>
-    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const input = yield* makeWorkspace();
-      const skillPath = yield* writeSkill(
-        path.join(input.cwd, ".agent", "skills", "review"),
-        "---\nname: review\ndescription: Review changes.\n---\n",
+      const workspace = yield* makeWorkspace();
+      const profileDirectory = path.join(workspace.userHome, "t3", "providers", "antigravity", "p");
+      const plugins = path.join(profileDirectory, "config", "plugins");
+      for (const plugin of ["demo", "off"]) {
+        yield* writeSkill(
+          path.join(plugins, plugin, "skills", `${plugin}-skill`),
+          `---\nname: ${plugin}-skill\ndescription: From ${plugin}.\n---\n`,
+        );
+      }
+      yield* fileSystem.writeFileString(
+        path.join(profileDirectory, "config", "config.json"),
+        JSON.stringify({ plugins: { off: { enabled: false } } }),
       );
+      yield* fileSystem.writeFileString(path.join(plugins, ".DS_Store"), "x");
+      const input = { ...workspace, profileDirectory };
 
-      assert.deepEqual(yield* discoverAntigravitySkills(input), [
-        {
-          name: "review",
-          description: "Review changes.",
-          path: skillPath,
-          scope: "project",
-          enabled: true,
-        },
-      ]);
+      assert.deepEqual(
+        (yield* discoverAntigravitySkills(input)).map((skill) => skill.name),
+        ["demo-skill"],
+      );
     }),
   );
 
@@ -302,15 +301,43 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
       }),
   );
 
-  it.effect("rejects an oversized skill instead of returning an incomplete catalog", () =>
+  it.effect("does not spend the scan budget on skill bodies", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
       const input = yield* makeWorkspace();
-      const skillPath = yield* writeSkill(
-        path.join(input.cwd, ".agents", "skills", "oversized"),
-        `---\nname: oversized\ndescription: Read a large skill.\n---\n${"x".repeat(1_000_000)}`,
-      );
+      const root = path.join(input.userHome, ".gemini", "config", "skills");
+      const expected = [];
+      for (let index = 0; index < 9; index += 1) {
+        const name = `large-${index}`;
+        const description = `Large skill ${index}. ${"y".repeat(2_000)}`;
+        const skillPath = yield* writeSkill(
+          path.join(root, name),
+          `---\nname: ${name}\ndescription: ${description}\n---\n${"x".repeat(950_000)}`,
+        );
+        expected.push({ name, description, path: skillPath, scope: "user", enabled: true });
+      }
 
+      assert.deepEqual(yield* discoverAntigravitySkills(input), expected);
+    }),
+  );
+
+  it.effect("rejects frontmatter that does not close within the per-skill limit", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const input = yield* makeWorkspace();
+      const root = path.join(input.cwd, ".agents", "skills");
+      const largeBodyPath = yield* writeSkill(
+        path.join(root, "large-body"),
+        `---\nname: large-body\n---\n${"x".repeat(2_000_000)}`,
+      );
+      assert.deepEqual(yield* discoverAntigravitySkills(input), [
+        { name: "large-body", path: largeBodyPath, scope: "project", enabled: true },
+      ]);
+
+      const skillPath = yield* writeSkill(
+        path.join(root, "oversized"),
+        `---\nname: oversized\ndescription: ${"x".repeat(1_000_000)}\n---\n`,
+      );
       const result = yield* discoverAntigravitySkills(input).pipe(Effect.result);
       assert.equal(result._tag, "Failure");
       if (result._tag === "Failure") {
@@ -320,7 +347,7 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
     }),
   );
 
-  it.effect("bounds the total read size across skills", () =>
+  it.effect("bounds the total frontmatter read size across skills", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
       const input = yield* makeWorkspace();
@@ -328,7 +355,7 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
       for (let index = 0; index < 9; index += 1) {
         yield* writeSkill(
           path.join(root, `large-${index}`),
-          `---\nname: large-${index}\n---\n${"x".repeat(900_000)}`,
+          `---\nname: large-${index}\ndescription: ${"x".repeat(900_000)}\n---\n`,
         );
       }
 
@@ -340,21 +367,4 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
       }
     }),
   );
-});
-
-it("resolves the home the agent expands ~ against", () => {
-  assert.equal(
-    resolveAntigravityUserHome("linux", { HOME: "/home/user", USERPROFILE: "C:\\Users\\user" }),
-    "/home/user",
-  );
-  assert.equal(
-    resolveAntigravityUserHome("win32", { HOME: "/home/user", USERPROFILE: "C:\\Users\\user" }),
-    "C:\\Users\\user",
-  );
-  assert.equal(
-    resolveAntigravityUserHome("win32", { HOMEDRIVE: "D:", HOMEPATH: "\\Users\\alice" }),
-    "D:\\Users\\alice",
-  );
-  assert.equal(resolveAntigravityUserHome("darwin", { HOME: "/Users/a b " }), "/Users/a b ");
-  assert.equal(resolveAntigravityUserHome("darwin", { HOME: "" }).length > 0, true);
 });
