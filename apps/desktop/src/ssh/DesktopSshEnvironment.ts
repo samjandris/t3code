@@ -90,10 +90,12 @@ export const resolveDesktopSshCliRunner = (
       nodeEngineRange: serverPackageJson.engines.node,
     };
   }
-  const releaseBaseUrl = env[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined;
+  const releaseBaseUrl =
+    env[CLI_RELEASE_BASE_URL_ENV]?.trim() ||
+    "https://github.com/samjandris/t3code/releases/download";
   return {
     archiveVersion: environment.appVersion,
-    ...(releaseBaseUrl === undefined ? {} : { releaseBaseUrl }),
+    releaseBaseUrl,
   };
 };
 
