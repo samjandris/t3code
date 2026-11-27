@@ -241,6 +241,11 @@ describe("GhosttyTerminalSurface visibility", () => {
           }),
         );
       },
+      legacyTouch(type: string, clientY: number) {
+        const touch = { identifier: 2, clientY };
+        const touches = Object.assign([touch], { item: (index: number) => [touch][index] });
+        canvas.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { touches }));
+      },
       async create(options: Partial<GhosttyTerminalSurfaceOptions> = {}) {
         const surface = await GhosttyTerminalSurface.create(mount as unknown as HTMLElement, {
           theme: {
@@ -272,6 +277,21 @@ describe("GhosttyTerminalSurface visibility", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("scrolls a full-screen application once when the browser emits both touch event types", async () => {
+    const harness = createHarness();
+    const surface = await harness.create();
+    surface.write("\x1b[?1049h\x1b[?1h");
+
+    harness.touch("pointerdown", 20);
+    harness.legacyTouch("touchstart", 20);
+    harness.touch("pointermove", 52);
+    harness.legacyTouch("touchmove", 52);
+    harness.touch("pointerup", 52);
+    harness.legacyTouch("touchend", 52);
+
+    expect(harness.onData.mock.calls).toEqual([["\x1bOA\x1bOA"]]);
   });
 
   it("preserves shell Ctrl+A and ordinary application navigation", async () => {
