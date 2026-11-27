@@ -150,8 +150,7 @@ const EMPTY_MODEL_FAVORITES: ReadonlyArray<{
 // Servers that predate `migrateModelPreferences` drop it and keep reporting null favorites.
 const attemptedMigrationGenerations = new Map<EnvironmentId, number>();
 function ProviderHeader(props: {
-  readonly driver: string | undefined;
-  readonly iconUrl: string | undefined;
+  readonly icon?: ReactNode;
   readonly label: string;
   /** A backend inside a provider's section, such as one of fx's: no icon. */
   readonly nested?: boolean;
@@ -165,9 +164,7 @@ function ProviderHeader(props: {
   const gt = useGT();
   const content = (
     <>
-      {props.nested ? null : (
-        <ProviderIcon iconUrl={props.iconUrl} provider={props.driver} size={15} />
-      )}
+      {props.icon}
       {props.detail ? (
         <View className="min-w-0 flex-1 py-1">
           <Text className="text-sm font-t3-medium text-foreground-muted">{props.label}</Text>
@@ -733,6 +730,7 @@ type ThreadSettingsProviderCatalog = {
 };
 
 type ThreadSettingsCatalogItem =
+  | { readonly kind: "favorites"; readonly key: "favorites"; readonly modelCount: number }
   | {
       readonly kind: "provider";
       readonly key: string;
@@ -806,8 +804,9 @@ function ThreadSettingsProviderListHeader(props: {
     <ProviderHeader
       collapsible={props.provider.collapsible}
       collapsed={props.provider.collapsed}
-      driver={props.provider.driver}
-      iconUrl={props.provider.iconUrl}
+      icon={
+        <ProviderIcon iconUrl={props.provider.iconUrl} provider={props.provider.driver} size={15} />
+      }
       label={props.provider.label}
       modelCount={props.provider.modelCount}
       onToggle={onToggle}
@@ -827,8 +826,6 @@ function ThreadSettingsSubProviderListHeader(props: {
       collapsible={props.item.detail === undefined}
       collapsed={props.item.collapsed}
       detail={props.item.detail}
-      driver={undefined}
-      iconUrl={undefined}
       label={props.item.label}
       modelCount={props.item.modelCount}
       onToggle={onToggle}
@@ -836,10 +833,10 @@ function ThreadSettingsSubProviderListHeader(props: {
   );
 }
 
-const modelItems = (models: ReadonlyArray<ModelOption>) =>
+const modelItems = (models: ReadonlyArray<ModelOption>, keyPrefix = "model") =>
   models.map((option, index) => ({
     kind: "model" as const,
-    key: `model:${option.key}`,
+    key: `${keyPrefix}:${option.key}`,
     option,
     isFirst: index === 0,
     isLast: index === models.length - 1,
@@ -1129,7 +1126,26 @@ function ThreadSettingsMainContent(props: {
     session.favoritesOnly ||
     session.providerFilter !== null ||
     session.searchQuery.trim().length > 0;
+  const [favoritesCollapsed, setFavoritesCollapsed] = useState(false);
+  const favorites =
+    hasActiveCatalogFilter || session.favoriteKeys.size === 0
+      ? []
+      : session.providerGroups.flatMap((group) =>
+          group.models.filter((option) => session.favoriteKeys.has(option.key)),
+        );
   const listItems = [
+    ...(favorites.length > 0
+      ? ([{ kind: "favorites", key: "favorites", modelCount: favorites.length }] as const)
+      : []),
+    ...(!favoritesCollapsed
+      ? modelItems(
+          favorites.map((option) => ({
+            ...option,
+            subtitle: [option.providerLabel, option.subtitle].filter(Boolean).join(" · "),
+          })),
+          "favorite",
+        )
+      : []),
     ...(catalogItems.length === 0 ? ([{ kind: "empty", key: "empty" }] as const) : catalogItems),
     { kind: "options", key: "options" },
   ] satisfies ReadonlyArray<ThreadSettingsCatalogItem>;
@@ -1137,7 +1153,18 @@ function ThreadSettingsMainContent(props: {
     const item = itemProps.item;
     let content: ReactNode;
 
-    if (item.kind === "provider") {
+    if (item.kind === "favorites") {
+      content = (
+        <ProviderHeader
+          collapsible
+          collapsed={favoritesCollapsed}
+          icon={<SymbolView name="star.fill" size={15} tintColorClassName="accent-icon-subtle" />}
+          label={gt("Favorites")}
+          modelCount={item.modelCount}
+          onToggle={() => setFavoritesCollapsed(!favoritesCollapsed)}
+        />
+      );
+    } else if (item.kind === "provider") {
       content = <ThreadSettingsProviderListHeader provider={item.provider} />;
     } else if (item.kind === "subProvider") {
       content = <ThreadSettingsSubProviderListHeader item={item} />;
