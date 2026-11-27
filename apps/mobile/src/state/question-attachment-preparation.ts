@@ -94,11 +94,13 @@ export async function pickQuestionAttachments(
     const result =
       input.kind === "files"
         ? await pickComposerFiles({
+            ownerKey: input.key,
             existingCount,
             maxBytes: input.maxUploadBytes,
             acceptSelection,
           })
         : await pickComposerMedia({
+            ownerKey: input.key,
             existingCount,
             maxVideoBytes: input.maxUploadBytes,
             acceptSelection,

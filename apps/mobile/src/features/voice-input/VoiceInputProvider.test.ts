@@ -6,6 +6,7 @@ vi.mock("react-native", () => ({
   AppState: { addEventListener: () => ({ remove() {} }) },
 }));
 vi.mock("react-native-reanimated", () => ({ makeMutable: () => ({ set() {} }) }));
+vi.mock("../dictation/chatgptVoiceTranscriber", () => ({ getChatGptVoiceTranscriber: vi.fn() }));
 vi.mock("../showcase/nativeShowcaseScene", () => ({ getNativeShowcaseScene: () => null }));
 vi.mock("expo-file-system", () => ({
   File: class {

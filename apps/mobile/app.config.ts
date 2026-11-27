@@ -151,6 +151,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
         displayName: "Subscription usage",
         description: "Subscription quotas from your connected T3 Code environments.",
         ios: {
+          initialLayout: "./src/widgets/SubscriptionUsage.tsx",
           configuration: {
             title: "Subscription usage",
             description:
@@ -336,6 +337,7 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    "react-native-compressor",
     "expo-asset",
     [
       "expo-font",

@@ -40,6 +40,7 @@ import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
 import { SettingsScreen } from "./components/SettingsScreen";
+import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import {
   deviceMicrophoneOrder,
@@ -121,7 +122,7 @@ const UNAVAILABLE_EXPLANATION =
         "Dictation on this device needs iOS 26 or later, a supported device, and a supported language. Your keyboard’s dictation is separate.",
       );
 
-function saveDestination(id: EnvironmentId | null) {
+function saveDestination(id: EnvironmentId | "chatgpt" | null) {
   try {
     chooseVoiceDestination(id);
   } catch {
@@ -194,7 +195,10 @@ function EnvironmentMethodSection({
 }) {
   const gt = useGT();
   const id = environment.environmentId;
-  const destination = grant?.destination.environmentId === id ? grant.destination : null;
+  const destination =
+    grant?.destination.kind !== "chatgpt" && grant?.destination.environmentId === id
+      ? grant.destination
+      : null;
   const cloudCapable =
     environment.serverConfig?.environment.capabilities.cloudVoiceTranscription === true ||
     destination?.kind === "cloud";
@@ -225,11 +229,11 @@ export function SettingsVoiceRouteScreen() {
   const transcriber = useAtomValue(localVoiceTranscriberAtom);
   const grant = useAtomValue(voiceGrantAtom);
   const { environments, isReady } = useEnvironments();
-  const grantEnvironment = grant
-    ? environments.find(
-        (environment) => environment.environmentId === grant.destination.environmentId,
-      )
-    : undefined;
+  const destination = grant?.destination;
+  const grantEnvironment =
+    destination && destination.kind !== "chatgpt"
+      ? environments.find((environment) => environment.environmentId === destination.environmentId)
+      : undefined;
   // An environment whose cloud sheet is open; it may not hold the grant yet.
   const [cloudSheet, setCloudSheet] = useState<EnvironmentId | null>(null);
   // A sheet whose environment lost cloud transcription is gone, so its pending choice is too.
@@ -306,6 +310,26 @@ export function SettingsVoiceRouteScreen() {
               saveDestination(null);
             }}
           />
+          <ListChoiceRow
+            label="ChatGPT"
+            description={gt("Transcribe and clean up recordings with your ChatGPT account.")}
+            selected={grant?.destination.kind === "chatgpt" && !sheetEnvironment}
+            separated
+            onPress={() => {
+              if (grant?.destination.kind !== "chatgpt")
+                Dialog.confirm({
+                  title: gt("Use ChatGPT for dictation?"),
+                  message: gt(
+                    "Finished recordings and a short excerpt of your draft will be sent to ChatGPT for transcription and cleanup. You can switch back to This device at any time.",
+                  ),
+                  confirmText: gt("Use ChatGPT"),
+                  onConfirm: () => {
+                    setCloudSheet(null);
+                    saveDestination("chatgpt");
+                  },
+                });
+            }}
+          />
           {hasEnvironmentVoiceCapture &&
             environments.map((environment) => (
               <EnvironmentChoice
@@ -314,12 +338,13 @@ export function SettingsVoiceRouteScreen() {
                 selected={
                   sheetEnvironment
                     ? sheetEnvironment.environmentId === environment.environmentId
-                    : grant?.destination.environmentId === environment.environmentId
+                    : grant?.destination.kind !== "chatgpt" &&
+                      grant?.destination.environmentId === environment.environmentId
                 }
                 onCloudOnly={() => setCloudSheet(environment.environmentId)}
               />
             ))}
-          {isReady && grant && !grantEnvironment ? (
+          {isReady && grant && grant.destination.kind !== "chatgpt" && !grantEnvironment ? (
             <ListChoiceRow
               label={gt("Previously selected environment")}
               description={gt("No longer paired")}
@@ -330,6 +355,15 @@ export function SettingsVoiceRouteScreen() {
             />
           ) : null}
         </SettingsSection>
+        {grant?.destination.kind === "chatgpt" ? (
+          <SettingsSection title="ChatGPT">
+            <SettingsRow
+              icon="person.crop.circle"
+              label={gt("ChatGPT account")}
+              target="SettingsDictation"
+            />
+          </SettingsSection>
+        ) : null}
         {hasEnvironmentVoiceCapture && methodEnvironment ? (
           <EnvironmentMethodSection
             environment={methodEnvironment}

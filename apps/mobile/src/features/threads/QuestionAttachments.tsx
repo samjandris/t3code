@@ -169,6 +169,7 @@ export function QuestionAttachments(props: {
         />
       ) : null}
       <ComposerAttachmentStrip
+        compressionOwnerKey={key}
         environmentId={environmentId}
         attachments={attachments}
         onRemove={(id) => {

@@ -28,6 +28,10 @@ Files upload to the environment's machine as soon as you attach them, and all up
 - **Web and desktop**: Drag, paste, or pick files. Reloading before an upload finishes requires re-attaching.
 - **Mobile**: Pick files, share into T3 Code via the system share sheet, or drag images in Android split screen.
 
+On mobile, videos over the attachment limit are compressed before being attached.
+You can watch progress or cancel without changing the original video. If the
+compressed copy is still too large, trim the video and attach it again.
+
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 
 ## Send while the agent is working
