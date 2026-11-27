@@ -1,103 +1,74 @@
 # Usage and limits
 
+Track token usage, cache hit rates, estimated API-equivalent costs, and pooled subscription quotas across all connected environments.
+
+- **Open Usage**: Click **Usage** in the sidebar, press `mod+u` (web/desktop outside terminals), or pick **Usage** on mobile.
+- **Quick shortcuts** (web/desktop on Usage): `C` (Cost), `T` (Tokens), `L` (Limits), `mod+Shift+1/2/3/4` (24h / 7d / 30d / 90d), `Esc` (back).
+
 ## Understand your usage
 
-**Usage** combines Codex, Claude Code, and Grok Build session history from your connected
-environments. It shows token use, cache savings, model breakdowns, and estimated API-equivalent
-cost. These estimates are not your subscription bill.
+Usage aggregates history across Codex, Claude Code, Grok Build, OpenCode, Antigravity, Pi, Muse Code, and Cursor from your selected environments. Estimates reflect API-equivalent rates (not your subscription bill); **Premium** shows Fast/Ultrafast surcharge, and **Other** shows unsplit provider-reported costs.
 
-Totals depend on the history available on each server. Grok turns without a saved completed-turn
-record are missing from the totals.
+- **Retention**: Servers keep scanned usage history for **92 days** by default (preserving Claude history after Claude's 30-day cleanup). Change `usageHistoryRetentionDays` in `<t3-home>/userdata/settings.json` (e.g. `365` or `"unlimited"`; views show up to 90 days).
+- **Custom data directories**: Honors `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `GROK_HOME`, `PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR`, `OPENCODE_DATA_DIR`, `ANTIGRAVITY_DATA_DIR`, and `XDG_DATA_HOME` (Muse). Use absolute or `~/` paths. Set `T3CODE_HOST_ID` to pin a container's host identity.
+- **Exclusions**: Codex and Claude Code 2.0.63+ text-generation runs (titles, commits, PR text, review guides) and Grok turns without a saved completed-turn record are not included.
 
-Usage includes each configured account's history, including disabled accounts. Custom homes follow
-the account's home setting or its `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, or `GROK_HOME` environment
-variable. Use absolute paths or `~/` paths in the account's environment settings; relative
-environment paths depend on each project's working directory and cannot be reliably discovered
-by Usage. Accounts sharing a history directory count once.
+## Custom model prices and filtering
 
-On web and desktop, use the environment dropdown to filter costs, tokens, and limits. All
-environments are selected by default. The dropdown shows which environments are still scanning;
-results appear as each one responds.
+- **Custom prices & model mapping**: Open the environment dropdown on **Usage → Model prices** (or click **Set price** on an unpriced model) to set USD per million input/output/cache tokens, or set **Map to** to merge a preview/alias model ID into a target model's totals.
+- **Filter models**: Add `usageModelFilter` to `<t3-home>/userdata/settings.json` (applied before **Map to**):
 
-If recent work is missing or a new model shows no cost, refresh to rescan session history and
-update model pricing.
+```json
+{
+  "usageModelFilter": {
+    "include": [{ "provider": "claude", "model": "orbit-1" }, { "model": "orbit-2" }],
+    "exclude": [{ "model": "drift-9" }]
+  }
+}
+```
 
-## Set custom model prices
+## Subscription limits
 
-On web or desktop, open the environment dropdown on **Usage**, then choose **Model prices** to add,
-edit, or reset a model's estimated price. **Apply to** starts with your current Usage filter;
-choose all environments or select individual destinations. Enter the exact model ID and USD
-rates per million input and output tokens. You can enter any model ID, including models
-without public pricing.
+**Usage → Limits** pools subscription quotas per provider across connected environments and hubs (deduplicating the same account signed in on multiple machines).
 
-Cache read and cache write rates are optional and use the input rate when blank. Enter `0` for
-tokens that are free. Saved prices replace automatic pricing for all of that environment's
-history and are shared with clients connected to it. When environments have different prices,
-cells show **Mixed**. Edit rates directly in the table, then choose **Save changes** to apply all
-edited rows. Untouched cells keep each environment's rate. Select one environment to inspect its
-prices. **Reset to automatic** marks a model's override for removal when you save; you can undo
-it before saving.
-
-Each destination reports whether the change saved. Offline or unavailable environments are
-marked **Not saved**. Reconnect them and choose **Retry failed saves** to finish the same change
-without writing again to environments that already saved. Changes are not queued after you close
-the dialog.
-
-## Track subscription limits
-
-**Usage → Limits** pools every subscription account it can see per provider, so with several Codex
-or Claude accounts across your environments and hubs you read one number per window rather than a
-list. Each window card shows how much of the pool is left and a bar with one segment per account,
-kept in the same column across windows. Accounts are ordered by their 5-hour reset, soonest
-first, or by the first available window when no account reports a 5-hour limit. A gap means the
-account does not report that window. When the provider reports reset times, the card also says
-when the next reset lands and how much it hands back. The hatched
-part of a segment is what that reset restores. Tap a segment or account row for the account's plan,
-where it is signed in, and its reset time. On web, you can hover too. Codex accounts with banked
-reset credits show a ticket count and the **Use reset** action in the account details. On narrow screens, numbered rows below
-the bar show each account's quota, countdown, and credits. Tap a row to open its details.
-
-The same account signed in on more than one environment, or reported by a hub as well, counts once.
-Filter with the environment dropdown to see what a single machine has.
-
-Opening Limits checks the selected connected environments automatically. Each client waits at
-least five minutes between automatic checks of an environment, including after a failed check.
-If a window still looks stale, refresh Limits to re-check every provider and hub.
-
-Pick `/usage-limits` from the composer's command menu, or send it as a message, to check the
-current model's limits without leaving the conversation. The result opens above the composer and
-closes when you dismiss it or send your next message. It uses the same snapshot as **Usage → Limits**, so it does not run the agent or refresh
-anything. The command is offered only for providers that appear under **Usage → Limits**.
-
-OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
-the environment. T3 cannot report limits for external OpenCode servers because their credentials
-belong to the remote server. Cursor reports
-its monthly allowance, including separate Auto and API usage, using a file-based CLI login or
-`CURSOR_AUTH_TOKEN`. Cursor's default macOS keychain login does not currently report limits.
-On macOS, use `AGENT_CLI_CREDENTIAL_STORE=file` when signing in and in the provider's environment
-to use a file-based login.
-
-Grok reports the remaining subscription allowance and reset time for its current billing period
-after signing in with `grok login`. Explicit `XAI_API_KEY` connections and custom authentication
-or endpoint configurations do not report subscription limits.
-
-API-key accounts may not report subscription limits. This also applies to Claude connections
-using a proxy through `ANTHROPIC_AUTH_TOKEN`.
+- **In chat**: Run `/usage-limits` in the composer to view the current model's snapshot without running the agent, or enable **Settings → Appearance → Thread details → Usage limits** (web/desktop).
+- **Reset credits**: Click an account segment/row to inspect plan details and redeem banked Codex/Claude reset credits via **Use reset** (Claude resets unavailable on macOS Keychain logins).
+- **Provider notes**:
+  - **OpenCode**: OpenCode 2 servers with usage reporting show Go allowances and Console budgets for the connected workspace. Local servers can also report Go usage from a Go API key (`OPENCODE_API_KEY`).
+  - **Cursor**: Reports monthly Auto + API quotas via `CURSOR_AUTH_TOKEN` or default-endpoint sign-in/`CURSOR_API_KEY`.
+  - **Grok**: Reports billing-period quotas for `grok login` (not `XAI_API_KEY`).
+  - **Muse Code**: Reports session/weekly limits after running in a thread (not persisted across restarts).
+  - Pure API-key accounts generally do not report subscription limits.
+- **Mobile widget**: Add the **Subscription usage** widget on iOS or Android to monitor Codex and Claude quotas from your home screen.
 
 ## Connect a CLIProxyAPI hub
 
-To see pooled accounts, open **Settings → Providers → Usage providers → Add hub**. Choose the
-environment that will connect to the hub and enter its URL and management key.
+Open **Settings → Providers → Usage providers → Add hub**, choose the environment, and enter the hub URL and management key. Pools Codex, Claude, and Grok accounts under **Usage → Limits** (including Codex **Use reset**). Configure the provider's endpoint to the same URL if you want threads to display that hub's limits.
 
-The accounts appear under **Usage → Limits**. Codex accounts show banked reset credits; select an
-account and choose **Use reset** to redeem one. No hub plugin is required.
+## Connect an HTTP quota source
 
-This connection supplies usage information; configure
-the provider separately to send agent requests through the hub. Remove the hub from the same
-settings section when you no longer need it.
+Open **Settings → Providers → Usage providers → Add HTTP source** with a GET endpoint (and optional bearer token) returning:
 
-## Subscription usage widget
+```json
+{
+  "version": 1,
+  "accounts": [
+    {
+      "id": "primary",
+      "label": "My coding plan",
+      "providerInstanceId": "work-codex",
+      "windows": [
+        {
+          "id": "monthly",
+          "kind": "monthly",
+          "label": "Monthly budget",
+          "usedPercent": 35,
+          "resetsAt": "2026-12-01T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}
+```
 
-Add **Subscription usage** from your iOS or Android widget gallery to see remaining Codex and
-Claude quotas. Tap it to open **Usage → Limits**. On iOS, use **Edit Widget** to choose Session,
-Weekly, or both for each provider. Reopen T3 to refresh expired readings.
+`kind` is `session`, `weekly`, `monthly`, or `other`. Setting `providerInstanceId` binds the quota windows to that instance's thread details card.
