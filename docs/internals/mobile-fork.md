@@ -154,9 +154,13 @@ Release workflows use the fork's EAS project and repository credentials. Upstrea
 should be adopted where possible, but must not switch ownership, bundle IDs, signing team, or hosted
 configuration back to upstream values.
 
+## Model picker
+
+The mobile picker shows starred models from the current catalog in a Favorites section above the provider sections. It uses upstream model favorites and selection. Remove the section when upstream groups favorites in the mobile picker.
+
 ## Deliberately dropped changes
 
-- Use the upstream mobile model picker. The fork's old model-property customization was removed.
+- The fork's old model-property customization was removed.
 - Use upstream branding and assets. The temporary mobile brand simplification was reverted.
 - Do not spoof upstream bundle IDs, Apple team membership, APNs topics, or associated domains.
 - Do not add `feature/tool-summarization` to `dev` unless that exclusion is explicitly reversed.
