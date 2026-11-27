@@ -8,9 +8,9 @@ export const DraftComposerImageAttachmentSchema = Schema.Struct({
   name: Schema.String,
   mimeType: Schema.String,
   sizeBytes: Schema.Number,
-  // Accept future file-backed records before enabling the new image writers.
   fileUri: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
   dataUrl: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
+  contentDigest: Schema.optional(Schema.String),
   uploadedAttachmentId: Schema.optional(Schema.String),
   uploadEnvironmentId: Schema.optional(EnvironmentId),
 }).check(
@@ -23,6 +23,7 @@ export const DraftComposerImageAttachmentSchema = Schema.Struct({
 );
 
 export const DraftComposerFileAttachmentSchema = Schema.Struct({
+  wasCompressed: Schema.optional(Schema.Boolean),
   id: Schema.String,
   type: Schema.Literal("file"),
   name: Schema.String,

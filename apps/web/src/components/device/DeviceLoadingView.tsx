@@ -1,3 +1,5 @@
+import { useGT } from "gt-react";
+import type { ReactNode } from "react";
 import { Smartphone } from "lucide-react";
 
 import { Spinner } from "~/components/ui/spinner";
@@ -8,7 +10,9 @@ export function DeviceLoadingView(props: {
   readonly stage: "opening" | "stream";
   readonly message: string;
   readonly error?: boolean;
+  readonly children?: ReactNode;
 }) {
+  const gt = useGT();
   return (
     <div
       role={props.error ? "alert" : "status"}
@@ -25,14 +29,17 @@ export function DeviceLoadingView(props: {
           ) : null}
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {!props.error ? <Spinner className="size-3" /> : null}
+          {!props.error ? <Spinner size="xs" /> : null}
           <span>{props.message}</span>
         </div>
+        {props.children}
         {!props.error ? (
           <div
             className="flex w-24 gap-1"
             aria-label={
-              props.stage === "opening" ? "Step 1 of 2: open device" : "Step 2 of 2: connect video"
+              props.stage === "opening"
+                ? gt("Step 1 of 2: open device")
+                : gt("Step 2 of 2: connect video")
             }
           >
             <span className="h-1 flex-1 rounded-full bg-foreground/60" />

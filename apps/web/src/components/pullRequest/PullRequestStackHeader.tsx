@@ -1,5 +1,7 @@
+import { T, useGT, Var } from "gt-react";
+
 import { MenuGroupLabel } from "../ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 export function PullRequestStackHeader({
   number,
@@ -10,17 +12,24 @@ export function PullRequestStackHeader({
   notice?: string | null | undefined;
   stale?: boolean;
 }) {
+  const gt = useGT();
   return (
-    <MenuGroupLabel className="flex items-center justify-between gap-2">
-      <span>Stack #{number}</span>
-      {notice ? (
-        <Tooltip>
-          <TooltipTrigger render={<span role="status" className="text-xs font-normal" />}>
-            {stale ? "May be stale" : "Refreshing…"}
-          </TooltipTrigger>
-          <TooltipPopup>{notice}</TooltipPopup>
-        </Tooltip>
-      ) : null}
+    <MenuGroupLabel>
+      <div className="flex items-center justify-between gap-2">
+        <span>
+          <T>
+            Stack #<Var>{number}</Var>
+          </T>
+        </span>
+        {notice ? (
+          <SharedTooltipTrigger
+            render={<span role="status" className="text-xs font-normal" />}
+            label={notice}
+          >
+            {stale ? gt("May be stale") : gt("Refreshing…")}
+          </SharedTooltipTrigger>
+        ) : null}
+      </div>
     </MenuGroupLabel>
   );
 }

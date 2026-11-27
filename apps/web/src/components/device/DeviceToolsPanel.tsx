@@ -1,14 +1,9 @@
 import type { DeviceHubAccess } from "@t3tools/client-runtime/state/deviceHubAccess";
-import type {
-  DeviceActionInput,
-  DeviceDetail,
-  DevicePermission,
-  DeviceSummary,
-  DeviceTextSize,
-  EnvironmentId,
-} from "@t3tools/contracts";
+import type { DevicePermission, DeviceSummary, DeviceTextSize } from "@t3tools/contracts";
 import { ChevronDown, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { msg, T, useGT, useMessages } from "gt-react";
+import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
@@ -24,85 +19,71 @@ import { Spinner } from "~/components/ui/spinner";
 import { Switch } from "~/components/ui/switch";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
-import { deviceEnvironment } from "~/state/device";
-import { formatEnvironmentQueryError } from "~/state/query";
-import { useAtomCommand } from "~/state/use-atom-command";
-import {
-  type DeviceEventLogEntry,
-  type DeviceForegroundInfo,
-  subscribeDeviceEventLog,
-  subscribeDeviceForeground,
-} from "./deviceHubApi";
-
-type ActionBody = DeviceActionInput extends infer A
-  ? A extends { readonly type: string }
-    ? Omit<A, "hostId" | "deviceId">
-    : never
-  : never;
+import type { DeviceControls } from "./useDeviceControls";
+import { deviceEventLogAtom } from "./deviceHubAtoms";
 
 const TEXT_SIZES: ReadonlyArray<{ value: DeviceTextSize; label: string }> = [
-  { value: "small", label: "Small" },
-  { value: "default", label: "Default" },
-  { value: "large", label: "Large" },
-  { value: "extra-large", label: "Extra large" },
+  { value: "small", label: msg("Small") },
+  { value: "default", label: msg("Default") },
+  { value: "large", label: msg("Large") },
+  { value: "extra-large", label: msg("Extra large") },
 ];
 
 const COLOR_FILTERS = [
-  { value: "none", label: "None" },
-  { value: "grayscale", label: "Grayscale" },
-  { value: "red-green", label: "Red / green (protanopia)" },
-  { value: "green-red", label: "Green / red (deuteranopia)" },
-  { value: "blue-yellow", label: "Blue / yellow (tritanopia)" },
+  { value: "none", label: msg("None") },
+  { value: "grayscale", label: msg("Grayscale") },
+  { value: "red-green", label: msg("Red / green (protanopia)") },
+  { value: "green-red", label: msg("Green / red (deuteranopia)") },
+  { value: "blue-yellow", label: msg("Blue / yellow (tritanopia)") },
 ] as const;
 
 const ORIENTATIONS = [
-  { value: "portrait", label: "Portrait" },
-  { value: "landscape_left", label: "Landscape left" },
-  { value: "portrait_upside_down", label: "Upside down" },
-  { value: "landscape_right", label: "Landscape right" },
+  { value: "portrait", label: msg("Portrait") },
+  { value: "landscape_left", label: msg("Landscape left") },
+  { value: "portrait_upside_down", label: msg("Upside down") },
+  { value: "landscape_right", label: msg("Landscape right") },
 ] as const;
 
 const IOS_PERMISSIONS: ReadonlyArray<{ value: DevicePermission; label: string }> = [
-  { value: "camera", label: "Camera" },
-  { value: "microphone", label: "Microphone" },
-  { value: "photos", label: "Photos" },
-  { value: "contacts", label: "Contacts" },
-  { value: "calendar", label: "Calendar" },
-  { value: "reminders", label: "Reminders" },
-  { value: "location", label: "Location" },
-  { value: "notifications", label: "Notifications" },
-  { value: "motion", label: "Motion" },
-  { value: "media-library", label: "Media library" },
-  { value: "faceid", label: "Face ID" },
+  { value: "camera", label: msg("Camera") },
+  { value: "microphone", label: msg("Microphone") },
+  { value: "photos", label: msg("Photos") },
+  { value: "contacts", label: msg("Contacts") },
+  { value: "calendar", label: msg("Calendar") },
+  { value: "reminders", label: msg("Reminders") },
+  { value: "location", label: msg("Location") },
+  { value: "notifications", label: msg("Notifications") },
+  { value: "motion", label: msg("Motion") },
+  { value: "media-library", label: msg("Media library") },
+  { value: "faceid", label: msg("Face ID") },
 ];
 
 const ANDROID_PERMISSIONS: ReadonlyArray<{ value: DevicePermission; label: string }> = [
-  { value: "camera", label: "Camera" },
-  { value: "microphone", label: "Microphone" },
-  { value: "photos", label: "Photos" },
-  { value: "contacts", label: "Contacts" },
-  { value: "calendar", label: "Calendar" },
-  { value: "location", label: "Location" },
-  { value: "notifications", label: "Notifications" },
-  { value: "motion", label: "Physical activity" },
+  { value: "camera", label: msg("Camera") },
+  { value: "microphone", label: msg("Microphone") },
+  { value: "photos", label: msg("Photos") },
+  { value: "contacts", label: msg("Contacts") },
+  { value: "calendar", label: msg("Calendar") },
+  { value: "location", label: msg("Location") },
+  { value: "notifications", label: msg("Notifications") },
+  { value: "motion", label: msg("Physical activity") },
 ];
 
 const LOCATION_PRESETS = [
-  { label: "San Francisco", latitude: 37.7749, longitude: -122.4194 },
-  { label: "New York", latitude: 40.7128, longitude: -74.006 },
-  { label: "London", latitude: 51.5074, longitude: -0.1278 },
-  { label: "Stockholm", latitude: 59.3293, longitude: 18.0686 },
-  { label: "Tokyo", latitude: 35.6762, longitude: 139.6503 },
+  {
+    label: msg("San Francisco", { $context: "city name" }),
+    latitude: 37.7749,
+    longitude: -122.4194,
+  },
+  { label: msg("New York", { $context: "city name" }), latitude: 40.7128, longitude: -74.006 },
+  { label: msg("London", { $context: "city name" }), latitude: 51.5074, longitude: -0.1278 },
+  { label: msg("Stockholm", { $context: "city name" }), latitude: 59.3293, longitude: 18.0686 },
+  { label: msg("Tokyo", { $context: "city name" }), latitude: 35.6762, longitude: 139.6503 },
 ] as const;
 
-/**
- * The Tools drawer for one open device: current settings read from the device,
- * one control per supported action, and the read-only feeds the hub exposes.
- * Every change is a `device.action` round trip; the returned detail replaces
- * local state so the controls never show a value the device did not confirm.
- */
 export function DeviceToolsPanel(props: {
-  readonly environmentId: EnvironmentId;
+  readonly controls: DeviceControls;
+  readonly hostDiagnostics: string | undefined;
   readonly device: DeviceSummary;
   readonly access: DeviceHubAccess | null;
   readonly axOverlay: boolean;
@@ -110,74 +91,25 @@ export function DeviceToolsPanel(props: {
   readonly onClose: () => void;
   readonly className?: string;
 }) {
-  const { environmentId, device } = props;
-  const readDetail = useAtomCommand(deviceEnvironment.detail, { reportFailure: false });
-  const runAction = useAtomCommand(deviceEnvironment.action, { reportFailure: false });
-  const [detail, setDetail] = useState<DeviceDetail | null>(null);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [foreground, setForeground] = useState<DeviceForegroundInfo | null | undefined>(undefined);
-  const isIos = device.platform === "ios";
-
-  const target = useMemo(
-    () => ({ hostId: device.hostId, deviceId: device.id }),
-    [device.hostId, device.id],
-  );
-
-  // The panel is keyed by device, so a mount is always a fresh device.
-  useEffect(() => {
-    let cancelled = false;
-    void readDetail({ environmentId, input: target }).then((result) => {
-      if (cancelled) return;
-      if (result._tag === "Success") setDetail(result.value);
-      else setError(formatEnvironmentQueryError(result.cause));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId, readDetail, target]);
-
-  useEffect(() => {
-    if (!props.access) return;
-    return subscribeDeviceForeground(
-      { access: props.access, platform: device.platform, deviceId: device.id },
-      setForeground,
-    );
-  }, [device.id, device.platform, props.access]);
-
-  const act = useCallback(
-    async (body: ActionBody) => {
-      setPending(true);
-      setError(null);
-      try {
-        const result = await runAction({
-          environmentId,
-          input: { ...target, ...body } as DeviceActionInput,
-        });
-        if (result._tag === "Success") setDetail(result.value);
-        else setError(formatEnvironmentQueryError(result.cause));
-      } finally {
-        setPending(false);
-      }
-    },
-    [environmentId, runAction, target],
-  );
-
+  const { device, controls } = props;
+  const { detail, pending, error, foregroundApp, disabled, act } = controls;
   const settings = detail?.settings;
-  const foregroundApp = foreground === undefined ? (detail?.foregroundApp ?? null) : foreground;
-  const disabled = pending || detail === null;
+  const isIos = device.platform === "ios";
+  const gt = useGT();
 
   return (
     <div
       className={cn("flex min-h-0 flex-col border-border bg-background text-sm", props.className)}
     >
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
-        <span className="font-medium">Tools</span>
-        {pending ? <Spinner className="size-3.5" /> : null}
+        <span className="font-medium">
+          <T>Tools</T>
+        </span>
+        {pending ? <Spinner size="sm" /> : null}
         <Button
           size="icon-xs"
           variant="ghost-muted"
-          aria-label="Close tools"
+          aria-label={gt("Close tools")}
           className="ml-auto"
           onClick={props.onClose}
         >
@@ -190,13 +122,21 @@ export function DeviceToolsPanel(props: {
         ) : null}
         {detail === null && !error ? (
           <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
-            <Spinner className="size-3.5" /> Reading device settings…
+            <Spinner size="sm" /> <T>Reading device settings…</T>
           </div>
         ) : null}
 
-        <Section title="App">
-          <Row label="Foreground">
-            <span className="truncate font-mono text-xs">{foregroundApp?.id ?? "—"}</span>
+        {props.hostDiagnostics ? (
+          <Section title={gt("Host diagnostics")}>
+            <p className="whitespace-pre-line text-xs text-muted-foreground">
+              {props.hostDiagnostics}
+            </p>
+          </Section>
+        ) : null}
+
+        <Section title={gt("App", { $context: "section heading for the foreground app" })}>
+          <Row label={gt("Foreground", { $context: "the app currently in the foreground" })}>
+            <span className="truncate font-mono text-xs">{foregroundApp?.id ?? "-"}</span>
           </Row>
           {foregroundApp ? (
             <div className="flex gap-1.5">
@@ -206,7 +146,7 @@ export function DeviceToolsPanel(props: {
                 disabled={disabled}
                 onClick={() => void act({ type: "terminateApp", appId: foregroundApp.id })}
               >
-                Terminate
+                <T>Terminate</T>
               </Button>
               <Button
                 size="xs"
@@ -214,28 +154,28 @@ export function DeviceToolsPanel(props: {
                 disabled={disabled}
                 onClick={() => void act({ type: "launchApp", appId: foregroundApp.id })}
               >
-                Relaunch
+                <T>Relaunch</T>
               </Button>
             </div>
           ) : null}
           <SubmitRow
-            placeholder="https://… or myapp://"
-            action="Open"
+            placeholder={gt("https://… or myapp://")}
+            action={gt("Open", { $context: "verb, opens a URL" })}
             disabled={disabled}
             onSubmit={(url) => act({ type: "openUrl", url })}
           />
           <SubmitRow
-            placeholder={isIos ? "Bundle ID to launch" : "Package name to launch"}
-            action="Launch"
+            placeholder={isIos ? gt("Bundle ID to launch") : gt("Package name to launch")}
+            action={gt("Launch", { $context: "verb, launches an app" })}
             disabled={disabled}
             onSubmit={(appId) => act({ type: "launchApp", appId })}
           />
         </Section>
 
-        <Section title={isIos ? "Simulator" : "Emulator"}>
-          <Row label="Appearance">
+        <Section title={isIos ? gt("Simulator") : gt("Emulator")}>
+          <Row label={gt("Appearance")}>
             <ToggleGroup
-              aria-label="Appearance"
+              aria-label={gt("Appearance")}
               value={settings?.appearance ? [settings.appearance] : []}
               disabled={disabled}
               onValueChange={(value) => {
@@ -244,13 +184,17 @@ export function DeviceToolsPanel(props: {
                   void act({ type: "setAppearance", value: next });
               }}
             >
-              <Toggle value="light">Light</Toggle>
-              <Toggle value="dark">Dark</Toggle>
+              <Toggle value="light">
+                <T context="appearance mode">Light</T>
+              </Toggle>
+              <Toggle value="dark">
+                <T context="appearance mode">Dark</T>
+              </Toggle>
             </ToggleGroup>
           </Row>
-          <Row label="Text size">
+          <Row label={gt("Text size")}>
             <ChoiceSelect
-              ariaLabel="Text size"
+              ariaLabel={gt("Text size")}
               value={settings?.textSize ?? null}
               options={TEXT_SIZES}
               disabled={disabled}
@@ -271,13 +215,17 @@ export function DeviceToolsPanel(props: {
                     }
                   }}
                 >
-                  <Toggle value="clear">Clear</Toggle>
-                  <Toggle value="tinted">Tinted</Toggle>
+                  <Toggle value="clear">
+                    <T context="Liquid Glass style">Clear</T>
+                  </Toggle>
+                  <Toggle value="tinted">
+                    <T context="Liquid Glass style">Tinted</T>
+                  </Toggle>
                 </ToggleGroup>
               </Row>
-              <Row label="Color filter">
+              <Row label={gt("Color filter")}>
                 <ChoiceSelect
-                  ariaLabel="Color filter"
+                  ariaLabel={gt("Color filter")}
                   value={settings?.colorFilter ?? null}
                   options={COLOR_FILTERS}
                   disabled={disabled}
@@ -286,11 +234,11 @@ export function DeviceToolsPanel(props: {
               </Row>
             </>
           ) : (
-            <Row label="Orientation">
+            <Row label={gt("Orientation")}>
               <ChoiceSelect
-                ariaLabel="Orientation"
+                ariaLabel={gt("Orientation")}
                 value={null}
-                placeholder="Rotate to…"
+                placeholder={gt("Rotate to…")}
                 options={ORIENTATIONS}
                 disabled={disabled}
                 onChange={(value) => act({ type: "setOrientation", value })}
@@ -298,7 +246,7 @@ export function DeviceToolsPanel(props: {
             </Row>
           )}
           <SwitchRow
-            label="Reduce Motion"
+            label={gt("Reduce Motion")}
             checked={settings?.reduceMotion}
             disabled={disabled}
             onChange={(value) => act({ type: "setToggle", setting: "reduceMotion", value })}
@@ -306,13 +254,13 @@ export function DeviceToolsPanel(props: {
           {isIos ? (
             <>
               <SwitchRow
-                label="Increase Contrast"
+                label={gt("Increase Contrast")}
                 checked={settings?.increaseContrast}
                 disabled={disabled}
                 onChange={(value) => act({ type: "setToggle", setting: "increaseContrast", value })}
               />
               <SwitchRow
-                label="Reduce Transparency"
+                label={gt("Reduce Transparency")}
                 checked={settings?.reduceTransparency}
                 disabled={disabled}
                 onChange={(value) =>
@@ -320,7 +268,7 @@ export function DeviceToolsPanel(props: {
                 }
               />
               <SwitchRow
-                label="Show Borders"
+                label={gt("Show Borders")}
                 checked={settings?.showBorders}
                 disabled={disabled}
                 onChange={(value) => act({ type: "setToggle", setting: "showBorders", value })}
@@ -334,7 +282,7 @@ export function DeviceToolsPanel(props: {
             </>
           ) : (
             <SwitchRow
-              label="Network"
+              label={gt("Network")}
               checked={settings?.networkEnabled}
               disabled={disabled}
               onChange={(value) => act({ type: "setToggle", setting: "networkEnabled", value })}
@@ -342,9 +290,9 @@ export function DeviceToolsPanel(props: {
           )}
         </Section>
 
-        <Section title="Accessibility">
+        <Section title={gt("Accessibility")}>
           <SwitchRow
-            label="Overlay element frames"
+            label={gt("Overlay element frames")}
             checked={props.axOverlay}
             disabled={props.access === null}
             onChange={(value) => {
@@ -372,19 +320,21 @@ export function DeviceToolsPanel(props: {
         />
 
         {isIos ? (
-          <Section title="Push notification">
+          <Section title={gt("Push notification")}>
             <SubmitRow
-              placeholder="Alert text"
-              action="Send"
+              placeholder={gt("Alert text")}
+              action={gt("Send", { $context: "verb, sends a push notification" })}
               disabled={disabled || !foregroundApp}
               onSubmit={(payload) =>
                 foregroundApp
                   ? act({ type: "sendPush", appId: foregroundApp.id, payload })
-                  : Promise.resolve()
+                  : Promise.resolve(false)
               }
             />
             {!foregroundApp ? (
-              <p className="text-xs text-muted-foreground">Open an app first.</p>
+              <p className="text-xs text-muted-foreground">
+                <T>Open an app first.</T>
+              </p>
             ) : null}
           </Section>
         ) : null}
@@ -398,9 +348,7 @@ export function DeviceToolsPanel(props: {
 function Section(props: { readonly title: string; readonly children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2 border-b px-3 py-2.5 last:border-b-0">
-      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {props.title}
-      </h3>
+      <h3 className="text-xs font-medium text-muted-foreground">{props.title}</h3>
       {props.children}
     </section>
   );
@@ -419,7 +367,7 @@ function SwitchRow(props: {
   readonly label: string;
   readonly checked: boolean | undefined;
   readonly disabled: boolean;
-  readonly onChange: (value: boolean) => Promise<void>;
+  readonly onChange: (value: boolean) => Promise<unknown>;
 }) {
   return (
     <Row label={props.label}>
@@ -440,8 +388,10 @@ function ChoiceSelect<V extends string>(props: {
   readonly options: ReadonlyArray<{ readonly value: V; readonly label: string }>;
   readonly disabled: boolean;
   readonly placeholder?: string;
-  readonly onChange: (value: V) => Promise<void>;
+  readonly onChange: (value: V) => Promise<unknown>;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const current = props.options.find((option) => option.value === props.value);
   return (
     <Select
@@ -454,16 +404,16 @@ function ChoiceSelect<V extends string>(props: {
       <SelectTrigger size="xs" className="w-40" aria-label={props.ariaLabel}>
         <SelectValue>
           {current ? (
-            current.label
+            m(current.label)
           ) : (
-            <span className="text-muted-foreground">{props.placeholder ?? "Unknown"}</span>
+            <span className="text-muted-foreground">{props.placeholder ?? gt("Unknown")}</span>
           )}
         </SelectValue>
       </SelectTrigger>
       <SelectPopup align="end" alignItemWithTrigger={false}>
         {props.options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {option.label}
+            {m(option.label)}
           </SelectItem>
         ))}
       </SelectPopup>
@@ -475,13 +425,15 @@ function SubmitRow(props: {
   readonly placeholder: string;
   readonly action: string;
   readonly disabled: boolean;
-  readonly onSubmit: (value: string) => Promise<void>;
+  readonly onSubmit: (value: string) => Promise<boolean>;
 }) {
   const [value, setValue] = useState("");
   const submit = () => {
     const trimmed = value.trim();
     if (!trimmed) return;
-    void props.onSubmit(trimmed).then(() => setValue(""));
+    void props.onSubmit(trimmed).then((sent) => {
+      if (sent) setValue("");
+    });
   };
   return (
     <form
@@ -493,7 +445,8 @@ function SubmitRow(props: {
     >
       <Input
         size="compact"
-        className="min-w-0 flex-1 font-mono"
+        font="mono"
+        className="min-w-0 flex-1"
         placeholder={props.placeholder}
         value={value}
         disabled={props.disabled}
@@ -514,9 +467,11 @@ function SubmitRow(props: {
 function LocationSection(props: {
   readonly disabled: boolean;
   readonly canClear: boolean;
-  readonly onSet: (latitude: number, longitude: number) => Promise<void>;
-  readonly onClear: () => Promise<void>;
+  readonly onSet: (latitude: number, longitude: number) => Promise<unknown>;
+  readonly onClear: () => Promise<unknown>;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const parsed = { latitude: Number(latitude), longitude: Number(longitude) };
@@ -526,12 +481,13 @@ function LocationSection(props: {
     Math.abs(parsed.latitude) <= 90 &&
     Math.abs(parsed.longitude) <= 180;
   return (
-    <Section title="Location">
+    <Section title={gt("Location")}>
       <div className="flex gap-1.5">
         <Input
           size="compact"
-          className="min-w-0 flex-1 font-mono"
-          placeholder="Latitude"
+          font="mono"
+          className="min-w-0 flex-1"
+          placeholder={gt("Latitude")}
           inputMode="decimal"
           value={latitude}
           disabled={props.disabled}
@@ -539,8 +495,9 @@ function LocationSection(props: {
         />
         <Input
           size="compact"
-          className="min-w-0 flex-1 font-mono"
-          placeholder="Longitude"
+          font="mono"
+          className="min-w-0 flex-1"
+          placeholder={gt("Longitude")}
           inputMode="decimal"
           value={longitude}
           disabled={props.disabled}
@@ -559,15 +516,17 @@ function LocationSection(props: {
             void props.onSet(preset.latitude, preset.longitude);
           }}
         >
-          <SelectTrigger size="xs" className="w-32" aria-label="Location preset">
+          <SelectTrigger size="xs" className="w-32" aria-label={gt("Location preset")}>
             <SelectValue>
-              <span className="text-muted-foreground">Preset…</span>
+              <span className="text-muted-foreground">
+                <T>Preset…</T>
+              </span>
             </SelectValue>
           </SelectTrigger>
           <SelectPopup align="start" alignItemWithTrigger={false}>
             {LOCATION_PRESETS.map((preset) => (
               <SelectItem key={preset.label} value={preset.label}>
-                {preset.label}
+                {m(preset.label)}
               </SelectItem>
             ))}
           </SelectPopup>
@@ -578,7 +537,7 @@ function LocationSection(props: {
           disabled={props.disabled || !valid}
           onClick={() => void props.onSet(parsed.latitude, parsed.longitude)}
         >
-          Set
+          <T context="verb, applies the location">Set</T>
         </Button>
         {props.canClear ? (
           <Button
@@ -591,7 +550,7 @@ function LocationSection(props: {
               void props.onClear();
             }}
           >
-            Clear
+            <T context="verb, clears the location">Clear</T>
           </Button>
         ) : null}
       </div>
@@ -608,26 +567,27 @@ function PermissionsSection(props: {
     appId: string,
     permission: DevicePermission,
     decision: "grant" | "revoke" | "reset",
-  ) => Promise<void>;
+  ) => Promise<unknown>;
 }) {
+  const gt = useGT();
   const [appId, setAppId] = useState("");
   const [permission, setPermission] = useState<DevicePermission>("camera");
   const resolvedAppId = appId.trim() || props.defaultAppId;
   const decide = (decision: "grant" | "revoke" | "reset") =>
     void props.onDecide(resolvedAppId, permission, decision);
   return (
-    <Section title="Permissions">
+    <Section title={gt("Permissions")}>
       <Input
         size="compact"
-        className="font-mono"
-        placeholder={props.defaultAppId || "App ID"}
+        font="mono"
+        placeholder={props.defaultAppId || gt("App ID")}
         value={appId}
         disabled={props.disabled}
         onChange={(event) => setAppId(event.target.value)}
       />
       <div className="flex flex-wrap items-center gap-1.5">
         <ChoiceSelect
-          ariaLabel="Permission"
+          ariaLabel={gt("Permission")}
           value={permission}
           options={props.permissions}
           disabled={props.disabled}
@@ -642,7 +602,7 @@ function PermissionsSection(props: {
           disabled={props.disabled || !resolvedAppId}
           onClick={() => decide("grant")}
         >
-          Grant
+          <T>Grant</T>
         </Button>
         <Button
           size="xs"
@@ -650,7 +610,7 @@ function PermissionsSection(props: {
           disabled={props.disabled || !resolvedAppId}
           onClick={() => decide("revoke")}
         >
-          Revoke
+          <T>Revoke</T>
         </Button>
         {props.canReset ? (
           <Button
@@ -659,7 +619,7 @@ function PermissionsSection(props: {
             disabled={props.disabled || !resolvedAppId}
             onClick={() => decide("reset")}
           >
-            Reset
+            <T context="verb, resets the permission">Reset</T>
           </Button>
         ) : null}
       </div>
@@ -667,56 +627,53 @@ function PermissionsSection(props: {
   );
 }
 
-const EVENT_LOG_LIMIT = 100;
-
 function EventLogSection(props: {
   readonly access: DeviceHubAccess;
   readonly device: DeviceSummary;
 }) {
   const [open, setOpen] = useState(false);
-  const [entries, setEntries] = useState<ReadonlyArray<DeviceEventLogEntry>>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    const unsubscribe = subscribeDeviceEventLog(
-      { access: props.access, platform: props.device.platform, deviceId: props.device.id },
-      (incoming, reset) => {
-        setEntries((current) => {
-          const merged = reset ? [...incoming] : [...current, ...incoming];
-          return merged.length > EVENT_LOG_LIMIT ? merged.slice(-EVENT_LOG_LIMIT) : merged;
-        });
-      },
-    );
-    return () => {
-      unsubscribe();
-      setEntries([]);
-    };
-  }, [open, props.access, props.device.id, props.device.platform]);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex w-full items-center gap-1.5 border-b px-3 py-2.5 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Event log
+      <CollapsibleTrigger className="flex w-full items-center gap-1.5 border-b px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">
+        <T>Event log</T>
         <ChevronDown
           className={cn("ml-auto size-3.5 transition-transform", open && "rotate-180")}
         />
       </CollapsibleTrigger>
       <CollapsiblePanel>
-        <ol className="max-h-64 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed">
-          {entries.length === 0 ? (
-            <li className="text-muted-foreground">No events yet.</li>
-          ) : (
-            entries.map((entry) => (
-              <li key={entry.id} className="flex gap-2">
-                <span className="shrink-0 text-muted-foreground">
-                  {entry.timestamp.slice(11, 19)}
-                </span>
-                <span className="truncate">{entry.summary}</span>
-              </li>
-            ))
-          )}
-        </ol>
+        <EventLogEntries access={props.access} device={props.device} />
       </CollapsiblePanel>
     </Collapsible>
+  );
+}
+
+// The panel unmounts while closed, so the log streams only while it is open.
+function EventLogEntries(props: {
+  readonly access: DeviceHubAccess;
+  readonly device: DeviceSummary;
+}) {
+  const entries = useAtomValue(
+    deviceEventLogAtom({
+      access: props.access,
+      platform: props.device.platform,
+      deviceId: props.device.id,
+    }),
+  );
+  return (
+    <ol className="max-h-64 overflow-y-auto px-3 py-2 font-mono text-2xs leading-relaxed">
+      {entries.length === 0 ? (
+        <li className="text-muted-foreground">
+          <T>No events yet.</T>
+        </li>
+      ) : (
+        entries.map((entry) => (
+          <li key={entry.id} className="flex gap-2">
+            <span className="shrink-0 text-muted-foreground">{entry.timestamp.slice(11, 19)}</span>
+            <span className="truncate">{entry.summary}</span>
+          </li>
+        ))
+      )}
+    </ol>
   );
 }

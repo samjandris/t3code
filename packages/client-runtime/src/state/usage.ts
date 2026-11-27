@@ -1,13 +1,38 @@
-import type { EnvironmentId, UsageSummaryInput } from "@t3tools/contracts";
+import type { EnvironmentId, UsageModelFilter, UsageSummaryInput } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
+import { errorDisplayMessage } from "../errors/translatable.ts";
 import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
 import type { createEnvironmentPresentationAtoms } from "./presentation.ts";
 import { executeAtomQuery, runAtomCommand, squashAtomCommandFailure } from "./runtime.ts";
 import type { createServerEnvironmentAtoms } from "./server.ts";
 
 const isEnvironmentRpcUnavailable = Schema.is(EnvironmentRpcUnavailableError);
+
+/** The Usage tab asks each environment with that environment's configured model filter. */
+export function usageSummaryInput(
+  input: UsageSummaryInput,
+  modelFilter: UsageModelFilter | undefined,
+): UsageSummaryInput {
+  return modelFilter === undefined ? input : { ...input, modelFilter };
+}
+
+/** The server's reason a reset credit could not be used, or a generic line when it gave none. */
+export function resetCreditFailureText(
+  result: { readonly cause: Cause.Cause<unknown> },
+  resolve: MFunctionType = mFallback,
+): string {
+  // Squashing an interrupt-only cause invents Effect's own "All fibers interrupted" text.
+  const failed = Cause.hasFails(result.cause) || Cause.hasDies(result.cause);
+  return (
+    (failed ? errorDisplayMessage(squashAtomCommandFailure(result), resolve) : null) ??
+    resolve(msg("Could not use the reset credit."))
+  );
+}
 
 const limitsRefreshAfter = new Map<EnvironmentId, number>();
 const limitsRefreshes = new Map<EnvironmentId, Promise<unknown>>();
@@ -19,7 +44,6 @@ export async function refreshUsageLimits<A>(
 ): Promise<A | undefined> {
   const pending = limitsRefreshes.get(environmentId);
   if (pending !== undefined) {
-    // Manual refresh waits for the current check; automatic refresh does not repeat it.
     return automatic ? undefined : ((await pending) as A);
   }
   const refreshAfter = limitsRefreshAfter.get(environmentId) ?? 0;
@@ -36,7 +60,6 @@ export async function refreshUsageLimits<A>(
   return await current;
 }
 
-/** Refresh pricing, then await each selected environment's rescan while it remains connected. */
 export async function refreshUsage({
   registry,
   server,
@@ -47,7 +70,7 @@ export async function refreshUsage({
   registry: AtomRegistry.AtomRegistry;
   server: Pick<
     ReturnType<typeof createServerEnvironmentAtoms>,
-    "usageSummary" | "refreshUsageRates"
+    "usageSummary" | "refreshUsageRates" | "usageModelFilterAtom"
   >;
   presentations: Pick<ReturnType<typeof createEnvironmentPresentationAtoms>, "presentationAtom">;
   environmentIds: readonly EnvironmentId[];
@@ -55,7 +78,10 @@ export async function refreshUsage({
 }): Promise<void> {
   await Promise.all(
     environmentIds.map(async (environmentId) => {
-      const query = server.usageSummary({ environmentId, input });
+      const query = server.usageSummary({
+        environmentId,
+        input: usageSummaryInput(input, registry.get(server.usageModelFilterAtom(environmentId))),
+      });
       const presentation = presentations.presentationAtom(environmentId);
       const controller = new AbortController();
       const abortWhenDisconnected = () => {
@@ -73,7 +99,6 @@ export async function refreshUsage({
         const sessionUnavailable =
           ratesResult._tag === "Failure" &&
           isEnvironmentRpcUnavailable(squashAtomCommandFailure(ratesResult));
-        // Invalidate even on failure so reconnects cannot reuse the old summary.
         registry.refresh(query);
         if (sessionUnavailable || controller.signal.aborted) return;
         await executeAtomQuery(registry, query, {

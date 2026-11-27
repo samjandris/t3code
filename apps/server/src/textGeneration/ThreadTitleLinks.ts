@@ -6,7 +6,6 @@ const encodeSubject = Schema.encodeEffect(
   Schema.fromJsonString(Schema.Struct({ title: Schema.String, body: Schema.String })),
 );
 
-/** Providers select supported links before the title lookup budget is applied. */
 export const resolveThreadTitleLinks = Effect.fn("resolveThreadTitleLinks")(function* (input: {
   message: string;
   cwd: string;
@@ -14,12 +13,9 @@ export const resolveThreadTitleLinks = Effect.fn("resolveThreadTitleLinks")(func
   const providers = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
   const links = new Map<string, NonNullable<ReturnType<typeof providers.resolveLink>>>();
   for (const match of input.message.matchAll(/https:\/\/[^\s<>"')\]`]+/g)) {
-    let url: URL;
-    try {
-      url = new URL(match[0].replace(/[.,;!?]+$/, ""));
-    } catch {
-      continue;
-    }
+    const candidate = match[0].replace(/[.,:;!?*]+$/, "");
+    if (!URL.canParse(candidate)) continue;
+    const url = new URL(candidate);
     url.hash = "";
     url.search = "";
     if (links.has(url.href)) continue;
@@ -34,13 +30,13 @@ export const resolveThreadTitleLinks = Effect.fn("resolveThreadTitleLinks")(func
       lookup.pipe(
         Effect.flatMap((subject) =>
           encodeSubject({
-            title: subject.title.slice(0, 300),
-            body: subject.body?.slice(0, 1_200) ?? "",
+            title: subject.title.slice(0, 300).replace(/\p{Surrogate}$/u, ""),
+            body: subject.body?.slice(0, 1_200).replace(/\p{Surrogate}$/u, "") ?? "",
           }),
         ),
         Effect.map((summary) => `${url}\n${summary}`),
         Effect.timeout("3 seconds"),
-        Effect.catch(() => Effect.succeed(`${url}: unavailable`)),
+        Effect.orElseSucceed(() => `${url}: unavailable`),
       ),
     { concurrency: 2 },
   );
