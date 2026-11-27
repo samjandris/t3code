@@ -1,8 +1,7 @@
-"use client";
-
 import { DayPicker } from "@daypicker/react";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronsUpDownIcon } from "lucide-react";
 import type * as React from "react";
+import { useFormattingLocale } from "~/i18n/I18nProvider";
 import { cn } from "~/lib/utils";
 
 const buttonClassNames =
@@ -41,14 +40,39 @@ const defaultComponents = {
   },
 };
 
+// DayPicker otherwise formats and labels with date-fns enUS, whatever the app language.
+function localizedFormatters(locale: string | undefined, timeZone: string | undefined) {
+  // DayPicker's grid is always Gregorian, so the month names must be too (fa-IR defaults to Persian).
+  const calendar = "gregory";
+  const caption = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+    calendar,
+    timeZone,
+  });
+  const monthDropdown = new Intl.DateTimeFormat(locale, { month: "short", calendar, timeZone });
+  const weekday = new Intl.DateTimeFormat(locale, { weekday: "short", timeZone });
+  const formatters = {
+    formatCaption: (month: Date) => caption.format(month),
+    formatMonthDropdown: (month: Date) => monthDropdown.format(month),
+  };
+  // Intl has no two-letter weekday, so English keeps DayPicker's own "Mo".
+  if (weekday.resolvedOptions().locale.startsWith("en")) return formatters;
+  return { ...formatters, formatWeekdayName: (day: Date) => weekday.format(day) };
+}
+
 export function Calendar({
   className,
   classNames,
   showOutsideDays = true,
   components: userComponents,
+  formatters: userFormatters,
+  labels: userLabels,
   mode = "single",
+  timeZone,
   ...props
 }: React.ComponentProps<typeof DayPicker>): React.ReactElement {
+  const localized = localizedFormatters(useFormattingLocale(), timeZone);
   const defaultClassNames = {
     button_next: buttonClassNames,
     button_previous: buttonClassNames,
@@ -56,11 +80,11 @@ export function Calendar({
     day: "size-(--cell-size) text-sm py-px",
     day_button: cn(
       buttonClassNames,
-      "in-data-disabled:pointer-events-none in-[.range-middle]:rounded-none in-[.range-end:not(.range-start)]:rounded-s-none in-[.range-start:not(.range-end)]:rounded-e-none in-[.range-middle]:in-data-selected:bg-accent in-data-selected:bg-primary in-[.range-middle]:in-data-selected:text-foreground in-data-disabled:text-muted-foreground/72 in-data-outside:text-muted-foreground/72 in-data-selected:in-data-outside:text-primary-foreground in-data-selected:text-primary-foreground in-data-disabled:line-through outline-none in-[[data-selected]:not(.range-middle)]:transition-[border-radius,box-shadow] focus-visible:z-1 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+      "in-data-disabled:pointer-events-none in-[.range-middle]:rounded-none in-[.range-end:not(.range-start)]:rounded-s-none in-[.range-start:not(.range-end)]:rounded-e-none in-[.range-middle]:in-data-selected:bg-accent in-data-selected:bg-primary in-[.range-middle]:in-data-selected:text-foreground in-data-disabled:text-muted-foreground/72 in-data-outside:text-muted-foreground/72 in-data-selected:in-data-outside:text-primary-foreground in-data-selected:text-primary-foreground in-data-disabled:line-through outline-none in-[[data-selected]:not(.range-middle)]:transition-[border-radius,box-shadow] focus-visible:z-1 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50",
     ),
     dropdown: "absolute bg-popover inset-0 opacity-0",
     dropdown_root:
-      "relative has-focus:border-ring has-focus:ring-ring/50 has-focus:ring-[3px] border border-input shadow-xs/5 rounded-lg px-[calc(--spacing(3)-1px)] h-9 sm:h-8 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:-me-1",
+      "relative has-focus:border-ring has-focus:ring-ring/50 has-focus:ring-[3px] has-focus:ring-inset border border-input shadow-xs/5 rounded-lg px-[calc(--spacing(3)-1px)] h-9 sm:h-8 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:-me-1",
     dropdowns:
       "w-full flex items-center text-base sm:text-sm justify-center h-(--cell-size) gap-1.5 *:[span]:font-medium",
     hidden: "invisible",
@@ -100,11 +124,11 @@ export function Calendar({
     classNames: mergedClassNames,
     components: mergedComponents,
     "data-slot": "calendar",
-    formatters: {
-      formatMonthDropdown: (date: Date) => date.toLocaleString("default", { month: "short" }),
-    } as React.ComponentProps<typeof DayPicker>["formatters"],
+    formatters: { ...localized, ...userFormatters },
+    labels: { labelGrid: localized.formatCaption, ...userLabels },
     mode,
     showOutsideDays,
+    timeZone,
     ...props,
   };
 

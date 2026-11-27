@@ -1,9 +1,11 @@
 import type { ServerProcessSignal } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 
 import { InlineButton } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
-/** Process ownership and confirmation stay with the diagnostics view. */
+const SIGNAL_SHORT_NAMES = { SIGINT: "INT", SIGKILL: "KILL" } as const;
+
 export function ProcessSignalActions({
   disabled,
   onSignal,
@@ -11,38 +13,47 @@ export function ProcessSignalActions({
   disabled: boolean;
   onSignal: (signal: ServerProcessSignal) => void;
 }) {
+  const gt = useGT();
   return (
     <div className="flex items-center justify-end gap-1.5">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <InlineButton
-              disabled={disabled}
-              aria-label="Send SIGINT"
-              className="text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              onClick={() => onSignal("SIGINT")}
-            >
-              INT
-            </InlineButton>
-          }
-        />
-        <TooltipPopup side="top">Send SIGINT</TooltipPopup>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <InlineButton
-              disabled={disabled}
-              aria-label="Send SIGKILL"
-              className="text-[11px] font-medium text-destructive underline-offset-2 hover:underline"
-              onClick={() => onSignal("SIGKILL")}
-            >
-              KILL
-            </InlineButton>
-          }
-        />
-        <TooltipPopup side="top">Send SIGKILL</TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <InlineButton
+            disabled={disabled}
+            aria-label={gt("Send {signal}", { signal: "SIGINT" })}
+            tone="muted"
+            onClick={() => onSignal("SIGINT")}
+          >
+            {SIGNAL_SHORT_NAMES.SIGINT}
+          </InlineButton>
+        }
+        label={
+          <>
+            <T>
+              Send <Var>{"SIGINT"}</Var>
+            </T>
+          </>
+        }
+      />
+      <SharedTooltipTrigger
+        render={
+          <InlineButton
+            disabled={disabled}
+            aria-label={gt("Send {signal}", { signal: "SIGKILL" })}
+            tone="destructive"
+            onClick={() => onSignal("SIGKILL")}
+          >
+            {SIGNAL_SHORT_NAMES.SIGKILL}
+          </InlineButton>
+        }
+        label={
+          <>
+            <T>
+              Send <Var>{"SIGKILL"}</Var>
+            </T>
+          </>
+        }
+      />
     </div>
   );
 }
