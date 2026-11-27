@@ -38,11 +38,11 @@ Enable Clerk's Native API, add `t3code-dev://app/` and `t3code://app/` to the SS
 
 In Clerk **Native applications > Allowlist for mobile SSO redirect**, allow each variant's callback:
 
-| Variant     | Callback                                      |
-| ----------- | --------------------------------------------- |
-| Development | `clerk://com.t3tools.t3code.dev.callback`     |
-| Preview     | `clerk://com.t3tools.t3code.preview.callback` |
-| Production  | `clerk://com.t3tools.t3code.callback`         |
+| Variant     | Callback                                         |
+| ----------- | ------------------------------------------------ |
+| Development | `clerk://com.samjandris.t3code.dev.callback`     |
+| Preview     | `clerk://com.samjandris.t3code.preview.callback` |
+| Production  | `clerk://com.samjandris.t3code.callback`         |
 
 ### Restricting sign-ups
 
@@ -56,18 +56,18 @@ Under Clerk **Webhooks**, add an endpoint at `https://<relay domain>/v1/webhooks
 
 The relay sends Android push notifications directly via FCM HTTP v1 (no Expo Push account required):
 
-1. Register each Android package (`com.t3tools.t3code.{dev,preview}` / `com.t3tools.t3code`) in Firebase and download `google-services.json`.
+1. Register each Android package (`com.samjandris.t3code.{dev,preview}` / `com.samjandris.t3code`) in Firebase and download `google-services.json`.
 2. Pass `T3CODE_ANDROID_GOOGLE_SERVICES_FILE=/abs/path/google-services.json` when prebuilding/building locally or as an EAS file variable (available to fingerprint generation as well).
 3. Enable the FCM API and store the Firebase service-account JSON only in the relay's `FCM_SERVICE_ACCOUNT` secret (never in EAS app env or the repo). Set `APNS_ENABLED=false` for an Android-only relay stage.
 4. For local smoke/watch verification without deploying a relay, use `vp run push:android:smoke` and `vp run push:android:watch` from `infra/relay`.
 
 ## Desktop passkeys
 
-For a signed macOS build (`com.t3tools.t3code`):
+For a signed macOS build (`com.samjandris.t3code`):
 
 1. Create an explicit macOS App ID with **Associated Domains** and a matching distribution provisioning profile.
-2. In Clerk Native API settings, add an iOS app with the same Apple Team ID and bundle ID, and verify `https://<frontend-api>/.well-known/apple-app-site-association` includes `<TEAM_ID>.com.t3tools.t3code`.
-3. Configure signing per [Apple signing and notarization](./03_release.md#apple-signing-and-notarization-macos). Local signed builds use `T3CODE_APPLE_TEAM_ID`, `T3CODE_MACOS_PROVISIONING_PROFILE`, and optionally `T3CODE_CLERK_PASSKEY_RP_DOMAINS`. Bump the build version after changing Associated Domains so macOS refreshes cached Shared Web Credentials.
+2. In Clerk Native API settings, add an iOS app with the same Apple Team ID and bundle ID, and verify `https://<frontend-api>/.well-known/apple-app-site-association` includes `<TEAM_ID>.com.samjandris.t3code`.
+3. Configure signing per [Apple signing and notarization](./03_release.md#apple-signing-and-notarization-macos). Local signed builds use `T3CODE_APPLE_TEAM_ID`, `T3CODE_MACOS_PROVISIONING_PROFILE`, and optional overrides `T3CODE_DESKTOP_APP_ID` and `T3CODE_CLERK_PASSKEY_RP_DOMAINS`. Bump the build version after changing Associated Domains so macOS refreshes cached Shared Web Credentials.
 
 Unsigned `dev:desktop` cannot exercise passkeys. For renderer HMR with passkeys, launch an installed signed build against `vp run dev:web`:
 

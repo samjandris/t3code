@@ -31,7 +31,7 @@ jobs:
   android:
     name: Build
     if: inputs.platform == 'android'
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -74,6 +74,7 @@ jobs:
           profile: preview:dev
           environment: preview
           expo-token: ${{ secrets.EXPO_PREVIEW_TOKEN }}
+          cache: "false"
           output: ${{ runner.temp }}/t3code-preview.apk
 
       # `eas upload` hosts the APK on EAS and returns the page testers install from.
@@ -95,7 +96,7 @@ jobs:
   ios:
     name: Build
     if: inputs.platform == 'ios'
-    runs-on: blacksmith-12vcpu-macos-27
+    runs-on: macos-latest
     timeout-minutes: 60
     permissions:
       contents: read
@@ -144,6 +145,7 @@ jobs:
           profile: preview:dev
           environment: preview
           expo-token: ${{ secrets.EXPO_PREVIEW_TOKEN }}
+          cache: "false"
           output: ${{ runner.temp }}/t3code-preview.ipa
 
       # EAS hosts the signed client and returns its install page.
@@ -181,7 +183,7 @@ jobs:
     name: Record build
     needs: [android, ios]
     if: ${{ !cancelled() && (needs.android.outputs.record != '' || needs.ios.outputs.record != '') }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write # pushes the build record tag
